@@ -1,0 +1,225 @@
+/* HUD：疊在 canvas 上的 HTML 層（D9）。
+   直向手機優先，所有固定元素都吃 safe-area。
+   動畫刻意少：只在「有事發生」時給一次短提示，沒有持續跑的裝飾動畫。 */
+
+:root {
+  --ink: #4a3423;
+  --ink-soft: #8a7259;
+  --card: rgba(255, 252, 245, 0.94);
+  --card-solid: #fffcf5;
+  --line: #e6d4ba;
+  --accent: #d9a066;
+  --accent-ink: #7a5533;
+  --danger: #c2603f;
+  --radius: 14px;
+  --shadow: 0 6px 18px rgba(120, 88, 54, 0.16);
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font: 14px/1.45 "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hud button {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--line);
+  background: var(--card-solid);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: var(--shadow);
+}
+.hud button:disabled { opacity: 0.45; box-shadow: none; }
+.hud button:active:not(:disabled) { transform: translateY(1px); }
+
+.ic { display: inline-flex; width: 1.15em; height: 1.15em; flex: none; }
+.ic svg { width: 100%; height: 100%; display: block; }
+
+/* ── 上方資源列 ───────────────────────────── */
+.topbar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  pointer-events: auto;
+}
+.chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 11px;
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chip.low { border-color: var(--danger); color: var(--danger); }
+.iconbtn { padding: 8px; border-radius: 999px; }
+
+/* ── 布丁狀態 ─────────────────────────────── */
+.living {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 50px);
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+.living .row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  align-self: flex-start;
+}
+.bar { width: 42px; height: 5px; border-radius: 3px; background: #e9ded0; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.bar.low > i { background: var(--danger); }
+
+/* ── 訂單卡 ───────────────────────────────── */
+.orders {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 50px);
+  right: 8px;
+  width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+}
+.order {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+.order .t { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
+.order .sub { color: var(--ink-soft); margin: 2px 0 5px; }
+.order button { width: 100%; justify-content: center; padding: 5px 8px; font-size: 12px; }
+.order .clock { height: 3px; border-radius: 2px; background: #e9ded0; overflow: hidden; margin-top: 5px; }
+.order .clock > i { display: block; height: 100%; background: var(--accent); }
+
+/* ── 下方動作列 ───────────────────────────── */
+.dock {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+}
+.dock .line { display: flex; gap: 6px; }
+.dock .line > button { flex: 1; justify-content: center; min-width: 0; }
+.dock .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock .n { font-variant-numeric: tabular-nums; color: var(--accent-ink); font-weight: 600; }
+.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.primary .n { color: #fff; }
+
+/* ── 商店抽屜 ─────────────────────────────── */
+.sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  max-height: 78%;
+  background: var(--card-solid);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 26px rgba(120, 88, 54, 0.22);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.sheet[hidden] { display: none; }
+.sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.sheet h2 { margin: 0; font-size: 16px; }
+.sheet .body { overflow: auto; padding: 10px 14px 16px; -webkit-overflow-scrolling: touch; }
+.sheet h3 { margin: 14px 0 6px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.sheet h3:first-child { margin-top: 2px; }
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.item:last-child { border-bottom: 0; }
+.item .grow { flex: 1; min-width: 0; }
+.item .name { font-weight: 600; }
+.item .desc { font-size: 12px; color: var(--ink-soft); }
+.item .owned { font-size: 12px; color: var(--accent-ink); white-space: nowrap; }
+
+/* ── 提示 ─────────────────────────────────── */
+.toasts {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 116px);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 5px;
+  align-items: center;
+  pointer-events: none;
+  width: max-content;
+  max-width: 88%;
+}
+.toast {
+  background: rgba(74, 52, 35, 0.9);
+  color: #fff8ec;
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow);
+}
+.toast.bad { background: rgba(194, 96, 63, 0.94); }
+
+/* ── 回歸提示（離線結算） ─────────────────── */
+.welcome {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(246, 231, 210, 0.72);
+  pointer-events: auto;
+  padding: 20px;
+}
+.welcome[hidden] { display: none; }
+.welcome .card {
+  background: var(--card-solid);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  max-width: 300px;
+  text-align: center;
+}
+.welcome h2 { margin: 0 0 8px; font-size: 17px; }
+.welcome p { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; }
+.welcome button { width: 100%; justify-content: center; }

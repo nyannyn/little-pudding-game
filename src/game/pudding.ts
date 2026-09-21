@@ -63,8 +63,11 @@ export function milkRatio(p: Pudding): number {
 /** 掉一份原料在地上；滿了就不掉（計畫：上限 5 份，滿了後續不再掉） */
 export function spawnDrop(state: GameState, species: SpeciesId, at: Vec2, ctx: SimContext): boolean {
   if (state.drops.length >= BALANCE.dropCap) return false;
-  const x = Math.min(ctx.floor.maxX, Math.max(ctx.floor.minX, at.x + range(ctx.rng, -0.16, 0.16)));
-  const z = Math.min(ctx.floor.maxZ, Math.max(ctx.floor.minZ, at.z + range(ctx.rng, -0.12, 0.12)));
+  // 沿澡盆外圍的一圈掉，不掉在盆心——掉進盆裡會被盆身遮住，看起來像沒產出
+  const a = range(ctx.rng, 0, Math.PI * 2);
+  const r = BALANCE.dropSpawnRadius;
+  const x = Math.min(ctx.floor.maxX, Math.max(ctx.floor.minX, at.x + Math.cos(a) * r));
+  const z = Math.min(ctx.floor.maxZ, Math.max(ctx.floor.minZ, at.z + Math.sin(a) * r * 0.7));
   state.drops.push({ id: `d${state.nextId++}`, species, pos: { x, z }, bornAt: state.time });
   ctx.emit({ type: 'drop', species, x, z });
   return true;

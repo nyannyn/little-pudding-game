@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { GameState } from '../game/state';
 
 export interface LpgStats { fps: number; drawCalls: number; triangles: number; ready: boolean }
 
@@ -6,7 +7,7 @@ declare global {
   interface Window {
     __lpg: {
       stats: LpgStats;
-      state?: unknown;
+      state?: GameState;
       three?: {
         scene: THREE.Scene;
         camera: THREE.PerspectiveCamera;
