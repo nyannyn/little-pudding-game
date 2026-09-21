@@ -1,6 +1,7 @@
 import { BALANCE } from './balance';
 import { basinAvailable, consumeBathUnit, findBasinFor } from './basin';
 import type { EventSink } from './events';
+import { applySpeciesAsPure } from './genetics';
 import { range, type Rng } from './rng';
 import { LIQUIDS, SPECIES, type SpeciesId } from './species';
 import type { GameState, Pudding, Vec2 } from './state';
@@ -82,7 +83,9 @@ function land(state: GameState, p: Pudding, ctx: SimContext): void {
 
   if (p.pendingMutation && p.pendingMutation !== p.species) {
     const from = p.species;
-    p.species = p.pendingMutation;
+    // 突變寫的是**基因型**不是 species（D28）：只改 species 的話，一隻泡成鮮奶酪的布丁
+    // 還是會把焦糖等位基因傳給每一個子代。突變一律換成該物種的純合，表面行為不變。
+    applySpeciesAsPure(p, p.pendingMutation);
     p.tint = 0;
     p.bathHistory = [];
     p.flavorExposure = {};
@@ -206,9 +209,14 @@ export function tickPudding(state: GameState, p: Pudding, dt: number, ctx: SimCo
   }
 }
 
-/** UI 用：這隻布丁現在在做什麼（一行中文）。用短名：狀態列在右邊還要留位置給訂單卡 */
-export function describePudding(p: Pudding): string {
+/**
+ * UI 用：這隻布丁現在在做什麼（一行中文）。用短名：狀態列在右邊還要留位置給訂單卡。
+ * 給了 `time` 才判斷得出「還沒長大」——新生兒要看得出來是新生兒，
+ * 否則畫面上突然多一隻布丁，玩家不知道那是繁殖出來的（D29）。
+ */
+export function describePudding(p: Pudding, time?: number): string {
   const name = SPECIES[p.species].shortName;
+  if (time !== undefined && time - p.bornAt < BALANCE.matureAgeSec) return `${name}・幼布丁`;
   if (p.mode === 'bathing') return `${name}・泡澡中`;
   if (wantsBath(p)) return `${name}・想泡澡了`;
   if (p.tint > 0) return `${name}・有點發白`;

@@ -1,12 +1,15 @@
 import { BALANCE, EQUIPMENT_IDS, type EquipmentId } from './balance';
-import { LIQUID_IDS, SPECIES_IDS, type LiquidId, type SpeciesId } from './species';
+import { isAllele, normalizeGenes, phenotype, type Genes } from './genetics';
+import { LIQUID_IDS, SPECIES, SPECIES_IDS, type AlleleId, type LiquidId, type SpeciesId } from './species';
 import { START_ZONE, defaultZones, type Zone } from './zones';
 
 /**
  * 2（2026-09-21）：加入分區。v1 的存檔沒有 `zone` 欄位，
  * migrate 會把所有布丁／澡盆／掉落物補成起始區，不然它們會從所有查詢裡消失。
+ * 3（2026-09-22）：加入基因型（D28）。舊存檔沒有 `genes`，一律補成「該物種的純合」——
+ * 補錯方向會讓老玩家的布丁突然變成別的物種，所以不可以拿預設值敷衍。
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** 布丁在地板上的行為狀態 */
 export type PuddingMode = 'hopping' | 'resting' | 'bathing';
@@ -17,7 +20,17 @@ export interface Pudding {
   id: string;
   /** 住在哪一區（`zones.ts`） */
   zone: string;
+  /**
+   * 基因型：兩個等位基因，照 `ALLELES` 的順序正規化（D28）。
+   * 這是物種的唯一真相，`species` 只是它的快取。
+   */
+  genes: Genes;
+  /** `phenotype(genes)` 的快取。**只能由 `genetics.applyGenes()` 寫入** */
   species: SpeciesId;
+  /** 出生時間（遊戲秒）。可以是負的：開局與解鎖送的住客算成年，`bornAt = time − matureAgeSec` */
+  bornAt: number;
+  /** 下一次可以繁殖的遊戲時間 */
+  breedReadyAt: number;
   /** 0–100，會隨時間下降；低於門檻就想泡澡 */
   caramel: number;
   /** 最近幾次泡澡用的液體（滑動窗，長度上限 BALANCE.milkWindow） */
@@ -113,7 +126,7 @@ export interface GameState {
   nextOrderAt: number;
   /** 流水號，產生 id 用（不用亂數，存檔重開才不會撞號） */
   nextId: number;
-  stats: { baths: number; sold: number; mutations: number; picked: number; crafted: number };
+  stats: { baths: number; sold: number; mutations: number; picked: number; crafted: number; births: number };
 }
 
 function zeroBySpecies(): Record<SpeciesId, number> {
@@ -141,6 +154,8 @@ export interface NewSaveOptions {
   basinPos?: Vec2;
   /** 布丁初始位置 */
   puddingPositions?: Vec2[];
+  /** 開局住客數（`?pop=` 量 draw call 用）；預設 2，上限＝傳進來的位置數 */
+  puddingCount?: number;
 }
 
 /**
@@ -157,10 +172,15 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
   const stock = zeroByLiquid();
   for (const [k, v] of Object.entries(BALANCE.startStock)) stock[k as LiquidId] = v;
 
-  const puddings: Pudding[] = spots.slice(0, 2).map((pos, i) => ({
+  const count = Math.max(1, Math.min(spots.length, Math.round(opts.puddingCount ?? 2)));
+  const puddings: Pudding[] = spots.slice(0, count).map((pos, i) => ({
     id: `p${i + 1}`,
     zone: START_ZONE,
+    genes: ['caramel', 'caramel'] as Genes,
     species: 'caramel' as SpeciesId,
+    // 開局的兩隻是成年住客：出生時間往前推一個成年期，否則玩家要先等一分鐘才可能繁殖
+    bornAt: -BALANCE.matureAgeSec,
+    breedReadyAt: 0,
     caramel: i === 0 ? 24 : 58,
     bathHistory: [],
     tint: 0,
@@ -200,7 +220,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     // 從 1 開始的話，解鎖第二區生出來的布丁會叫 p1 撞號，
     // scene 端以 id 為鍵的 view Map 就會綁到錯的那一隻。
     nextId: puddings.length + 1,
-    stats: { baths: 0, sold: 0, mutations: 0, picked: 0, crafted: 0 },
+    stats: { baths: 0, sold: 0, mutations: 0, picked: 0, crafted: 0, births: 0 },
   };
 }
 
@@ -211,6 +231,25 @@ function findZoneUnlocked(s: GameState, id: string): boolean {
 
 function num(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+/**
+ * 還原基因型（D28）。優先順序：
+ * ① 存檔有合法的 `genes` → 用它（正規化後重算 `species`，快取不信任存檔）
+ * ② 只有 `species`（v2 以前的存檔）→ 補成該物種的基因型（純種＝純合、混種＝它的兩個等位基因）
+ * ③ 兩者都壞 → 焦糖純種
+ * 絕不能反過來以存檔的 `species` 為準：那樣「玩家養出來的布丁」會在改版後變成別的物種。
+ */
+function restoreGenes(src: Partial<Pudding>): { genes: Genes; species: SpeciesId } {
+  const raw = src.genes;
+  if (Array.isArray(raw) && raw.length === 2 && isAllele(raw[0]) && isAllele(raw[1])) {
+    const genes = normalizeGenes(raw[0] as AlleleId, raw[1] as AlleleId);
+    return { genes, species: phenotype(genes) };
+  }
+  const known = SPECIES_IDS.includes(src.species as SpeciesId) ? (src.species as SpeciesId) : 'caramel';
+  const [a, b] = SPECIES[known].alleles;
+  const genes = normalizeGenes(a, b);
+  return { genes, species: phenotype(genes) };
 }
 
 /**
@@ -269,7 +308,10 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     return {
       id: typeof src.id === 'string' ? src.id : `p${i + 1}`,
       zone: zoneOf(src.zone),
-      species: SPECIES_IDS.includes(src.species as SpeciesId) ? (src.species as SpeciesId) : 'caramel',
+      ...restoreGenes(src),
+      // 舊檔沒有這兩欄：當成早就成年、且立刻可以繁殖（不倒扣老玩家的進度）
+      bornAt: num(src.bornAt, Math.min(0, -BALANCE.matureAgeSec)),
+      breedReadyAt: num(src.breedReadyAt, 0),
       caramel: Math.min(100, Math.max(0, num(src.caramel, 100))),
       bathHistory: Array.isArray(src.bathHistory)
         ? (src.bathHistory.filter((x) => LIQUID_IDS.includes(x as LiquidId)) as LiquidId[]).slice(-BALANCE.milkWindow)
@@ -343,6 +385,7 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     mutations: Math.max(0, num(st.mutations, 0)),
     picked: Math.max(0, num(st.picked, 0)),
     crafted: Math.max(0, num(st.crafted, 0)),
+    births: Math.max(0, num(st.births, 0)),
   };
 
   // 舊存檔的 nextId 可能落後於實際用掉的號碼（或根本沒有這欄），

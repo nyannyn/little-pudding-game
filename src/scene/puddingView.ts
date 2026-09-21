@@ -49,7 +49,7 @@ export class PuddingView {
     this.eyes = find('Pudding_Eyes');
 
     // 陰影只留本體：焦糖／眼睛／腮紅的影子在這個尺寸下看不出來，
-    // 但每個 castShadow 的 mesh 都會在陰影 pass 再吃一個 draw call（預算只有 30）。
+    // 但每個 castShadow 的 mesh 都會在陰影 pass 再吃一個 draw call（預算只有 35）。
     this.root.traverse((o) => {
       if (o instanceof THREE.Mesh) o.castShadow = o.name === 'Pudding_Body';
     });

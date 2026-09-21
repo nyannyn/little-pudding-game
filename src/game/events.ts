@@ -11,6 +11,8 @@ export type SimEvent =
   | { type: 'drop'; species: SpeciesId; x: number; z: number }
   | { type: 'pick'; species: SpeciesId; x: number; z: number; auto: boolean }
   | { type: 'mutate'; puddingId: string; from: SpeciesId; to: SpeciesId; x: number; z: number }
+  | { type: 'birth'; puddingId: string; zone: string; species: SpeciesId; parents: [string, string]; x: number; z: number }
+  | { type: 'move'; puddingId: string; zone: string }
   | { type: 'craft'; species: SpeciesId; auto: boolean }
   | { type: 'sell'; species: SpeciesId; coins: number; auto: boolean }
   | { type: 'orderNew'; orderId: string; species: SpeciesId; qty: number; price: number }

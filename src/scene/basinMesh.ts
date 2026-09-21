@@ -66,7 +66,7 @@ function tubGeometries(x: number, y: number, z: number): THREE.BufferGeometry[] 
 /**
  * 全部澡盆合併成兩個 mesh（盆身、液面）。
  * 液面顏色用 vertex color 帶，不然每種液體要一個材質＝一個 draw call，
- * 買了兩個特殊澡盆就多兩個，預算只有 30。
+ * 買了兩個特殊澡盆就多兩個，預算只有 35。
  */
 export class BasinsView {
   readonly group = new THREE.Group();
@@ -82,7 +82,7 @@ export class BasinsView {
 
   /**
    * 只畫「玩家正在看的那一區」的澡盆。其他區照樣在模擬，只是不畫——
-   * 鏡頭一次只框一層，多畫的東西看不到卻照吃 draw call（預算只有 30）。
+   * 鏡頭一次只框一層，多畫的東西看不到卻照吃 draw call（預算只有 35）。
    */
   sync(state: GameState, zone: string, ox: number, oy: number) {
     const mine = state.basins.filter((b) => b.zone === zone);

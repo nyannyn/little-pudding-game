@@ -42,7 +42,7 @@ try {
 
   const stats = await page.evaluate(() => ({ ...window.__lpg.stats }));
   check(stats.triangles > 4000, '場景畫出來了（含兩隻布丁的 GLB）', `tris ${stats.triangles}`);
-  check(stats.drawCalls > 0 && stats.drawCalls <= 30, 'draw calls 在預算內', `${stats.drawCalls} / 30`);
+  check(stats.drawCalls > 0 && stats.drawCalls <= 35, 'draw calls 在預算內', `${stats.drawCalls} / 35`);
 
   // 邏輯層真的在跑：遊戲時間會往前走
   const t0 = await page.evaluate(() => window.__lpg.state.time);

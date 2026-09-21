@@ -166,7 +166,11 @@ export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, e
   state.puddings.push({
     id: `p${state.nextId++}`, // 不可以用長度推算 id：撞號會讓 scene 端的 view 綁錯隻
     zone: zoneId,
+    // 送的住客是純焦糖成年布丁：新的一區要能當「配種用的乾淨底盤」（D28）
+    genes: ['caramel', 'caramel'],
     species: 'caramel',
+    bornAt: state.time - BALANCE.matureAgeSec,
+    breedReadyAt: state.time,
     caramel: 45,
     bathHistory: [],
     tint: 0,
@@ -192,6 +196,40 @@ export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, e
   });
   state.activeZone = zoneId;
   emit({ type: 'buy', what: z.name, cost: z.price, auto: false });
+  return OK;
+}
+
+/**
+ * 把一隻布丁搬到另一個已解鎖的分區（D29）。
+ *
+ * 這是玩家對「配種」唯一的直接操作：誰跟誰住同一區，決定了下一代的基因來源。
+ * 沒有它的話，玩家只能靠澡盆（D30）間接影響基因，養出來的混種也拆不開重配。
+ * **UI 尚未接線**（2026-09-22），規則層先備好。
+ */
+export function movePudding(state: GameState, puddingId: string, zoneId: string, emit: EventSink): ActionResult {
+  const p = state.puddings.find((x) => x.id === puddingId);
+  if (!p) return fail('沒有這隻布丁');
+  const z = findZone(state, zoneId);
+  if (!z) return fail('沒有這個櫥窗');
+  if (!z.unlocked) return fail('這一區還沒解鎖');
+  if (p.zone === zoneId) return fail('牠已經住在這一區了');
+  if (p.mode === 'bathing') return fail('泡澡中，泡完再搬');
+  if (state.puddings.filter((x) => x.zone === zoneId).length >= BALANCE.zoneCapacity) {
+    return fail('那一區住滿了');
+  }
+
+  // 正要跳進某個盆的話要先讓出佔位，否則那個盆會被一隻已經不在這一區的布丁永久佔住
+  const bi = p.basinIndex;
+  const basin = bi === null ? undefined : state.basins[bi];
+  if (basin && basin.occupantId === p.id) basin.occupantId = null;
+  p.basinIndex = null;
+  p.zone = zoneId;
+  p.mode = 'resting';
+  p.restT = 0.5;
+  p.from = { ...p.pos };
+  p.to = { ...p.pos };
+  p.hopT = 1;
+  emit({ type: 'move', puddingId: p.id, zone: zoneId });
   return OK;
 }
 

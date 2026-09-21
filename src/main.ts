@@ -117,10 +117,15 @@ const fresh = params.get('fresh') === '1';
 const newSaveOptions = {
   seed: Number.isFinite(seedParam) && seedParam > 0 ? seedParam : undefined,
   basinPos: BASIN_SLOTS[0],
+  // 前兩個是開局的兩隻；後面幾個是 `?pop=` 量 draw call 時才用得到的落點
   puddingPositions: [
     { x: 0.05, z: 0.1 },
     { x: 0.5, z: -0.02 },
+    { x: -0.45, z: 0.14 },
+    { x: -0.12, z: -0.26 },
+    { x: 0.7, z: 0.24 },
   ],
+  puddingCount: Math.max(1, Number(params.get('pop')) || 2),
 };
 
 const loaded = fresh ? { state: createNewSave(newSaveOptions), restored: false } : load(newSaveOptions);
@@ -312,6 +317,20 @@ function handle(e: SimEvent) {
       particles.burst(ox + e.x, oy + 0.12, e.z, SPECIES[e.to].bodyColor, 22);
       sfx.coin(0.4);
       hud.toast(`突變！變成${SPECIES[e.to].name}`);
+      break;
+    }
+    case 'birth': {
+      // 新生兒要先有 view，否則牠只存在於 state、畫面上不會出現任何東西
+      void ensureViews();
+      refreshShells(); // 名牌上的「住客 N 隻」
+      const zoneName = findZone(state, e.zone)?.shortName ?? '';
+      if (e.zone === state.activeZone) {
+        particles.burst(ox + e.x, oy + 0.1, e.z, SPECIES[e.species].bodyColor, 18);
+        hud.toast(`生了一隻${SPECIES[e.species].name}`);
+      } else {
+        hud.toast(`${zoneName}生了一隻${SPECIES[e.species].name}`);
+      }
+      sfx.coin(0.3);
       break;
     }
     case 'sell':

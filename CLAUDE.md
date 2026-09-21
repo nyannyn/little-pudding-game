@@ -18,7 +18,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `src/ui/`：HTML/CSS 疊層；圖示用 SVG，**不用 emoji**。
 
 ## 效能預算（AC 會擋）
-每幀 draw calls ≤ 30；總面數 ≤ 50k；貼圖 ≤ 1024²；資產總量 ≤ 3 MB；每個 GLB ≤ 3k 面／300 KB；iPhone 中位數 ≥ 50 fps。
+每幀 draw calls ≤ 35（2026-09-22 由 30 上調，見計畫 D31：繁殖讓一層住到 3 隻，每隻 +5）；總面數 ≤ 50k；貼圖 ≤ 1024²；資產總量 ≤ 3 MB；每個 GLB ≤ 3k 面／300 KB；iPhone 中位數 ≥ 50 fps。
 玻璃**不用** `transmission`（每幀多一次全場景 pass）。
 
 ## 美術管線

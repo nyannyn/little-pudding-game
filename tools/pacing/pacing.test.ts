@@ -11,7 +11,8 @@ import {
   unlockZone,
 } from '../../src/game/actions';
 import { advance, createWorld } from '../../src/game/sim';
-import { SPECIES_IDS, type LiquidId } from '../../src/game/species';
+import { applyGenes } from '../../src/game/genetics';
+import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../../src/game/species';
 import { createNewSave } from '../../src/game/state';
 import { nextLockedZone } from '../../src/game/zones';
 
@@ -30,11 +31,20 @@ const HOURS = Number(process.env.SIM_HOURS ?? 3);
 const SPAWN = { puddingPos: { x: 0.1, z: 0.05 }, basinPos: { x: 0.62, z: 0.28 } };
 const BUY_ORDER: EquipmentId[] = ['collector', 'autoFill', 'crafter', 'seller', 'restock'];
 
-function run(profile: 'equip-first' | 'zone-first', seed: number) {
+/**
+ * `hybrid` 情境（2026-09-22，D28）：開局其中一隻是卡士達（焦糖＋鮮奶酪的異合）。
+ * 這不是造假狀態——正常玩法灌牛乳就會突變出鮮奶酪，混種因此是玩家真的會有的東西。
+ * 要量的是「混種訂單接不接得到」：混種只有一隻在產，一份甜點要 2 份原料、
+ * 一份原料要一次泡澡（約 65 秒），而訂單只活 `orderTtlSec` 秒。
+ */
+function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
   const state = createNewSave({ seed, now: 0 });
+  if (profile === 'hybrid') applyGenes(state.puddings[0]!, 'caramel', 'panna');
   const w = createWorld(state, FLOOR);
   const noop = () => {};
   const milestones: Record<string, number> = {};
+  const hybridOrders = { new: 0, done: 0, expired: 0 };
+  const isHybrid = (id: SpeciesId) => SPECIES[id].alleles[0] !== SPECIES[id].alleles[1];
   const mark = (k: string) => {
     if (!(k in milestones)) milestones[k] = state.time;
   };
@@ -62,6 +72,13 @@ function run(profile: 'equip-first' | 'zone-first', seed: number) {
     const l: LiquidId = 'caramel';
     if (state.stock[l] < 2) buyStock(state, l, 5, noop);
 
+    for (const e of w.events) {
+      if (e.type === 'orderNew' && isHybrid(e.species)) hybridOrders.new++;
+      if (e.type === 'orderDone' && isHybrid(e.species)) hybridOrders.done++;
+      if (e.type === 'orderExpired' && isHybrid(e.species)) hybridOrders.expired++;
+    }
+    w.events.length = 0;
+
     const nz = nextLockedZone(state);
     const zoneFirst = profile === 'zone-first' && state.zones.filter((z) => z.unlocked).length < 2;
     if (!zoneFirst) {
@@ -83,7 +100,9 @@ function run(profile: 'equip-first' | 'zone-first', seed: number) {
   console.log(
     `\n=== ${profile} (seed ${seed}, react every ${REACT_SEC}s, ${HOURS}h) ===\n${lines.join('\n')}\n` +
       `end: coins=${Math.floor(state.coins)} baths=${state.stats.baths} orders=${state.stats.sold} puddings=${state.puddings.length} ` +
-      `equip=${EQUIPMENT_IDS.filter((e) => state.equipment[e]).join(',')}\n`,
+      `equip=${EQUIPMENT_IDS.filter((e) => state.equipment[e]).join(',')}\n` +
+      `species=${SPECIES_IDS.filter((id) => state.puddings.some((p) => p.species === id)).join(',')}\n` +
+      `hybrid orders: new=${hybridOrders.new} done=${hybridOrders.done} expired=${hybridOrders.expired}\n`,
   );
 }
 
@@ -91,4 +110,5 @@ test('pacing report', () => {
   run('equip-first', 7);
   run('zone-first', 7);
   run('equip-first', 99);
+  run('hybrid', 7);
 });

@@ -2,6 +2,13 @@ import type { Page } from '@playwright/test';
 
 export interface LpgStats { fps: number; drawCalls: number; triangles: number; ready: boolean }
 
+/**
+ * 每幀 draw call 預算（repo CLAUDE.md／計畫 D11）。
+ * 2026-09-22 由 30 上調到 35（D31）：繁殖讓一層住到 3 隻，實測每隻剛好 +5。
+ * 寫在這裡是為了只有一個地方要改——三個 spec 各寫一份數字會漂。
+ */
+export const DRAW_CALL_BUDGET = 35;
+
 // 等到資產載完且至少畫過一幀，回傳穩定的 stats
 export async function readStats(page: Page, query = ''): Promise<LpgStats> {
   await page.goto(`/?debug=1${query}`);

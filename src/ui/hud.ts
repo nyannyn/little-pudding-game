@@ -320,7 +320,7 @@ export class Hud {
     mine.forEach((p, i) => {
       const row = this.living.children[i] as HTMLElement | undefined;
       if (!row) return;
-      (row.querySelector('.t') as HTMLElement).textContent = describePudding(p);
+      (row.querySelector('.t') as HTMLElement).textContent = describePudding(p, state.time);
       const bar = row.querySelector('.bar') as HTMLElement;
       (bar.firstElementChild as HTMLElement).style.width = `${Math.round(p.caramel)}%`;
       bar.classList.toggle('low', p.caramel < BALANCE.batheThreshold);

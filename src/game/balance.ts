@@ -97,6 +97,35 @@ export const BALANCE = {
   /** 特殊澡盆一次性價格 */
   specialBasinPrice: 300,
 
+  // ── 繁殖與配種（D28–D30，2026-09-22）───────────────
+  /**
+   * 每一區最多住幾隻。滿了就停止繁殖——這就是「去解鎖下一區」的動力。
+   *
+   * **這個數字直接換算成 draw calls**（2026-09-22 實測 `?pop=N`，iPhone 14 視口）：
+   * 無布丁 13，每多一隻剛好 +5（1 隻 18／2 隻 23／3 隻 28／4 隻 33／5 隻 38），
+   * 預算 35、最壞情況（掉落物＋粒子＋設備）另加約 5。
+   * 上限 2 等於繁殖永遠不會發生（開局就滿員），所以下限是 3；
+   * 但 3 隻同框會超出效能預算，要真的塞得下得先做「body／caramel／blush 併成
+   * vertex color 單一 mesh」那筆美術優化（每隻省 2 個 draw call）。
+   */
+  zoneCapacity: 3,
+  /** 出生後幾秒才算成年、可以繁殖 */
+  matureAgeSec: 60,
+  /** 雙親各自要有這麼多焦糖才願意繁殖（牛奶澡泡完是 60，門檻不能高過它） */
+  breedCaramelMin: 55,
+  /** 繁殖一次雙親各扣多少焦糖（扣完低於泡澡門檻 → 自己跳回澡盆，接回既有迴圈） */
+  breedCaramelCost: 35,
+  /** 繁殖後多久才能再繁殖（遊戲秒） */
+  breedCooldownSec: 90,
+  /** 新生布丁的起始焦糖 */
+  newbornCaramel: 70,
+  /** 配子被環境改寫的機率（D30） */
+  gameteShiftChance: 0.35,
+  /** 風味曝露達「突變門檻 × 此比例」就開始影響配子 */
+  gameteShiftExposureRatio: 0.5,
+  /** 變白程度達此值就開始把配子推向鮮奶酪 */
+  gameteShiftTintRatio: 0.5,
+
   /** 開局 */
   startCoins: 30,
   startStock: { caramel: 6, milk: 2 } as Record<string, number>,

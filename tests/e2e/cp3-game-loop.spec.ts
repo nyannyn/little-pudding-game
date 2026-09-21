@@ -1,3 +1,4 @@
+import { DRAW_CALL_BUDGET } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { BALANCE } from '../../src/game/balance';
 import type { GameState } from '../../src/game/state';
@@ -135,6 +136,6 @@ test('AC3-2 效能不退步：整場（含設備與掉落物）draw calls 仍在
   await page.waitForTimeout(1500);
   const stats = await page.evaluate(() => ({ ...window.__lpg.stats }));
   test.info().annotations.push({ type: 'stats', description: JSON.stringify(stats) });
-  expect(stats.drawCalls).toBeLessThanOrEqual(30);
+  expect(stats.drawCalls).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-worst-case.png' });
 });

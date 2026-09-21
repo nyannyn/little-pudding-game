@@ -1,3 +1,4 @@
+import { DRAW_CALL_BUDGET } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { BALANCE } from '../../src/game/balance';
 import type { GameState } from '../../src/game/state';
@@ -143,5 +144,5 @@ test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生�
   await page.waitForTimeout(1500);
   const stats = await page.evaluate(() => ({ ...window.__lpg.stats }));
   test.info().annotations.push({ type: 'stats', description: JSON.stringify(stats) });
-  expect(stats.drawCalls).toBeLessThanOrEqual(30);
+  expect(stats.drawCalls).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
 });

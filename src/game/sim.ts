@@ -1,4 +1,5 @@
 import { BALANCE } from './balance';
+import { tickBreeding } from './breeding';
 import { runAutomation } from './equipment';
 import type { EventSink, SimEvent } from './events';
 import { tickOrders } from './orders';
@@ -54,6 +55,8 @@ function step(w: World, dt: number, ctx: SimContext): void {
   const s = w.state;
   s.time += dt;
   for (const p of s.puddings) tickPudding(s, p, dt, ctx);
+  // 繁殖排在布丁 tick 之後：這一步剛泡完澡補滿焦糖的布丁，同一步就可以當親代
+  tickBreeding(s, ctx);
   runAutomation(s, w.emit);
   tickOrders(s, w.rng, w.emit);
 }
