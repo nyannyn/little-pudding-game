@@ -1,0 +1,19 @@
+{
+  "name": "小布丁農場",
+  "short_name": "布丁農場",
+  "description": "在玻璃櫥窗裡養布丁、泡澡、突變，打造全自動甜點生產線。",
+  "lang": "zh-Hant",
+  "dir": "ltr",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6e7d2",
+  "theme_color": "#f6e7d2",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

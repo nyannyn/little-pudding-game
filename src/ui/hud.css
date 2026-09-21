@@ -205,12 +205,33 @@
 .item .desc { font-size: 12px; color: var(--ink-soft); }
 .item .owned { font-size: 12px; color: var(--accent-ink); white-space: nowrap; }
 
+/* ── 新手引導（買下第一台設備就不再出現） ─── */
+.hint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 104px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card-solid);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 8px 6px 8px 12px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  font-size: 13px;
+}
+.hint[hidden] { display: none; }
+.hint .t { flex: 1; }
+.hint button { border: 0; box-shadow: none; background: transparent; padding: 4px 6px; color: var(--ink-soft); }
+
 /* ── 提示 ─────────────────────────────────── */
 .toasts {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 116px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 152px);
   display: flex;
   flex-direction: column-reverse;
   gap: 5px;

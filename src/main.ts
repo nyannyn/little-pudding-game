@@ -498,6 +498,32 @@ renderer.setAnimationLoop(() => {
   stats.tick();
 });
 
+// ── PWA：註冊 service worker（只在正式版）──────────────
+// dev 不註冊：Vite 的 public/ 在開發時也會被服務到，快取住 dev 資產會讓 HMR 行為變得很難查。
+if (import.meta.env.PROD && 'serviceWorker' in navigator && params.get('nosw') !== '1') {
+  /**
+   * 把這一輪實際載到的同源資源清單交給 SW 去補快取。
+   * 第一次載入時 SW 還沒接管，那些檔案是繞過 SW 抓的；不補的話
+   * 「加入主畫面後第一次離線開」會是白畫面。
+   */
+  const warm = async () => {
+    const reg = await navigator.serviceWorker.ready;
+    const urls = performance
+      .getEntriesByType('resource')
+      .map((e) => e.name)
+      .filter((u) => u.startsWith(location.origin) && !u.includes('/sw.js'));
+    reg.active?.postMessage({ type: 'warm', urls: [location.href.split('?')[0], ...new Set(urls)] });
+  };
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register(`${import.meta.env.BASE_URL}sw.js`)
+      // GLB 是在 load 之後才抓的，等模型掛上去再補一次才收得齊
+      .then(() => ensureViews().then(warm))
+      .catch((e) => console.error('[lpg] service worker 註冊失敗', e));
+  });
+}
+
 void ensureViews().then(() => {
   // ready 要等模型真的掛上去才翻：e2e 的三角形斷言靠它當閘門
   stats.stats.ready = true;

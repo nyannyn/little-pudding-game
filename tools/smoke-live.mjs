@@ -36,6 +36,9 @@ page.on('response', (r) => { if (r.status() >= 400) failedRequests.push(`${r.sta
 try {
   await page.goto(`${BASE}/?debug=1&fresh=1&seed=1&fastTime=20`, { waitUntil: 'load', timeout: 60_000 });
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 40_000 });
+  // ready 翻轉的當下布丁剛掛進場景，還沒被畫進任何一幀——
+  // 馬上讀 renderer.info 會少算兩隻布丁（4494 vs 7886），要讓它先畫幾幀
+  await page.waitForTimeout(900);
 
   const stats = await page.evaluate(() => ({ ...window.__lpg.stats }));
   check(stats.triangles > 4000, '場景畫出來了（含兩隻布丁的 GLB）', `tris ${stats.triangles}`);
@@ -59,12 +62,77 @@ try {
 
   await page.screenshot({ path: `${OUT}/live-smoke.png` });
   console.log(`   截圖：${OUT}/live-smoke.png`);
+
+  // ── PWA：「加入主畫面」要拿得到的東西 ──────────────────
+  // 這裡才驗得到「相對路徑在 /repo/ 子路徑下解析正確」——dev server 會改寫成絕對路徑，
+  // 本機 e2e 看不出這個差別。
+  const pwa = await page.evaluate(async () => {
+    const manifestLink = document.querySelector('link[rel="manifest"]');
+    const appleLink = document.querySelector('link[rel="apple-touch-icon"]');
+    const out = { manifestUrl: manifestLink?.href ?? '', appleUrl: appleLink?.href ?? '', manifestStatus: 0, appleStatus: 0, iconStatuses: [] };
+    if (manifestLink) {
+      const res = await fetch(manifestLink.href);
+      out.manifestStatus = res.status;
+      if (res.ok) {
+        const m = await res.json();
+        out.manifest = m;
+        for (const icon of m.icons ?? []) {
+          const r = await fetch(new URL(icon.src, manifestLink.href).href);
+          out.iconStatuses.push(r.status);
+        }
+      }
+    }
+    if (appleLink) out.appleStatus = (await fetch(appleLink.href)).status;
+    return out;
+  });
+
+  const base = new URL(BASE + '/').pathname;
+  check(pwa.manifestUrl.includes(base), 'manifest 解析在 base 之下（不是網站根目錄）', pwa.manifestUrl);
+  check(pwa.manifestStatus === 200, 'manifest 拿得到', String(pwa.manifestStatus));
+  check(pwa.manifest?.display === 'standalone' && pwa.manifest?.orientation === 'portrait', 'manifest 是直向全螢幕');
+  check(pwa.iconStatuses.length > 0 && pwa.iconStatuses.every((s) => s === 200), '所有圖示都拿得到', pwa.iconStatuses.join(','));
+  check(pwa.appleStatus === 200, 'iOS 的 apple-touch-icon 拿得到', pwa.appleUrl);
+
+  // ── service worker：註冊、接管、離線還開得起來 ──────────
+  const swScope = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    return reg.scope;
+  }).catch(() => '');
+  check(swScope.includes(base), 'service worker 註冊且 scope 正確', swScope || '沒有 ready');
+
+  // 等快取真的收齊再斷網。第一次載入時 SW 還沒接管，資產是頁面 load 之後才補進快取的，
+  // 沒等就斷網只是在測「補到一半」——那不是玩家會遇到的狀態（他們會先玩一陣子才離線）。
+  const warmed = await page
+    .waitForFunction(
+      async () => {
+        const c = await caches.open('lpg-v1');
+        const keys = (await c.keys()).map((r) => r.url);
+        return keys.some((u) => u.endsWith('.js')) && keys.some((u) => u.endsWith('.glb'));
+      },
+      null,
+      { timeout: 20_000, polling: 500 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  check(warmed, 'service worker 把 app shell 收進快取了');
+
+  await ctx.setOffline(true);
+  const offlineOk = await page
+    .reload({ waitUntil: 'load', timeout: 30_000 })
+    .then(() => page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 }))
+    .then(() => true)
+    .catch(() => false);
+  check(offlineOk, '離線狀態下重新整理仍然開得起來');
+  await ctx.setOffline(false);
 } catch (e) {
   check(false, '頁面載入／操作', String(e).split('\n')[0]);
 }
 
-check(consoleErrors.length === 0, 'console 沒有錯誤', consoleErrors.slice(0, 3).join(' | '));
-check(failedRequests.length === 0, '沒有 404／載入失敗的資產', failedRequests.slice(0, 3).join(' | '));
+// 離線那一段本來就會有 net::ERR_INTERNET_DISCONNECTED，那是測試自己造成的，不算問題
+const realFailures = failedRequests.filter((f) => !/ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED/.test(f));
+const realConsole = consoleErrors.filter((e) => !/Failed to fetch|ERR_INTERNET_DISCONNECTED/.test(e));
+check(realConsole.length === 0, 'console 沒有錯誤', realConsole.slice(0, 3).join(' | '));
+check(realFailures.length === 0, '沒有 404／載入失敗的資產', realFailures.slice(0, 3).join(' | '));
 
 await browser.close();
 

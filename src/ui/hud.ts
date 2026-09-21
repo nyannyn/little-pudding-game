@@ -4,6 +4,7 @@ import { describePudding } from '../game/pudding';
 import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { nextLockedZone, puddingsIn, unlockedZones } from '../game/zones';
+import { dismissHints, hintsDismissed, nextHint } from './hints';
 import { icon, type IconName } from './icons';
 
 export interface HudActions {
@@ -67,10 +68,13 @@ export class Hud {
   private readonly btnShip: HTMLButtonElement;
   private readonly sheet: HTMLElement;
   private readonly sheetBody: HTMLElement;
+  private readonly hint: HTMLElement;
   private readonly toasts: HTMLElement;
   private readonly welcome: HTMLElement;
   private readonly muteBtn: HTMLElement;
 
+  private hintOff = hintsDismissed();
+  private hintId = '';
   private zoneOrder: string[] = [];
   private activeZone = '';
   private pourKeys = '';
@@ -105,6 +109,7 @@ export class Hud {
             <button data-a="ship" class="primary">${icon('cart')}<span class="label">出貨</span><span class="n"></span></button>
           </div>
         </div>
+        <div class="hint" hidden><span class="t"></span><button data-a="hintOff" aria-label="不再顯示">${icon('close')}</button></div>
         <div class="toasts"></div>
         <div class="sheet" hidden>
           <header><h2>布丁商店</h2><button class="iconbtn" data-a="closeShop" aria-label="關閉">${icon('close')}</button></header>
@@ -133,6 +138,7 @@ export class Hud {
     this.btnShip = q('[data-a="ship"]');
     this.sheet = q('.sheet');
     this.sheetBody = q('.sheet .body');
+    this.hint = q('.hint');
     this.toasts = q('.toasts');
     this.welcome = q('.welcome');
     this.muteBtn = q('[data-a="mute"]');
@@ -160,6 +166,11 @@ export class Hud {
       case 'shop': this.toggleShop(true); break;
       case 'closeShop': this.toggleShop(false); break;
       case 'closeWelcome': this.welcome.hidden = true; break;
+      case 'hintOff':
+        dismissHints();
+        this.hintOff = true;
+        this.hint.hidden = true;
+        break;
       case 'mute': {
         const muted = this.act.toggleMute();
         this.muteBtn.innerHTML = icon(muted ? 'mute' : 'sound');
@@ -224,7 +235,25 @@ export class Hud {
     this.btnShip.disabled = desserts === 0;
     (this.btnShip.querySelector('.n') as HTMLElement).textContent = desserts ? String(desserts) : '';
 
+    this.syncHint(state);
     if (this.sheetOpen) this.renderShop(state);
+  }
+
+  private syncHint(state: GameState) {
+    if (this.hintOff) return;
+    const h = nextHint(state);
+    if (!h) {
+      this.hint.hidden = true;
+      this.hint.removeAttribute('data-hint');
+      this.hintId = '';
+      return;
+    }
+    if (h.id !== this.hintId) {
+      this.hintId = h.id;
+      this.hint.dataset.hint = h.id;
+      (this.hint.querySelector('.t') as HTMLElement).textContent = h.text;
+    }
+    this.hint.hidden = false;
   }
 
   private syncZones(state: GameState) {
