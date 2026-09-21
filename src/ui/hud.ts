@@ -5,7 +5,7 @@ import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type Specie
 import type { GameState } from '../game/state';
 import { nextLockedZone, puddingsIn, unlockedZones } from '../game/zones';
 import { dismissHints, hintsDismissed, nextHint } from './hints';
-import { icon, type IconName } from './icons';
+import { cuteIcon, icon, type CuteIconName } from './icons';
 
 export interface HudActions {
   pour(liquid: LiquidId): void;
@@ -22,11 +22,11 @@ export interface HudActions {
   toggleMute(): boolean;
 }
 
-const LIQUID_ICON: Record<LiquidId, IconName> = {
+const LIQUID_ICON: Record<LiquidId, CuteIconName> = {
   caramel: 'caramel',
   milk: 'milk',
-  matcha: 'basin',
-  strawberry: 'basin',
+  matcha: 'matcha',
+  strawberry: 'strawberry',
 };
 
 /** 短名，按鈕塞得下才用得了 */
@@ -87,12 +87,12 @@ export class Hud {
       <div class="hud">
         <div class="topbar">
           <div class="chips">
-            <span class="chip" data-k="coins">${icon('coin')}<b>0</b></span>
-            <span class="chip" data-k="ing">${icon('ingredient')}<b>0</b></span>
-            <span class="chip" data-k="des">${icon('dessert')}<b>0</b></span>
+            <span class="chip" data-k="coins">${icon('coin', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="ing">${icon('ingredient', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="des">${icon('dessert', 'bubble')}<b>0</b></span>
           </div>
           <button class="iconbtn" data-a="mute" aria-label="音效">${icon('sound')}</button>
-          <button class="iconbtn" data-a="shop" aria-label="商店">${icon('cart')}</button>
+          <button class="iconbtn shopbtn" data-a="shop" aria-label="商店">${cuteIcon('shop')}</button>
         </div>
         <div class="zones" hidden>
           <button data-a="zoneStep" data-arg="-1" aria-label="上一個櫥窗">&#8249;</button>
@@ -104,12 +104,12 @@ export class Hud {
         <div class="dock">
           <div class="line" data-k="pour"></div>
           <div class="line">
-            <button data-a="pick">${icon('hand')}<span class="label">撿原料</span><span class="n"></span></button>
-            <button data-a="craft">${icon('dessert')}<span class="label">加工</span><span class="n"></span></button>
-            <button data-a="ship" class="primary">${icon('cart')}<span class="label">出貨</span><span class="n"></span></button>
+            <button data-a="pick" class="tilebtn t-pick">${cuteIcon('hand', 'tile')}<span class="label">撿原料</span><span class="n"></span></button>
+            <button data-a="craft" class="tilebtn t-craft">${cuteIcon('dessert', 'tile')}<span class="label">加工</span><span class="n"></span></button>
+            <button data-a="ship" class="tilebtn primary">${cuteIcon('box', 'tile')}<span class="label">出貨</span><span class="n"></span></button>
           </div>
         </div>
-        <div class="hint" hidden><span class="t"></span><button data-a="hintOff" aria-label="不再顯示">${icon('close')}</button></div>
+        <div class="hint" hidden><span class="who">小布丁</span><span class="t"></span><button data-a="hintOff" aria-label="不再顯示">${icon('close')}</button></div>
         <div class="toasts"></div>
         <div class="sheet" hidden>
           <header><h2>布丁商店</h2><button class="iconbtn" data-a="closeShop" aria-label="關閉">${icon('close')}</button></header>
@@ -144,6 +144,13 @@ export class Hud {
     this.muteBtn = q('[data-a="mute"]');
 
     this.root.addEventListener('click', (e) => this.onClick(e));
+
+    // 引導泡泡／toast／除錯面板都疊在動作列上方，位置由 --dock-h 推導；
+    // 動作列高度會隨解鎖的澡盆數（倒○○按鈕變多）改變，量實際高度才不會疊到。
+    const dock = q<HTMLElement>('.dock');
+    const syncDockHeight = () => document.documentElement.style.setProperty('--dock-h', `${dock.offsetHeight}px`);
+    syncDockHeight();
+    if ('ResizeObserver' in window) new ResizeObserver(syncDockHeight).observe(dock);
   }
 
   private onClick(e: Event) {
@@ -278,7 +285,7 @@ export class Hud {
       this.dockPour.innerHTML = liquids
         .map(
           (l) =>
-            `<button data-a="pour" data-arg="${l}">${icon(LIQUID_ICON[l])}<span class="label">倒${LIQUID_SHORT[l]}</span><span class="n"></span></button>`,
+            `<button data-a="pour" data-arg="${l}" class="tilebtn t-${l}">${cuteIcon(LIQUID_ICON[l], 'tile')}<span class="label">倒${LIQUID_SHORT[l]}</span><span class="n"></span></button>`,
         )
         .join('');
     }
@@ -299,7 +306,7 @@ export class Hud {
     const mine = puddingsIn(state, state.activeZone);
     while (this.living.childElementCount > mine.length) this.living.lastElementChild?.remove();
     while (this.living.childElementCount < mine.length) {
-      this.living.appendChild(el(`<div class="row">${icon('pudding')}<span class="t"></span><span class="bar"><i></i></span></div>`));
+      this.living.appendChild(el(`<div class="row">${icon('pudding', 'bubble')}<span class="t"></span><span class="bar"><i></i></span></div>`));
     }
     mine.forEach((p, i) => {
       const row = this.living.children[i] as HTMLElement | undefined;
@@ -321,7 +328,7 @@ export class Hud {
           return `<div class="order" data-id="${o.id}">
             <div class="t"><span>${info.dessert}</span><span>×${o.qty}</span></div>
             <div class="sub">${o.price} 焦糖幣</div>
-            <button data-a="fulfill" data-arg="${o.id}">交貨</button>
+            <button class="buy" data-a="fulfill" data-arg="${o.id}">交貨</button>
             <div class="clock"><i></i></div>
           </div>`;
         })
@@ -346,6 +353,7 @@ export class Hud {
       const info = LIQUIDS[l];
       const cost = info.unitPrice * 5;
       rows.push(`<div class="item">
+        ${cuteIcon(LIQUID_ICON[l], 'tile')}
         <div class="grow"><div class="name">${info.name} × 5</div><div class="desc">庫存 ${state.stock[l]} 份</div></div>
         <button data-a="buyStock" data-arg="${l}" ${state.coins < cost ? 'disabled' : ''}>${cost}</button>
       </div>`);
@@ -359,6 +367,7 @@ export class Hud {
       const info = SPECIES[s];
       const total = info.ingredientPrice * state.ingredients[s];
       rows.push(`<div class="item">
+        ${icon('ingredient', 'tile')}
         <div class="grow"><div class="name">${info.ingredient} × ${state.ingredients[s]}</div>
         <div class="desc">加工成${info.dessert}可賣 ${dessertPrice(s, BALANCE.dessertPriceMult)}／份</div></div>
         <button data-a="sellIng" data-arg="${s}">${total}</button>
@@ -371,6 +380,7 @@ export class Hud {
       const info = EQUIPMENT[id];
       const owned = state.equipment[id];
       rows.push(`<div class="item">
+        ${icon('gear', 'tile')}
         <div class="grow"><div class="name">T${info.tier}　${info.name}</div><div class="desc">${info.desc}</div></div>
         ${owned ? '<span class="owned">已安裝</span>' : `<button data-a="buyEquip" data-arg="${id}" ${state.coins < info.price ? 'disabled' : ''}>${info.price}</button>`}
       </div>`);
@@ -380,6 +390,7 @@ export class Hud {
     const nz = nextLockedZone(state);
     if (nz) {
       rows.push(`<div class="item">
+        ${cuteIcon('box', 'tile')}
         <div class="grow"><div class="name">${nz.name}</div>
         <div class="desc">解鎖後多一隻住客與一個澡盆，產量翻倍</div></div>
         <button data-a="unlockZone" data-arg="${nz.id}" ${state.coins < nz.price ? 'disabled' : ''}>${nz.price}</button>
@@ -393,6 +404,7 @@ export class Hud {
       const info = LIQUIDS[l];
       const owned = state.ownedBasins.includes(l);
       rows.push(`<div class="item">
+        ${cuteIcon(LIQUID_ICON[l], 'tile')}
         <div class="grow"><div class="name">${info.name}澡盆</div>
         <div class="desc">泡滿 48 小時會變成${SPECIES[info.flavorFor as SpeciesId].name}</div></div>
         ${owned ? '<span class="owned">已擁有</span>' : `<button data-a="buyBasin" data-arg="${l}" ${state.coins < BALANCE.specialBasinPrice ? 'disabled' : ''}>${BALANCE.specialBasinPrice}</button>`}

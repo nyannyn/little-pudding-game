@@ -1,47 +1,123 @@
 /* HUD：疊在 canvas 上的 HTML 層（D9）。
    直向手機優先，所有固定元素都吃 safe-area。
-   動畫刻意少：只在「有事發生」時給一次短提示，沒有持續跑的裝飾動畫。 */
+   視覺語言：動森式的暖奶油紙＋木頭邊＋厚圓角；按鈕走主流放置遊戲的
+   「上亮下厚邊、按下去下沉」立體感。動畫只有按壓回饋（~120ms），沒有持續跑的裝飾動畫。
+   HUD 是 HTML 疊層，不吃 draw call；但不用 backdrop-filter——蓋在即時 WebGL 上 iPhone 會掉幀。 */
 
 :root {
-  --ink: #4a3423;
-  --ink-soft: #8a7259;
-  --card: rgba(255, 252, 245, 0.94);
-  --card-solid: #fffcf5;
-  --line: #e6d4ba;
-  --accent: #d9a066;
-  --accent-ink: #7a5533;
-  --danger: #c2603f;
-  --radius: 14px;
-  --shadow: 0 6px 18px rgba(120, 88, 54, 0.16);
+  /* 紙與墨 */
+  --paper: #fff8e8;
+  --paper-2: #f7ead2;
+  --paper-3: #efe0c4;
+  --ink: #5a3d28;
+  --ink-soft: #977a5a;
+  --ink-faint: #c2ad8f;
+  /* 木頭（邊框／招牌） */
+  --wood: #b8834f;
+  --wood-dark: #8f5f33;
+  --wood-light: #dcc3a0;
+  /* 主色：狸克綠、鈴錢黃、警示珊瑚 */
+  --green: #7cb85c;
+  --green-dark: #5a9440;
+  --green-deep: #3f7a2c;
+  --yellow: #f7c95a;
+  --yellow-dark: #d9a02f;
+  --coral: #e5704f;
+  --coral-dark: #bf4f31;
+  --pink: #f4a7b0;
+
+  --radius: 18px;
+  --shadow: 0 6px 16px rgba(90, 61, 40, 0.16);
+  --dock-h: 140px; /* hud.ts 用 ResizeObserver 量實際高度覆寫；這是首幀的估值 */
+
+  /* 動森式的小葉子底紋（6% 墨色），用在紙板上讓大面積奶油色不死白 */
+  --leaf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M9 4c3 1 5 4 5 7-3-1-5-4-5-7Zm18 14c3 1 5 4 5 7-3-1-5-4-5-7ZM4 26c3 1 5 4 5 7-3-1-5-4-5-7ZM23 3c-1 3-4 5-7 5 1-3 4-5 7-5Z' fill='%235a3d28' fill-opacity='.07'/%3E%3C/svg%3E");
 }
 
 .hud {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  font: 14px/1.45 "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+  /* 粉圓體只有 400 一種字重：整體不設粗體，避免瀏覽器合成粗體把 12–14px 的中文糊成一團；
+     只在短字串（數字、標題、名牌、按鈕字）局部加粗 */
+  font: 14px/1.45 "Huninn", "Zen Maru Gothic", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ── 按鈕：奶油紙面＋木頭厚邊，按下去下沉 ─── */
 .hud button {
+  --edge: var(--wood-light);
+  --face-top: #fffdf7;
+  --face: #f8ecd6;
   font: inherit;
   color: inherit;
-  border: 1px solid var(--line);
-  background: var(--card-solid);
+  border: 2px solid var(--edge);
+  background: linear-gradient(var(--face-top), var(--face));
   border-radius: var(--radius);
-  padding: 9px 12px;
+  padding: 10px 14px;
+  min-height: 44px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  box-shadow: var(--shadow);
+  justify-content: center;
+  gap: 7px;
+  box-shadow: 0 4px 0 var(--edge), 0 8px 14px rgba(90, 61, 40, 0.14);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  touch-action: manipulation;
 }
-.hud button:disabled { opacity: 0.45; box-shadow: none; }
-.hud button:active:not(:disabled) { transform: translateY(1px); }
+.hud button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--edge), 0 2px 4px rgba(90, 61, 40, 0.12);
+}
+.hud button:disabled {
+  --edge: #dccdb5;
+  background: #efe4d0;
+  color: #b9a689;
+  box-shadow: 0 3px 0 var(--edge);
+  cursor: default;
+}
+/* 主要動作：綠色實心 */
+.hud button.primary {
+  font-weight: 700;
+  --edge: var(--green-deep);
+  background: linear-gradient(#98cc78, var(--green));
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+.hud button.primary:disabled {
+  --edge: #b7c9ad;
+  background: #cfdcc6;
+  color: #f2f6ef;
+  text-shadow: none;
+}
+/* 花錢的按鈕：鈴錢黃 */
+.hud button.buy {
+  font-weight: 700;
+  --edge: var(--yellow-dark);
+  background: linear-gradient(#ffe08a, var(--yellow));
+  color: #6a4512;
+  font-variant-numeric: tabular-nums;
+}
+.hud button.buy:disabled {
+  --edge: #dccdb5;
+  background: #efe4d0;
+  color: #b9a689;
+}
 
-.ic { display: inline-flex; width: 1.15em; height: 1.15em; flex: none; }
+.ic { display: inline-flex; width: 1.2em; height: 1.2em; flex: none; }
 .ic svg { width: 100%; height: 100%; display: block; }
+/* 圓底圖示（資源列、狀態列用） */
+.ic.bubble {
+  width: 1.75em;
+  height: 1.75em;
+  padding: 0.28em;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--yellow);
+  color: #6a4512;
+}
 
 /* ── 上方資源列 ───────────────────────────── */
 .topbar {
@@ -58,97 +134,123 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  background: var(--card);
-  border: 1px solid var(--line);
+  gap: 6px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
   border-radius: 999px;
-  padding: 5px 11px;
-  box-shadow: var(--shadow);
+  padding: 3px 12px 3px 4px;
+  box-shadow: 0 3px 0 var(--wood-light), var(--shadow);
   font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 700;
   white-space: nowrap;
 }
-.chip.low { border-color: var(--danger); color: var(--danger); }
-.iconbtn { padding: 8px; border-radius: 999px; }
+.chip[data-k="ing"] .ic.bubble { background: #a9d489; color: #2f5c1f; }
+.chip[data-k="des"] .ic.bubble { background: var(--pink); color: #7a2f3a; }
+.chip.low { border-color: var(--coral); color: var(--coral-dark); }
+/* 選擇器都帶 .hud，特異度才壓得過上面的 .hud button 基底樣式 */
+.hud .iconbtn { padding: 8px; min-height: 42px; width: 42px; border-radius: 999px; }
 
-/* ── 布丁狀態 ─────────────────────────────── */
-/* ── 櫥窗切換（解鎖第二區之後才出現） ─────── */
+/* ── 櫥窗切換（解鎖第二區之後才出現）：木頭招牌 ─ */
 .zones {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 48px);
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  background: linear-gradient(#c6905b, var(--wood));
+  border: 2px solid var(--wood-dark);
+  border-radius: 14px;
   padding: 2px 4px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 3px 0 var(--wood-dark), var(--shadow);
+  color: #fff6e3;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
   pointer-events: auto;
 }
 .zones[hidden] { display: none; }
-.zones button {
+.hud .zones button {
   border: 0;
   box-shadow: none;
   background: transparent;
-  padding: 3px 10px;
-  font-size: 18px;
+  color: inherit;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 20px;
   line-height: 1;
 }
-.zones .name { font-size: 12.5px; white-space: nowrap; padding: 0 2px; }
+.hud .zones button:active:not(:disabled) { transform: none; opacity: 0.7; }
+.zones .name { font-size: 13px; font-weight: 700; white-space: nowrap; padding: 0 2px; }
 
+/* ── 布丁狀態 ─────────────────────────────── */
 .living {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 88px);
+  top: calc(env(safe-area-inset-top, 0px) + 104px);
   left: 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   pointer-events: none;
 }
 .living .row {
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--card);
-  border: 1px solid var(--line);
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 2px 10px 2px 3px;
   font-size: 12px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 2px 0 var(--wood-light), var(--shadow);
   align-self: flex-start;
 }
-.bar { width: 42px; height: 5px; border-radius: 3px; background: #e9ded0; overflow: hidden; }
-.bar > i { display: block; height: 100%; background: var(--accent); }
-.bar.low > i { background: var(--danger); }
+.living .row .ic.bubble { width: 1.9em; height: 1.9em; }
+.bar {
+  width: 46px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--paper-3);
+  box-shadow: inset 0 1px 2px rgba(90, 61, 40, 0.18);
+  overflow: hidden;
+}
+.bar > i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#98cc78, var(--green)); }
+.bar.low > i { background: linear-gradient(#f39b7f, var(--coral)); }
 
 /* ── 訂單卡 ───────────────────────────────── */
 .orders {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 50px);
+  top: calc(env(safe-area-inset-top, 0px) + 62px);
   right: 8px;
-  width: 148px;
+  width: 150px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   pointer-events: auto;
 }
 .order {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 7px 9px;
-  box-shadow: var(--shadow);
+  background: var(--paper) var(--leaf);
+  border: 2px solid var(--wood-light);
+  border-radius: 16px;
+  padding: 8px 9px 7px;
+  box-shadow: 0 3px 0 var(--wood-light), var(--shadow);
   font-size: 12px;
 }
-.order .t { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; }
-.order .sub { color: var(--ink-soft); margin: 2px 0 5px; }
-.order button { width: 100%; justify-content: center; padding: 5px 8px; font-size: 12px; }
-.order .clock { height: 3px; border-radius: 2px; background: #e9ded0; overflow: hidden; margin-top: 5px; }
-.order .clock > i { display: block; height: 100%; background: var(--accent); }
+.order .t { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; font-weight: 700; }
+.order .sub { color: var(--ink-soft); margin: 1px 0 6px; }
+.hud .order button { width: 100%; padding: 5px 8px; min-height: 34px; font-size: 13px; border-radius: 12px; }
+.order .clock {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper-3);
+  box-shadow: inset 0 1px 2px rgba(90, 61, 40, 0.18);
+  overflow: hidden;
+  margin-top: 7px;
+}
+.order .clock > i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(#ffe08a, var(--yellow)); }
 
-/* ── 下方動作列 ───────────────────────────── */
+/* ── 下方動作列：一塊木邊托盤，上面放圖示磚 ── */
 .dock {
   position: absolute;
   left: 8px;
@@ -157,24 +259,84 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 8px 8px 7px;
+  background: var(--paper-2) var(--leaf);
+  border: 2px solid var(--wood-light);
+  border-radius: 24px;
+  box-shadow: 0 4px 0 var(--wood-light), 0 10px 24px rgba(90, 61, 40, 0.2);
   pointer-events: auto;
 }
-.dock .line { display: flex; gap: 6px; }
-.dock .line > button { flex: 1; justify-content: center; min-width: 0; }
-.dock .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dock .n { font-variant-numeric: tabular-nums; color: var(--accent-ink); font-weight: 600; }
-.dock .n.zero { color: var(--danger); }
-.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.primary .n { color: #fff; }
+.dock .line { display: flex; gap: 7px; }
+.dock .line > button { flex: 1; min-width: 0; }
+
+/* 圖示磚：大圓底圖示在上、小標籤在下、數量徽章掛右上角 */
+.hud .tilebtn {
+  position: relative;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 4px 4px;
+  min-height: 64px;
+  border-radius: 18px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.tilebtn .ic.tile {
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--tile, #ffe7c2);
+  box-shadow: inset 0 -3px 0 rgba(90, 61, 40, 0.12);
+}
+.t-caramel { --tile: #ffe3b4; }
+.t-milk { --tile: #e2f0fb; }
+.t-matcha { --tile: #dff0d0; }
+.t-strawberry { --tile: #ffd9dc; }
+.t-pick { --tile: #ffe7cf; }
+.t-craft { --tile: #fff0c2; }
+.tilebtn.primary .ic.tile { background: #fff; box-shadow: inset 0 -3px 0 rgba(63, 122, 44, 0.16); }
+.tilebtn:disabled .ic.tile { background: #e6dccb; box-shadow: none; }
+.tilebtn:disabled .ic.tile svg { filter: grayscale(1); opacity: 0.5; }
+.tilebtn.primary:disabled .ic.tile { background: #e7eee3; }
+.dock .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+/* 數量徽章 */
+.dock .n {
+  position: absolute;
+  top: -7px;
+  right: -4px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 1.2em;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: var(--yellow);
+  border: 2px solid #fff;
+  color: #6a4512;
+  text-shadow: none;
+  box-shadow: 0 2px 4px rgba(90, 61, 40, 0.2);
+}
+.dock .n:empty { display: none; }
+.dock .n.zero { background: var(--coral); color: #fff; }
+.dock button:disabled .n { background: #d3c6ae; color: #fff; }
+.dock .primary .n { background: #fff; border-color: var(--green-deep); color: var(--green-deep); }
+
+/* 右上角商店鈕：彩色小店招 */
+.hud .shopbtn { padding: 5px; }
+.shopbtn .ic { width: 30px; height: 30px; }
 
 /* ── 商店抽屜 ─────────────────────────────── */
 .sheet {
   position: absolute;
   inset: auto 0 0 0;
   max-height: 78%;
-  background: var(--card-solid);
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 -8px 26px rgba(120, 88, 54, 0.22);
+  background: var(--paper-2) var(--leaf);
+  border: 2px solid var(--wood-light);
+  border-bottom: 0;
+  border-radius: 26px 26px 0 0;
+  box-shadow: 0 -8px 26px rgba(90, 61, 40, 0.24);
   pointer-events: auto;
   display: flex;
   flex-direction: column;
@@ -185,70 +347,155 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px 8px;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 12px 8px 16px;
 }
-.sheet h2 { margin: 0; font-size: 16px; }
-.sheet .body { overflow: auto; padding: 10px 14px 16px; -webkit-overflow-scrolling: touch; }
-.sheet h3 { margin: 14px 0 6px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
-.sheet h3:first-child { margin-top: 2px; }
+.sheet h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  padding: 4px 16px;
+  background: linear-gradient(#c6905b, var(--wood));
+  border: 2px solid var(--wood-dark);
+  border-radius: 12px;
+  color: #fff6e3;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 0 var(--wood-dark);
+}
+.sheet .body { overflow: auto; padding: 4px 12px 16px; -webkit-overflow-scrolling: touch; }
+.sheet h3 {
+  margin: 14px 0 6px 4px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.sheet h3:first-child { margin-top: 4px; }
 .item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px dashed var(--line);
+  padding: 9px 10px 9px 12px;
+  margin-bottom: 8px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  border-radius: 16px;
+  box-shadow: 0 2px 0 var(--wood-light);
 }
-.item:last-child { border-bottom: 0; }
 .item .grow { flex: 1; min-width: 0; }
-.item .name { font-weight: 600; }
+.item .ic.tile {
+  width: 40px;
+  height: 40px;
+  padding: 7px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #ffe7c2;
+  color: #8a5a35;
+  box-shadow: inset 0 -3px 0 rgba(90, 61, 40, 0.12);
+}
+.item .name { font-size: 14px; font-weight: 700; }
 .item .desc { font-size: 12px; color: var(--ink-soft); }
-.item .owned { font-size: 12px; color: var(--accent-ink); white-space: nowrap; }
+.item .owned {
+  font-size: 12px;
+  color: var(--green-deep);
+  background: #dff0d3;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+/* 商店裡的按鈕全是花錢：黃色＋錢幣 */
+.hud .item button {
+  font-weight: 700;
+  --edge: var(--yellow-dark);
+  background: linear-gradient(#ffe08a, var(--yellow));
+  color: #6a4512;
+  min-height: 38px;
+  padding: 6px 12px;
+  border-radius: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.hud .item button:disabled { --edge: #dccdb5; background: #efe4d0; color: #b9a689; }
+.hud .item button::before {
+  /* 錢幣：跟資源列同一顆 */
+  content: "";
+  width: 1.15em;
+  height: 1.15em;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9.5' fill='%23ffe08a' stroke='%23a86d12' stroke-width='1.8'/%3E%3Cpath d='M12 8v8M10 9.8h3a1.8 1.8 0 0 1 0 3.6h-3' fill='none' stroke='%23a86d12' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.hud .item button:disabled::before { filter: grayscale(1); opacity: 0.5; }
 
-/* ── 新手引導（買下第一台設備就不再出現） ─── */
+/* ── 新手引導：對話泡泡＋說話者名牌 ─────── */
 .hint {
+  /* 放在住客狀態列下方（那片是未解鎖的上層櫃），才不會蓋住中層的布丁與澡盆 */
   position: absolute;
   left: 8px;
   right: 8px;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 104px);
+  top: calc(env(safe-area-inset-top, 0px) + 200px);
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--card-solid);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 8px 6px 8px 12px;
-  box-shadow: var(--shadow);
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  border-radius: 20px;
+  padding: 14px 6px 10px 14px;
+  box-shadow: 0 3px 0 var(--wood-light), var(--shadow);
   pointer-events: auto;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 .hint[hidden] { display: none; }
+.hint .who {
+  position: absolute;
+  top: -12px;
+  left: 12px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(#98cc78, var(--green));
+  border: 2px solid var(--green-deep);
+  border-radius: 999px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+.hint::after {
+  /* 尾巴朝下指向櫥窗裡的布丁 */
+  content: "";
+  position: absolute;
+  left: 40px;
+  bottom: -10px;
+  width: 16px;
+  height: 16px;
+  background: var(--paper);
+  border-right: 2px solid var(--wood-light);
+  border-bottom: 2px solid var(--wood-light);
+  transform: rotate(45deg);
+  border-radius: 0 0 4px 0;
+}
 .hint .t { flex: 1; }
-.hint button { border: 0; box-shadow: none; background: transparent; padding: 4px 6px; color: var(--ink-soft); }
+.hud .hint button { border: 0; box-shadow: none; background: transparent; min-height: 32px; padding: 4px 6px; color: var(--ink-faint); }
+.hud .hint button:active:not(:disabled) { transform: none; opacity: 0.6; }
 
 /* ── 提示 ─────────────────────────────────── */
 .toasts {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 152px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--dock-h) + 84px);
   display: flex;
   flex-direction: column-reverse;
-  gap: 5px;
+  gap: 6px;
   align-items: center;
   pointer-events: none;
   width: max-content;
   max-width: 88%;
 }
 .toast {
-  background: rgba(74, 52, 35, 0.9);
-  color: #fff8ec;
+  background: rgba(90, 61, 40, 0.92);
+  color: #fff8e8;
+  border: 2px solid rgba(255, 248, 232, 0.35);
   border-radius: 999px;
-  padding: 5px 13px;
-  font-size: 12.5px;
+  padding: 6px 14px;
+  font-size: 13px;
   box-shadow: var(--shadow);
 }
-.toast.bad { background: rgba(194, 96, 63, 0.94); }
+.toast.bad { background: rgba(191, 79, 49, 0.94); }
 
 /* ── 回歸提示（離線結算） ─────────────────── */
 .welcome {
@@ -262,13 +509,14 @@
 }
 .welcome[hidden] { display: none; }
 .welcome .card {
-  background: var(--card-solid);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  padding: 18px 20px;
+  background: var(--paper) var(--leaf);
+  border: 2px solid var(--wood-light);
+  border-radius: 24px;
+  box-shadow: 0 4px 0 var(--wood-light), var(--shadow);
+  padding: 20px 20px 18px;
   max-width: 300px;
   text-align: center;
 }
-.welcome h2 { margin: 0 0 8px; font-size: 17px; }
-.welcome p { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; }
-.welcome button { width: 100%; justify-content: center; }
+.welcome h2 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+.welcome p { margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; }
+.welcome button { width: 100%; }
