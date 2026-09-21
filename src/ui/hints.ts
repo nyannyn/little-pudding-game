@@ -1,5 +1,5 @@
 import { BALANCE, EQUIPMENT } from '../game/balance';
-import { SPECIES_IDS } from '../game/species';
+import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
 import type { GameState } from '../game/state';
 import { basinsIn, dropsIn, puddingsIn } from '../game/zones';
 
@@ -14,6 +14,8 @@ import { basinsIn, dropsIn, puddingsIn } from '../game/zones';
 export interface Hint {
   id: string;
   text: string;
+  /** 警告類：不是教學，玩家按 × 關掉教學之後仍要顯示 */
+  warning?: boolean;
 }
 
 const DISMISS_KEY = 'lpg.hints.off';
@@ -34,7 +36,34 @@ export function dismissHints(): void {
   }
 }
 
+/**
+ * 生產線停擺的警告：庫存裡沒有任何倒得出來的液體、這一區的盆都空了、又有布丁想泡澡。
+ * 買了自動化設備之後教學會停，但這個狀況會讓整個遊戲靜靜停住（實測：開局 6 份焦糖
+ * 在裝好收集手＋注液閥後約 4 分鐘就用完，之後布丁只是在地板上跳、什麼都不產），
+ * 玩家會以為壞掉。補貨合約裝了就不會發生，所以那時不用講。
+ */
+function stalledHint(state: GameState): Hint | null {
+  if (state.equipment.restock) return null;
+  const zone = state.activeZone;
+  const basins = basinsIn(state, zone);
+  if (basins.some((b) => b.units > 0)) return null;
+  if (!puddingsIn(state, zone).some((p) => p.mode !== 'bathing' && p.caramel < BALANCE.batheThreshold)) return null;
+
+  if (state.equipment.autoFill) {
+    // 注液閥只會補「上次倒的那一種」：那一種沒了就停，庫存裡有別種也不會自己換
+    const wanted = basins.map((b) => b.preferredLiquid).filter((l): l is LiquidId => l !== null);
+    if (wanted.length === 0 || wanted.some((l) => state.stock[l] > 0)) return null;
+    const names = [...new Set(wanted)].map((l) => LIQUIDS[l].name).join('、');
+    return { id: 'stalled', text: `${names}用完了，注液閥沒東西可補。開右上角的商店補貨。`, warning: true };
+  }
+  const pourable: LiquidId[] = ['caramel', 'milk', ...state.ownedBasins];
+  if (pourable.some((l) => state.stock[l] > 0)) return null;
+  return { id: 'stalled', text: '液體都用完了，布丁泡不了澡。開右上角的商店補貨。', warning: true };
+}
+
 export function nextHint(state: GameState): Hint | null {
+  const stalled = stalledHint(state);
+  if (stalled) return stalled;
   if (Object.values(state.equipment).some(Boolean)) return null;
 
   const zone = state.activeZone;

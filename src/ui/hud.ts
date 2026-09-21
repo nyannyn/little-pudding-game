@@ -166,7 +166,7 @@ export class Hud {
       case 'ship': this.act.ship(); break;
       case 'fulfill': this.act.fulfill(arg); break;
       case 'sellIng': this.act.sellIngredients(arg as SpeciesId); break;
-      case 'buyStock': this.act.buyStock(arg as LiquidId, 5); break;
+      case 'buyStock': this.act.buyStock(arg as LiquidId, BALANCE.stockBuyQty); break;
       case 'buyEquip': this.act.buyEquipment(arg as EquipmentId); break;
       case 'buyBasin': this.act.buyBasin(arg as LiquidId); break;
       case 'unlockZone': this.act.unlockZone(arg); break;
@@ -248,8 +248,11 @@ export class Hud {
   }
 
   private syncHint(state: GameState) {
-    if (this.hintOff) return;
     const h = nextHint(state);
+    if (this.hintOff && !h?.warning) {
+      this.hint.hidden = true;
+      return;
+    }
     if (!h) {
       this.hint.hidden = true;
       this.hint.removeAttribute('data-hint');
@@ -275,7 +278,7 @@ export class Hud {
     if (list.length < 2) return;
     const z = list.find((q) => q.id === state.activeZone);
     const n = z ? puddingsIn(state, z.id).length : 0;
-    (this.zonesBar.querySelector('.name') as HTMLElement).textContent = z ? `${z.name}・${n} 隻` : '';
+    (this.zonesBar.querySelector('.name') as HTMLElement).textContent = z ? `${z.shortName}・${n} 隻` : '';
   }
 
   private syncPourButtons(state: GameState) {
@@ -327,8 +330,7 @@ export class Hud {
         .map((o) => {
           const info = SPECIES[o.species];
           return `<div class="order" data-id="${o.id}">
-            <div class="t"><span>${info.dessert}</span><span>×${o.qty}</span></div>
-            <div class="sub">${o.price} 焦糖幣</div>
+            <div class="t"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
             <button class="buy" data-a="fulfill" data-arg="${o.id}">交貨</button>
             <div class="clock"><i></i></div>
           </div>`;
@@ -352,10 +354,10 @@ export class Hud {
     const buyable: LiquidId[] = ['caramel', 'milk', ...state.ownedBasins];
     for (const l of buyable) {
       const info = LIQUIDS[l];
-      const cost = info.unitPrice * 5;
+      const cost = info.unitPrice * BALANCE.stockBuyQty;
       rows.push(`<div class="item">
         ${cuteIcon(LIQUID_ICON[l], 'tile')}
-        <div class="grow"><div class="name">${info.name} × 5</div><div class="desc">庫存 ${state.stock[l]} 份</div></div>
+        <div class="grow"><div class="name">${info.name} × ${BALANCE.stockBuyQty}</div><div class="desc">庫存 ${state.stock[l]} 份</div></div>
         <button data-a="buyStock" data-arg="${l}" ${state.coins < cost ? 'disabled' : ''}>${cost}</button>
       </div>`);
     }

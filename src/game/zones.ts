@@ -15,6 +15,8 @@ export interface Zone {
   /** 0＝最下層 */
   tier: number;
   name: string;
+  /** 切換列用的短名（列在畫面正中央、旁邊還有訂單卡，塞不下全名） */
+  shortName: string;
   unlocked: boolean;
   /** 解鎖價（焦糖幣）；起始區為 0 */
   price: number;
@@ -33,10 +35,10 @@ export const START_ZONE = zoneKey(0, 1);
  */
 export function defaultZones(): Zone[] {
   return [
-    { id: zoneKey(0, 1), cabinet: 0, tier: 1, name: '一號櫥窗・中層', unlocked: true, price: 0 },
-    { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', unlocked: false, price: 200 },
-    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', unlocked: false, price: 500 },
-    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', unlocked: false, price: 1200 },
+    { id: zoneKey(0, 1), cabinet: 0, tier: 1, name: '一號櫥窗・中層', shortName: '中層', unlocked: true, price: 0 },
+    { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', shortName: '上層', unlocked: false, price: 200 },
+    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', shortName: '下層', unlocked: false, price: 500 },
+    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', shortName: '二號・中層', unlocked: false, price: 1200 },
   ];
 }
 

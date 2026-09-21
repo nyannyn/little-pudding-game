@@ -85,9 +85,14 @@ export const BALANCE = {
   /** 離線結算的步長（秒）——太小會在 8 小時上花太久 */
   offlineStepSec: 1,
 
+  /**
+   * 商店一次買幾份。兩隻布丁一分鐘用掉約 2 份（D24 節奏），5 份只撐兩分半，
+   * 玩家會一直被叫回商店；10 份（20 元）約撐五分鐘。
+   */
+  stockBuyQty: 10,
   /** 補貨合約：庫存低於 restockFloor 就補到 restockTarget */
-  restockFloor: 2,
-  restockTarget: 6,
+  restockFloor: 4,
+  restockTarget: 20,
 
   /** 特殊澡盆一次性價格 */
   specialBasinPrice: 300,

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { BALANCE } from '../../src/game/balance';
 import type { GameState } from '../../src/game/state';
 
 /**
@@ -43,7 +44,7 @@ test('抹茶澡盆：第二個盆出現在櫥窗裡，泡到突變成抹茶布�
   // ② 買抹茶湯（沒有澡盆時商店根本不會列這一項）
   await page.locator('[data-a="buyStock"][data-arg="matcha"]').click();
   await closeShop(page);
-  expect((await state(page)).stock.matcha).toBe(5);
+  expect((await state(page)).stock.matcha).toBe(BALANCE.stockBuyQty);
 
   // ③ 倒進抹茶盆——按鈕是買了澡盆之後才長出來的
   await page.getByRole('button', { name: '倒抹茶' }).click();

@@ -206,9 +206,9 @@ export function tickPudding(state: GameState, p: Pudding, dt: number, ctx: SimCo
   }
 }
 
-/** UI 用：這隻布丁現在在做什麼（一行中文） */
+/** UI 用：這隻布丁現在在做什麼（一行中文）。用短名：狀態列在右邊還要留位置給訂單卡 */
 export function describePudding(p: Pudding): string {
-  const name = SPECIES[p.species].name;
+  const name = SPECIES[p.species].shortName;
   if (p.mode === 'bathing') return `${name}・泡澡中`;
   if (wantsBath(p)) return `${name}・想泡澡了`;
   if (p.tint > 0) return `${name}・有點發白`;

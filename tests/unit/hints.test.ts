@@ -35,6 +35,31 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).toBe('pick');
   });
 
+  it('生產線停擺（液體全空、盆空、有布丁想泡澡）要警告，買了設備之後也要', () => {
+    const s = fresh();
+    s.equipment.collector = true;
+    s.equipment.autoFill = true;
+    s.stock.caramel = 0;
+    s.stock.milk = 0;
+    s.puddings[0]!.caramel = 5;
+    s.basins[0]!.preferredLiquid = 'caramel'; // 裝了注液閥的玩家一定倒過
+    const h = nextHint(s);
+    expect(h?.id).toBe('stalled');
+    expect(h?.warning).toBe(true);
+
+    // 有注液閥時只看它會補的那一種：庫存有牛乳也沒用，閥不會自己換口味
+    s.stock.milk = 1;
+    expect(nextHint(s)?.id).toBe('stalled');
+    expect(nextHint(s)?.text).toContain('熱焦糖');
+    // 沒有注液閥＝玩家自己倒，還有牛乳可以倒就不算停擺
+    s.equipment.autoFill = false;
+    expect(nextHint(s)?.id).not.toBe('stalled');
+    s.stock.milk = 0;
+    expect(nextHint(s)?.id).toBe('stalled');
+    s.equipment.restock = true; // 補貨合約會自己補，不用講
+    expect(nextHint(s)).toBeNull();
+  });
+
   it('倒了之後換成「泡澡中」／「去撿」', () => {
     const s = fresh();
     s.basins[0]!.liquid = 'caramel';

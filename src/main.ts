@@ -44,6 +44,7 @@ import { Particles } from './scene/particles';
 import { PuddingView } from './scene/puddingView';
 import { spawnPudding } from './scene/puddingMesh';
 import { Sfx } from './scene/audio';
+import { nextHint } from './ui/hints';
 import { Hud } from './ui/hud';
 import { measureVisibleBand, viewOffsetY } from './ui/viewport';
 import { createStats } from './debug/stats';
@@ -218,7 +219,9 @@ if (loaded.restored) {
       () =>
         hud.showWelcome(
           `你離開的 ${mins} 分鐘裡，布丁泡了 ${baths} 次澡，賺了 ${gained} 焦糖幣。` +
-            (state.drops.length > 0 ? `地板上還有 ${state.drops.length} 份原料沒收。` : ''),
+            (state.drops.length > 0 ? `地板上還有 ${state.drops.length} 份原料沒收。` : '') +
+            // 離線期間液體用完＝生產線停了，回來第一眼就要知道，不然「泡了 0 次澡」讀起來像壞掉
+            (nextHint(state)?.warning ? nextHint(state)!.text : ''),
         ),
       0,
     );

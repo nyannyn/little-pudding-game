@@ -13,6 +13,8 @@ export type LiquidId = 'caramel' | 'milk' | 'matcha' | 'strawberry';
 export interface SpeciesInfo {
   id: SpeciesId;
   name: string;
+  /** 短名（狀態列一行塞得下；全名留給商店／toast） */
+  shortName: string;
   /** 該物種產出的原料名 */
   ingredient: string;
   /** 該物種做成的甜點名 */
@@ -27,19 +29,19 @@ export interface SpeciesInfo {
 
 export const SPECIES: Record<SpeciesId, SpeciesInfo> = {
   caramel: {
-    id: 'caramel', name: '焦糖布丁', ingredient: '焦糖塊', dessert: '焦糖布丁塔',
+    id: 'caramel', name: '焦糖布丁', shortName: '焦糖', ingredient: '焦糖塊', dessert: '焦糖布丁塔',
     bodyColor: 0xffc857, toppingColor: 0xb4651f, ingredientPrice: 6,
   },
   panna: {
-    id: 'panna', name: '特濃鮮奶酪布丁', ingredient: '奶酪塊', dessert: '鮮奶酪杯',
+    id: 'panna', name: '特濃鮮奶酪布丁', shortName: '鮮奶酪', ingredient: '奶酪塊', dessert: '鮮奶酪杯',
     bodyColor: 0xfdf6ec, toppingColor: 0xe8d3b0, ingredientPrice: 10,
   },
   matcha: {
-    id: 'matcha', name: '宇治抹茶布丁', ingredient: '抹茶粉罐', dessert: '抹茶布丁捲',
+    id: 'matcha', name: '宇治抹茶布丁', shortName: '抹茶', ingredient: '抹茶粉罐', dessert: '抹茶布丁捲',
     bodyColor: 0x9fc08a, toppingColor: 0x4f7a3a, ingredientPrice: 16,
   },
   strawberry: {
-    id: 'strawberry', name: '大湖草莓布丁', ingredient: '草莓醬罐', dessert: '草莓布丁派',
+    id: 'strawberry', name: '大湖草莓布丁', shortName: '草莓', ingredient: '草莓醬罐', dessert: '草莓布丁派',
     bodyColor: 0xf7a7bb, toppingColor: 0xd44f6e, ingredientPrice: 16,
   },
 };

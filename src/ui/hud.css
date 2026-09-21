@@ -151,12 +151,12 @@
 /* 選擇器都帶 .hud，特異度才壓得過上面的 .hud button 基底樣式 */
 .hud .iconbtn { padding: 8px; min-height: 42px; width: 42px; border-radius: 999px; }
 
-/* ── 櫥窗切換（解鎖第二區之後才出現）：木頭招牌 ─ */
+/* ── 櫥窗切換（解鎖第二區之後才出現）：木頭招牌 ─
+   靠左放：右邊那一欄是訂單卡，置中會被它蓋掉「下一個櫥窗」的按鈕（有訂單時就切不回去）。 */
 .zones {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 56px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 8px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -182,12 +182,16 @@
 }
 .hud .zones button:active:not(:disabled) { transform: none; opacity: 0.7; }
 .zones .name { font-size: 13px; font-weight: 700; white-space: nowrap; padding: 0 2px; }
+.zones:not([hidden]) ~ .living { top: calc(env(safe-area-inset-top, 0px) + 104px); }
 
 /* ── 布丁狀態 ─────────────────────────────── */
+/* 上方左欄由上而下：資源列 → 櫥窗切換（有才出現）→ 住客狀態；右欄是訂單卡。
+   住客列用物種短名，寬度才留得出右欄（全名「特濃鮮奶酪布丁・悠閒彈跳」會伸到訂單卡底下）。 */
 .living {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 104px);
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
   left: 8px;
+  max-width: calc(100% - 8px - 150px - 8px - 8px);
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -221,7 +225,7 @@
 /* ── 訂單卡 ───────────────────────────────── */
 .orders {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 62px);
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
   right: 8px;
   width: 150px;
   display: flex;
@@ -229,24 +233,25 @@
   gap: 8px;
   pointer-events: auto;
 }
+/* 卡片要矮：最多三張疊在右欄，超過約 240px 就會蓋到啟用層的地板（布丁在那裡） */
 .order {
   background: var(--paper) var(--leaf);
   border: 2px solid var(--wood-light);
-  border-radius: 16px;
-  padding: 8px 9px 7px;
+  border-radius: 14px;
+  padding: 6px 8px 6px;
   box-shadow: 0 3px 0 var(--wood-light), var(--shadow);
   font-size: 12px;
 }
-.order .t { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; font-weight: 700; }
-.order .sub { color: var(--ink-soft); margin: 1px 0 6px; }
-.hud .order button { width: 100%; padding: 5px 8px; min-height: 34px; font-size: 13px; border-radius: 12px; }
+.order .t { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 12.5px; font-weight: 700; margin-bottom: 5px; }
+.order .sub { color: #a5721c; font-variant-numeric: tabular-nums; }
+.hud .order button { width: 100%; padding: 3px 8px; min-height: 30px; font-size: 13px; border-radius: 10px; }
 .order .clock {
-  height: 6px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--paper-3);
   box-shadow: inset 0 1px 2px rgba(90, 61, 40, 0.18);
   overflow: hidden;
-  margin-top: 7px;
+  margin-top: 6px;
 }
 .order .clock > i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(#ffe08a, var(--yellow)); }
 
@@ -428,7 +433,7 @@
   position: absolute;
   left: 8px;
   right: 8px;
-  top: calc(env(safe-area-inset-top, 0px) + 200px);
+  top: calc(env(safe-area-inset-top, 0px) + 206px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -477,7 +482,8 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--dock-h) + 84px);
+  /* 緊貼動作列上方：再往上就是啟用層的地板，會蓋住布丁與澡盆（突變那一刻最不該被蓋） */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--dock-h) + 16px);
   display: flex;
   flex-direction: column-reverse;
   gap: 6px;
