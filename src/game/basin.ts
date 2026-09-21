@@ -12,10 +12,11 @@ export function basinAvailable(b: Basin): boolean {
  * 偏好「特殊風味澡盆」：玩家會特地倒抹茶／草莓進去，就是要布丁去泡；
  * 若讓布丁只挑最近的普通盆，風味突變這條線玩家操作不到。
  */
-export function findBasinFor(state: GameState, x: number, z: number): number | null {
+export function findBasinFor(state: GameState, zone: string, x: number, z: number): number | null {
   let best: number | null = null;
   let bestKey = Number.POSITIVE_INFINITY;
   state.basins.forEach((b, i) => {
+    if (b.zone !== zone) return; // 布丁跳不到別一層去
     if (!basinAvailable(b)) return;
     const special = b.liquid !== null && LIQUIDS[b.liquid].needsBasin;
     const dx = b.pos.x - x, dz = b.pos.z - z;

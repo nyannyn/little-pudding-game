@@ -11,24 +11,30 @@ import {
   pickDrop,
   sellDessert,
   sellIngredient,
+  switchZone,
+  unlockZone,
 } from './game/actions';
 import type { SimEvent } from './game/events';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
 import { load, save } from './game/storage';
 import { createNewSave, type GameState, type Vec2 } from './game/state';
+import { basinsIn, findZone, puddingsIn, unlockedZones } from './game/zones';
 import { createRenderer } from './scene/renderer';
-import { createCamera, createControls, fitBoxDistance, applyDistance } from './scene/camera';
-import { addLighting } from './scene/lighting';
+import { MAX_AZIMUTH, createCamera, createControls, fitBoxDistance, applyDistance } from './scene/camera';
+import { addLighting, focusShadow } from './scene/lighting';
 import {
-  ACTIVE_TANK,
+  CABINET_PITCH,
+  CabinetView,
   TANK,
-  createCabinet,
-  floorBounds,
-  tankFloorY,
+  UNIT,
   UNIT_HEIGHT,
-  UNIT_OUTER_W,
   UNIT_OUTER_D,
+  UNIT_OUTER_W,
+  floorRect,
+  zoneFocusY,
+  zoneWorld,
+  type TankStatus,
 } from './scene/cabinet';
 import { createCabinetRow } from './scene/cabinetRow';
 import { BASIN_SINK, BasinsView } from './scene/basinMesh';
@@ -44,13 +50,23 @@ import { createStats } from './debug/stats';
 const params = new URLSearchParams(location.search);
 const container = document.getElementById('app')!;
 
-/** 櫥窗裡放澡盆的位置（地板座標）。買了特殊澡盆就往後遞補一格。 */
-// 右前方要留給名牌（`createPlates` 貼在該層右下角），澡盆放那裡會被蓋住。
+/**
+ * 每一區放澡盆的位置（區域座標，各區共用這一組）。
+ * 右前方留給該層名牌（`cabinet.createPlates`），澡盆放那裡會被蓋住。
+ */
 const BASIN_SLOTS: Vec2[] = [
   { x: -0.52, z: 0.12 },
   { x: 0.52, z: -0.24 },
   { x: -0.52, z: -0.24 },
 ];
+
+/**
+ * 鏡頭要看到的水平範圍（世界單位）。
+ * 這個值有下限：布丁跳的範圍是 ±0.875，掉落物再往外 0.32，低於約 1.9
+ * 就會有東西掉在畫面外。直向手機（9:19.5）下水平 1.9 對應垂直 4.6——
+ * 「只框啟用層」在這個長寬比下做不到，能做的是把整櫃的 2.93 收到 2.14。
+ */
+const TIER_VIEW_W = 1.9;
 
 // ── 場景 ──────────────────────────────────────────────
 const renderer = createRenderer(container);
@@ -61,28 +77,30 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 pmrem.dispose();
 
-const target = new THREE.Vector3(0, UNIT_HEIGHT * 0.5, 0);
 const camera = createCamera(container.clientWidth / container.clientHeight);
-const FIT_W = UNIT_OUTER_W + 0.06;
-const FIT_H = UNIT_HEIGHT + 0.10;
-const controls = createControls(camera, renderer.domElement, target, fitBoxDistance(camera, FIT_W, FIT_H, UNIT_OUTER_D));
-addLighting(scene);
 
-const bounds = floorBounds();
-const floorY = bounds.y;
-const ceilY = tankFloorY(ACTIVE_TANK) + TANK.height;
+function tierDistance() {
+  const w = TIER_VIEW_W * Math.cos(MAX_AZIMUTH) + TANK.depth * Math.sin(MAX_AZIMUTH);
+  return fitBoxDistance(camera, w, TANK.height * 1.02, TANK.depth);
+}
+/** 拉遠上限＝整座櫃子塞滿畫面的距離，玩家要看得回自己買下的整座櫃 */
+function cabinetDistance() {
+  return fitBoxDistance(camera, UNIT_OUTER_W + 0.06, UNIT_HEIGHT + 0.1, UNIT_OUTER_D);
+}
 
-scene.add(createCabinetRow());
-const cabinet = createCabinet([
-  { title: '第一層', sub: '未解鎖', locked: true },
-  { title: '焦糖布丁', sub: '營業中' },
-  { title: '第三層', sub: '未解鎖', locked: true },
-]);
-scene.add(cabinet);
+const controls = createControls(
+  camera,
+  renderer.domElement,
+  new THREE.Vector3(0, zoneFocusY(1), 0),
+  tierDistance(),
+  cabinetDistance(),
+);
+const { sun } = addLighting(scene);
 
-const basins = new BasinsView(floorY);
-const drops = new DropsView(floorY);
-const equipment = new EquipmentView(floorY, ceilY);
+const floor = floorRect();
+const basins = new BasinsView();
+const drops = new DropsView();
+const equipment = new EquipmentView();
 const particles = new Particles();
 scene.add(basins.group, drops.mesh, equipment.group, particles.points);
 
@@ -103,16 +121,93 @@ const newSaveOptions = {
   ],
 };
 
-// `?fresh=1`：不讀舊檔，直接開新的（e2e 與「重新玩一次」用）
 const loaded = fresh ? { state: createNewSave(newSaveOptions), restored: false } : load(newSaveOptions);
 const state: GameState = loaded.state;
-const world = createWorld(state, bounds);
+const world = createWorld(state, floor);
+
+// ── 櫃體：主櫃永遠在，解鎖的鄰櫃升級成完整櫃子 ────────
+const cabinets = new Map<number, CabinetView>();
+let row: THREE.Group | null = null;
+let shellSignature = '';
+
+function statusesFor(cabinet: number): TankStatus[] {
+  const out: TankStatus[] = [];
+  for (let tier = 0; tier < UNIT.tanks; tier++) {
+    const z = state.zones.find((q) => q.cabinet === cabinet && q.tier === tier);
+    if (!z) {
+      out.push({ title: `第 ${tier + 1} 層`, sub: '未開放', locked: true });
+      continue;
+    }
+    const n = puddingsIn(state, z.id).length;
+    out.push({
+      title: z.name.split('・')[1] ?? z.name,
+      sub: z.unlocked ? `住客 ${n} 隻` : `${z.price} 焦糖幣`,
+      locked: !z.unlocked,
+    });
+  }
+  return out;
+}
+
+function refreshShells() {
+  const unlockedCabinets = [...new Set(unlockedZones(state).map((z) => z.cabinet))].sort((a, b) => a - b);
+  const sig = state.zones.map((z) => (z.unlocked ? '1' : '0')).join('') + '|' + unlockedCabinets.join(',');
+  if (sig === shellSignature) {
+    for (const [i, view] of cabinets) view.setStatuses(statusesFor(i));
+    return;
+  }
+  shellSignature = sig;
+
+  for (const i of unlockedCabinets) {
+    let view = cabinets.get(i);
+    if (!view) {
+      view = new CabinetView(i, statusesFor(i));
+      cabinets.set(i, view);
+      scene.add(view.group);
+    }
+    view.setStatuses(statusesFor(i));
+  }
+  // 升級成完整櫃子的座位要從合併的裝飾列裡拿掉，否則兩座疊在同一個位置
+  if (row) {
+    scene.remove(row);
+    row.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.geometry.dispose();
+    });
+  }
+  row = createCabinetRow(unlockedCabinets.filter((i) => i !== 0));
+  scene.add(row);
+}
+
+// ── 鏡頭：對準啟用區，切區時平滑移過去 ────────────────
+const desiredTarget = new THREE.Vector3();
+const moveTmp = new THREE.Vector3();
+
+function focusActiveZone(instant = false) {
+  const z = findZone(state, state.activeZone);
+  if (!z) return;
+  desiredTarget.set(z.cabinet * CABINET_PITCH, zoneFocusY(z.tier), 0);
+  focusShadow(sun, desiredTarget.x, desiredTarget.y);
+  if (instant) {
+    moveTmp.copy(desiredTarget).sub(controls.target);
+    controls.target.add(moveTmp);
+    camera.position.add(moveTmp);
+    controls.update();
+  }
+}
+
+/** 區域座標搬到世界座標的唯一入口 */
+function activeOrigin() {
+  const z = findZone(state, state.activeZone);
+  const w = zoneWorld(z?.cabinet ?? 0, z?.tier ?? 1);
+  return { ox: w.x, oy: w.y, ceilY: w.y + TANK.height - 0.02 };
+}
+
+refreshShells();
+focusActiveZone(true);
 
 // 離線結算：上限 8 小時，回來時告訴玩家發生了什麼
-let offlineSeconds = 0;
 if (loaded.restored) {
   const before = { coins: state.coins, baths: state.stats.baths };
-  offlineSeconds = settleOffline(world, Date.now());
+  const offlineSeconds = settleOffline(world, Date.now());
   drainEvents(world); // 離線那幾千個事件不需要逐一播音效
   if (offlineSeconds > 60) {
     const mins = Math.round(offlineSeconds / 60);
@@ -132,11 +227,15 @@ if (loaded.restored) {
 }
 
 // ── 玩家動作 ──────────────────────────────────────────
-/** 這種液體該倒進哪一個盆：普通液體進 0 號，特殊液體進它自己的盆 */
-function basinFor(liquid: LiquidId): number {
-  if (!LIQUIDS[liquid].needsBasin) return 0;
-  const i = state.basins.findIndex((b) => b.preferredLiquid === liquid);
-  return i >= 0 ? i : 0;
+/** 這種液體該倒進啟用區的哪一個盆：普通液體進第一個，特殊液體進它自己的盆 */
+function basinIndexFor(liquid: LiquidId): number {
+  const mine: number[] = [];
+  state.basins.forEach((b, i) => {
+    if (b.zone === state.activeZone) mine.push(i);
+  });
+  if (mine.length === 0) return -1;
+  if (!LIQUIDS[liquid].needsBasin) return mine[0] as number;
+  return mine.find((i) => state.basins[i]?.preferredLiquid === liquid) ?? (mine[0] as number);
 }
 
 function report(r: { ok: true } | { ok: false; error: string }) {
@@ -145,14 +244,18 @@ function report(r: { ok: true } | { ok: false; error: string }) {
   return r.ok;
 }
 
+/** 新解鎖的一區要放一隻布丁與一個空澡盆 */
+function spawnFor() {
+  return { puddingPos: { x: 0.1, z: 0.05 }, basinPos: { ...(BASIN_SLOTS[0] as Vec2) } };
+}
+
 const hud = new Hud(document.body, {
-  pour: (liquid) => report(fillBasin(state, basinFor(liquid), liquid, world.emit)),
+  pour: (liquid) => report(fillBasin(state, basinIndexFor(liquid), liquid, world.emit)),
   pickAll: () => {
-    pickAllDrops(state, world.emit);
+    pickAllDrops(state, world.emit, false, state.activeZone);
     hud.update(state, performance.now(), true);
   },
   craft: () => {
-    // 從原料最多的物種開始做，玩家按一下就有明確結果
     const best = [...SPECIES_IDS].sort((a, b) => state.ingredients[b] - state.ingredients[a])[0] as SpeciesId;
     report(craft(state, best, world.emit));
   },
@@ -169,8 +272,18 @@ const hud = new Hud(document.body, {
   buyStock: (liquid, qty) => report(buyStock(state, liquid, qty, world.emit)),
   buyEquipment: (id) => report(buyEquipment(state, id, world.emit)),
   buyBasin: (liquid) => {
-    const slot = BASIN_SLOTS[Math.min(state.basins.length, BASIN_SLOTS.length - 1)] as Vec2;
-    return report(buySpecialBasin(state, liquid, slot, world.emit));
+    const used = basinsIn(state, state.activeZone).length;
+    const slot = BASIN_SLOTS[Math.min(used, BASIN_SLOTS.length - 1)] as Vec2;
+    report(buySpecialBasin(state, liquid, slot, state.activeZone, world.emit));
+  },
+  unlockZone: (id) => {
+    if (!report(unlockZone(state, id, spawnFor(), world.emit))) return;
+    refreshShells();
+    focusActiveZone();
+    void ensureViews();
+  },
+  switchZone: (id) => {
+    if (report(switchZone(state, id))) focusActiveZone();
   },
   toggleMute: () => {
     sfx.muted = !sfx.muted;
@@ -182,19 +295,17 @@ const hud = new Hud(document.body, {
 const views = new Map<string, PuddingView>();
 
 function handle(e: SimEvent) {
+  const { ox, oy } = activeOrigin();
   switch (e.type) {
     case 'splat':
       sfx.splat(0.42);
       break;
-    case 'bathDone':
-      particles.burst(0, floorY + 0.1, 0, 0xfff0c0, 6);
-      break;
     case 'drop':
-      particles.burst(e.x, floorY + 0.06, e.z, SPECIES.caramel.toppingColor, 8);
+      particles.burst(ox + e.x, oy + 0.06, e.z, SPECIES.caramel.toppingColor, 8);
       break;
     case 'mutate': {
       views.get(e.puddingId)?.pulse();
-      particles.burst(e.x, floorY + 0.12, e.z, SPECIES[e.to].bodyColor, 22);
+      particles.burst(ox + e.x, oy + 0.12, e.z, SPECIES[e.to].bodyColor, 22);
       sfx.coin(0.4);
       hud.toast(`突變！變成${SPECIES[e.to].name}`);
       break;
@@ -253,16 +364,17 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   const hitBasin = raycaster.intersectObjects(basins.group.children, false)[0];
   if (hitBasin) {
     // 點澡盆＝倒它上次裝的那種；還沒倒過就給焦糖（開局就是要先倒焦糖）
-    const i = nearestBasin(hitBasin.point);
-    const liquid = state.basins[i]?.preferredLiquid ?? 'caramel';
-    report(fillBasin(state, i, liquid, world.emit));
+    const i = nearestBasinIndex(hitBasin.point);
+    if (i >= 0) report(fillBasin(state, i, state.basins[i]?.preferredLiquid ?? 'caramel', world.emit));
   }
 });
 
-function nearestBasin(point: THREE.Vector3): number {
-  let best = 0, bestD = Infinity;
+function nearestBasinIndex(point: THREE.Vector3): number {
+  const { ox } = activeOrigin();
+  let best = -1, bestD = Infinity;
   state.basins.forEach((b, i) => {
-    const d = Math.hypot(b.pos.x - point.x, b.pos.z - point.z);
+    if (b.zone !== state.activeZone) return;
+    const d = Math.hypot(ox + b.pos.x - point.x, b.pos.z - point.z);
     if (d < bestD) { bestD = d; best = i; }
   });
   return best;
@@ -288,22 +400,27 @@ window.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', persist);
 
 // ── 布丁的 view ───────────────────────────────────────
-async function boot() {
-  if (params.get('noPudding') !== '1') {
-    const url = `${import.meta.env.BASE_URL}models/pudding_base.glb`;
+const modelUrl = `${import.meta.env.BASE_URL}models/pudding_base.glb`;
+const noPudding = params.get('noPudding') === '1';
+let creating = false;
+
+/** 每隻布丁一個 view（最多五隻）；非啟用區的隱藏起來，隱藏的物件不吃 draw call */
+async function ensureViews() {
+  if (noPudding || creating) return;
+  creating = true;
+  try {
     for (const p of state.puddings) {
-      try {
-        const g = await spawnPudding(url);
-        const view = new PuddingView(g, p);
-        views.set(p.id, view);
-        scene.add(view.root);
-      } catch (e) {
-        console.error('[lpg] pudding load failed', e);
-        break;
-      }
+      if (views.has(p.id)) continue;
+      const g = await spawnPudding(modelUrl);
+      const view = new PuddingView(g, p);
+      views.set(p.id, view);
+      scene.add(view.root);
     }
+  } catch (e) {
+    console.error('[lpg] pudding load failed', e);
+  } finally {
+    creating = false;
   }
-  stats.stats.ready = true;
 }
 
 // ── 主迴圈 ────────────────────────────────────────────
@@ -319,7 +436,8 @@ function resize() {
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  applyDistance(camera, controls, fitBoxDistance(camera, FIT_W, FIT_H, UNIT_OUTER_D));
+  applyDistance(camera, controls, tierDistance(), cabinetDistance());
+  focusActiveZone(true);
 }
 window.addEventListener('resize', resize);
 
@@ -332,23 +450,40 @@ renderer.setAnimationLoop(() => {
   advance(world, dt * fastTime);
   for (const e of drainEvents(world)) handle(e);
 
+  const { ox, oy, ceilY } = activeOrigin();
+
   // 泡澡冒泡：靠狀態每隔一段時間生一顆，不必為此發事件
   bubbleT += dt;
   if (bubbleT > 0.22) {
     bubbleT = 0;
-    for (const p of state.puddings) {
+    for (const p of puddingsIn(state, state.activeZone)) {
       if (p.mode !== 'bathing') continue;
       const b = p.basinIndex === null ? undefined : state.basins[p.basinIndex];
       const color = p.bathLiquid ? LIQUIDS[p.bathLiquid].color : 0xffffff;
-      particles.bubble(b?.pos.x ?? p.pos.x, floorY + 0.06, b?.pos.z ?? p.pos.z, color);
+      particles.bubble(ox + (b?.pos.x ?? p.pos.x), oy + 0.06, b?.pos.z ?? p.pos.z, color);
     }
   }
 
-  basins.sync(state);
-  drops.sync(state, dt);
-  equipment.sync(state);
+  basins.sync(state, state.activeZone, ox, oy);
+  drops.sync(state, state.activeZone, ox, oy, dt);
+  equipment.sync(state, state.activeZone, ox, oy, ceilY);
   particles.update(dt);
-  for (const p of state.puddings) views.get(p.id)?.update(p, dt, floorY, BASIN_SINK);
+
+  for (const p of state.puddings) {
+    const view = views.get(p.id);
+    if (!view) continue;
+    const visible = p.zone === state.activeZone;
+    view.root.visible = visible;
+    if (visible) view.update(p, dt, ox, oy, BASIN_SINK);
+  }
+
+  // 切區時把鏡頭平移過去，保留玩家自己轉過的角度與縮放
+  moveTmp.copy(desiredTarget).sub(controls.target);
+  if (moveTmp.lengthSq() > 1e-7) {
+    moveTmp.multiplyScalar(Math.min(1, dt * 4));
+    controls.target.add(moveTmp);
+    camera.position.add(moveTmp);
+  }
 
   hud.update(state, now);
 
@@ -363,4 +498,7 @@ renderer.setAnimationLoop(() => {
   stats.tick();
 });
 
-void boot();
+void ensureViews().then(() => {
+  // ready 要等模型真的掛上去才翻：e2e 的三角形斷言靠它當閘門
+  stats.stats.ready = true;
+});

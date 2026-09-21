@@ -78,4 +78,32 @@ await shot('cp3-6-mutated');
 await page.getByRole('button', { name: '商店' }).click();
 await shot('cp3-7-shop');
 
+// ⑧ 解鎖上層（同一座櫃子的第二個櫥窗）
+await boot('?fresh=1&seed=20260921&fastTime=1');
+await page.evaluate(() => { window.__lpg.state.coins = 99999; });
+await page.getByRole('button', { name: '商店' }).click();
+await page.locator('[data-a="unlockZone"]').click();
+await page.getByRole('button', { name: '關閉' }).click();
+await page.waitForTimeout(1600); // 等鏡頭滑上去
+await shot('cp3-8-upper-tier');
+
+// ⑨ 再解鎖下層與二號櫥窗，切到二號櫥窗
+for (let i = 0; i < 2; i++) {
+  await page.getByRole('button', { name: '商店' }).click();
+  await page.locator('[data-a="unlockZone"]').click();
+  await page.getByRole('button', { name: '關閉' }).click();
+  await page.waitForTimeout(300);
+}
+await page.waitForTimeout(1800);
+await shot('cp3-9-second-cabinet');
+
+// ⑩ 拉遠看整排（縮放上限要回得到整座櫃子）
+await page.evaluate(() => {
+  const { camera, controls } = window.__lpg.three;
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target).add(dir.multiplyScalar(controls.maxDistance));
+  controls.update();
+});
+await shot('cp3-10-zoom-out');
+
 await browser.close();

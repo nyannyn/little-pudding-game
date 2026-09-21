@@ -3,9 +3,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const DEG = Math.PI / 180;
 const TILT = 25 * DEG;            // 俯角（D5）
-// 左右環繞上限。D5 原訂 ±30°，改直立落地櫃後收窄到 ±18°（D17）：
-// 櫃子要正面填滿畫面就沒有多餘邊距，轉太多側面會被裁掉。
-export const MAX_AZIMUTH = 18 * DEG;
+// 左右環繞上限。D5 原訂 ±30° → D17 收到 ±18° → CP3 鏡頭改框單層後再收到 ±10°。
+// 距離愈近，同樣的角度掃過的世界範圍愈大：要替環繞預留的左右邊距
+// （w·cos + 深·sin）會直接吃掉「把這一層放大」的效果，兩者是對衝的。
+export const MAX_AZIMUTH = 10 * DEG;
 
 // 固定俯角、只允許有限左右環繞與縮放（D5）
 export function createCamera(aspect: number) {
@@ -33,7 +34,13 @@ export function fitBoxDistance(camera: THREE.PerspectiveCamera, w: number, h: nu
   return fitDistance(camera, w * k, h * k);
 }
 
-export function createControls(camera: THREE.PerspectiveCamera, dom: HTMLElement, target: THREE.Vector3, distance: number) {
+export function createControls(
+  camera: THREE.PerspectiveCamera,
+  dom: HTMLElement,
+  target: THREE.Vector3,
+  distance: number,
+  maxDistance?: number,
+) {
   const controls = new OrbitControls(camera, dom);
   controls.target.copy(target);
   controls.enablePan = false;
@@ -43,14 +50,22 @@ export function createControls(camera: THREE.PerspectiveCamera, dom: HTMLElement
   controls.maxAzimuthAngle = MAX_AZIMUTH;
   controls.minPolarAngle = Math.PI / 2 - TILT - 8 * DEG;
   controls.maxPolarAngle = Math.PI / 2 - TILT + 8 * DEG;
-  applyDistance(camera, controls, distance);
+  applyDistance(camera, controls, distance, maxDistance);
   return controls;
 }
 
-export function applyDistance(camera: THREE.PerspectiveCamera, controls: OrbitControls, distance: number) {
-  controls.minDistance = distance * 0.7;
-  // 初始距離是「zoom in 到主櫥窗」的狀態（D15）；拉遠上限放寬到 2.4 倍才看得到整排鄰櫥窗
-  controls.maxDistance = distance * 2.4;
+/**
+ * @param maxDistance 拉遠上限。鏡頭改成框單層之後，這個值不能再用「初始距離 × 倍率」算——
+ *   那會讓玩家拉不回整座櫃子。呼叫端另外算一個「整櫃塞滿」的距離傳進來。
+ */
+export function applyDistance(
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  distance: number,
+  maxDistance = distance * 2.4,
+) {
+  controls.minDistance = distance * 0.6;
+  controls.maxDistance = Math.max(maxDistance, distance);
   const polar = Math.PI / 2 - TILT;
   camera.position.set(0, Math.cos(polar) * distance, Math.sin(polar) * distance).add(controls.target);
   camera.lookAt(controls.target);

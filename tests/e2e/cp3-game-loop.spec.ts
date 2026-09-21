@@ -125,6 +125,7 @@ test('AC3-2 效能不退步：整場（含設備與掉落物）draw calls 仍在
     s.equipment.collector = false; // 收集手會把掉落物收走，這裡要留著它們
     s.drops = [0, 1, 2, 3, 4].map((i) => ({
       id: `d${i}`,
+      zone: s.activeZone,
       species: (['caramel', 'panna', 'matcha', 'strawberry'] as const)[i % 4]!,
       pos: { x: -0.3 + i * 0.15, z: 0.2 },
       bornAt: s.time,

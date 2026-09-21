@@ -82,16 +82,21 @@ export class EquipmentView {
   private signature = '';
   private readonly mats = { metal: toonMaterial(METAL), accent: toonMaterial(ACCENT) };
 
-  constructor(private readonly floorY: number, private readonly ceilY: number) {
+  constructor() {
     this.group.name = 'Equipment';
   }
 
-  sync(state: GameState) {
-    const sig = Object.entries(state.equipment)
+  /**
+   * 設備是全場生效的，但只畫在玩家正在看的那一區——
+   * 每一區都畫一套的話，解鎖第二區就直接超出 draw call 預算。
+   */
+  sync(state: GameState, zone: string, ox: number, floorY: number, ceilY: number) {
+    const owned = Object.entries(state.equipment)
       .filter(([, v]) => v)
       .map(([k]) => k)
       .sort()
       .join(',');
+    const sig = `${zone}|${owned}`;
     if (sig === this.signature) return;
     this.signature = sig;
 
@@ -99,11 +104,12 @@ export class EquipmentView {
       this.group.remove(child);
       if (child instanceof THREE.Mesh) child.geometry.dispose();
     }
-    if (sig === '') return;
+    if (owned === '') return;
 
-    const basin = state.basins[0]?.pos ?? { x: 0, z: 0 };
+    const basin = state.basins.find((x) => x.zone === zone)?.pos ?? { x: 0, z: 0 };
     const b: Bucket = { metal: [], accent: [] };
-    for (const id of sig.split(',') as EquipmentId[]) build(id, b, this.floorY, this.ceilY, basin);
+    for (const id of owned.split(',') as EquipmentId[]) build(id, b, floorY, ceilY, basin);
+    for (const arr of Object.values(b)) for (const g of arr) g.translate(ox, 0, 0);
 
     for (const key of ['metal', 'accent'] as const) {
       if (b[key].length === 0) continue;

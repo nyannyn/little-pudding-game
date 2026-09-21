@@ -3,6 +3,7 @@ import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
 import { LIQUIDS, SPECIES, dessertPrice, type LiquidId, type SpeciesId } from './species';
 import type { GameState, Vec2 } from './state';
+import { findZone } from './zones';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -36,16 +37,19 @@ export function pickDrop(state: GameState, dropId: string, emit: EventSink): Act
   return OK;
 }
 
-/** 一次撿完（UI 的「全部收起」與收集手共用） */
-export function pickAllDrops(state: GameState, emit: EventSink, auto = false): number {
-  const n = state.drops.length;
-  for (const d of state.drops) {
+/**
+ * 一次撿完。`zone` 給值就只撿那一區（玩家按的「撿原料」只作用在看得到的那一區），
+ * 不給就全部撿走（原料收集手是全場生效的設備）。
+ */
+export function pickAllDrops(state: GameState, emit: EventSink, auto = false, zone?: string): number {
+  const take = zone === undefined ? state.drops : state.drops.filter((d) => d.zone === zone);
+  for (const d of take) {
     state.ingredients[d.species]++;
     state.stats.picked++;
     emit({ type: 'pick', species: d.species, x: d.pos.x, z: d.pos.z, auto });
   }
-  state.drops = [];
-  return n;
+  state.drops = zone === undefined ? [] : state.drops.filter((d) => d.zone !== zone);
+  return take.length;
 }
 
 export function sellIngredient(state: GameState, species: SpeciesId, qty: number, emit: EventSink): ActionResult {
@@ -112,14 +116,20 @@ export function buyStock(state: GameState, liquid: LiquidId, qty: number, emit: 
 }
 
 /** 買特殊澡盆：一次性，買了才會多一個盆出現在櫥窗裡 */
-export function buySpecialBasin(state: GameState, liquid: LiquidId, pos: Vec2, emit: EventSink): ActionResult {
+export function buySpecialBasin(
+  state: GameState,
+  liquid: LiquidId,
+  pos: Vec2,
+  zone: string,
+  emit: EventSink,
+): ActionResult {
   const info = LIQUIDS[liquid];
   if (!info.needsBasin) return fail('這不是特殊澡盆');
   if (state.ownedBasins.includes(liquid)) return fail('已經有這個澡盆了');
   if (state.coins < BALANCE.specialBasinPrice) return fail('焦糖幣不夠');
   state.coins -= BALANCE.specialBasinPrice;
   state.ownedBasins.push(liquid);
-  state.basins.push({ liquid: null, units: 0, preferredLiquid: liquid, pos: { ...pos }, occupantId: null });
+  state.basins.push({ zone, liquid: null, units: 0, preferredLiquid: liquid, pos: { ...pos }, occupantId: null });
   emit({ type: 'buy', what: `${info.name}澡盆`, cost: BALANCE.specialBasinPrice, auto: false });
   return OK;
 }
@@ -131,5 +141,65 @@ export function buyEquipment(state: GameState, id: EquipmentId, emit: EventSink)
   state.coins -= info.price;
   state.equipment[id] = true;
   emit({ type: 'buy', what: info.name, cost: info.price, auto: false });
+  return OK;
+}
+
+export interface ZoneSpawn {
+  /** 新住客的落點（該區地板的區域座標） */
+  puddingPos: Vec2;
+  /** 新澡盆的位置 */
+  basinPos: Vec2;
+}
+
+/**
+ * 解鎖一個分區（第二層、或第二座櫥窗）。
+ * 解鎖後這一區有自己的一隻布丁與一個空澡盆——沒有住客的空櫥窗不算擴張。
+ */
+export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, emit: EventSink): ActionResult {
+  const z = findZone(state, zoneId);
+  if (!z) return fail('沒有這個櫥窗');
+  if (z.unlocked) return fail('這一區已經解鎖了');
+  if (state.coins < z.price) return fail('焦糖幣不夠');
+
+  state.coins -= z.price;
+  z.unlocked = true;
+  state.puddings.push({
+    id: `p${state.nextId++}`, // 不可以用長度推算 id：撞號會讓 scene 端的 view 綁錯隻
+    zone: zoneId,
+    species: 'caramel',
+    caramel: 45,
+    bathHistory: [],
+    tint: 0,
+    flavorExposure: {},
+    mode: 'resting',
+    pos: { ...spawn.puddingPos },
+    from: { ...spawn.puddingPos },
+    to: { ...spawn.puddingPos },
+    hopT: 1,
+    restT: 0.8,
+    bathT: 0,
+    basinIndex: null,
+    bathLiquid: null,
+    pendingMutation: null,
+  });
+  state.basins.push({
+    zone: zoneId,
+    liquid: null,
+    units: 0,
+    preferredLiquid: null,
+    pos: { ...spawn.basinPos },
+    occupantId: null,
+  });
+  state.activeZone = zoneId;
+  emit({ type: 'buy', what: z.name, cost: z.price, auto: false });
+  return OK;
+}
+
+/** 切到另一個已解鎖的分區（鏡頭與 HUD 都跟著走） */
+export function switchZone(state: GameState, zoneId: string): ActionResult {
+  const z = findZone(state, zoneId);
+  if (!z) return fail('沒有這個櫥窗');
+  if (!z.unlocked) return fail('這一區還沒解鎖');
+  state.activeZone = zoneId;
   return OK;
 }

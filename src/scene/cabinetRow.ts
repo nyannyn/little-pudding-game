@@ -14,9 +14,7 @@ import { toonMaterial } from './toon';
 
 // 鄰櫃座位（D15）：左右各三座、緊貼連成一整排，拉到縮放上限也看不到盡頭。
 // 不做後列——直立櫃是鏤空的，後面那排會透過玻璃看進來，變成一堆對不上的水平層板。
-const SEATS: Array<[x: number, z: number]> = [-3, -2, -1, 1, 2, 3].map(
-  (n) => [CABINET_PITCH * n, 0] as [number, number],
-);
+const SEAT_INDICES = [-3, -2, -1, 1, 2, 3];
 
 type PartKey = 'wood' | 'glass' | 'lock';
 
@@ -45,16 +43,22 @@ function neighbourGeometries(x: number, z: number): Record<PartKey, THREE.Buffer
  * 尚未解鎖的鄰櫃（v1 純裝飾，不參與模擬）。
  * 八座合併成 3 個 mesh 且一律不投影——陰影 pass 會把 draw call 再乘一次。
  */
-export function createCabinetRow(): THREE.Group {
+/**
+ * @param unlockedSeats 已解鎖的座位編號——這些座位不放在合併的裝飾列裡，
+ *   改由 main 用完整的 `CabinetView` 蓋一座真的櫃子（有地板、名牌、可進去住）。
+ */
+export function createCabinetRow(unlockedSeats: readonly number[] = []): THREE.Group {
   const g = new THREE.Group();
   g.name = 'CabinetRow';
 
   const buckets: Record<PartKey, THREE.BufferGeometry[]> = { wood: [], glass: [], lock: [] };
   const keys = Object.keys(buckets) as PartKey[];
-  for (const [x, z] of SEATS) {
-    const parts = neighbourGeometries(x, z);
+  for (const n of SEAT_INDICES) {
+    if (unlockedSeats.includes(n)) continue;
+    const parts = neighbourGeometries(CABINET_PITCH * n, 0);
     for (const key of keys) buckets[key].push(...parts[key]);
   }
+  if (buckets.wood.length === 0) return g;
 
   const add = (name: string, geos: THREE.BufferGeometry[], material: THREE.Material, renderOrder = 0) => {
     const mesh = new THREE.Mesh(mergeGeometries(geos), material);

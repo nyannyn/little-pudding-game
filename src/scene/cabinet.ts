@@ -40,16 +40,29 @@ export const UNIT_OUTER_D = TANK.depth + UNIT.overhang * 2 + 0.22;
  */
 export const CABINET_PITCH = UNIT_OUTER_W;
 
-/** 布丁可跳的範圍＝啟用層的地板，扣掉貼玻璃的留邊 */
-export function floorBounds() {
+/**
+ * 布丁可跳的範圍＝一層的地板，扣掉貼玻璃的留邊。
+ * 這是**區域座標**（每一層都一樣），世界座標由 `zoneWorld()` 加上偏移。
+ * `game/` 拿到的就是這塊矩形，它不需要知道自己在第幾層或第幾座櫃子。
+ */
+export function floorRect() {
   const m = 0.3;
   return {
     minX: -TANK.width / 2 + m,
     maxX: TANK.width / 2 - m,
     minZ: -TANK.depth / 2 + m,
     maxZ: TANK.depth / 2 - m,
-    y: tankFloorY(ACTIVE_TANK) + 0.02,
   };
+}
+
+/** 某一區（第 cabinet 座、第 tier 層）的世界原點：地板中心 */
+export function zoneWorld(cabinet: number, tier: number) {
+  return { x: cabinet * CABINET_PITCH, y: tankFloorY(tier) + 0.02, z: 0 };
+}
+
+/** 該層玻璃箱中心的世界高度（鏡頭注視點用，稍微偏下讓地板在畫面中央） */
+export function zoneFocusY(tier: number) {
+  return tankFloorY(tier) + TANK.height * 0.42;
 }
 
 export const CABINET_COLORS = {
@@ -163,11 +176,8 @@ const PLATE = { w: 0.8, h: 0.27, rowPx: 128, widthPx: 384 };
  * 三張名牌畫在同一張 canvas 上（一層一列），三個 quad 各自對到自己那列的 UV。
  * 一張貼圖一個 mesh ＝ 一個 draw call；一層一張貼圖會變成三個。
  */
-function createPlates(statuses: TankStatus[]): THREE.Mesh {
+function drawPlates(canvas: HTMLCanvasElement, statuses: TankStatus[], tex?: THREE.CanvasTexture) {
   const rows = UNIT.tanks;
-  const canvas = document.createElement('canvas');
-  canvas.width = PLATE.widthPx;
-  canvas.height = PLATE.rowPx * rows;
   const ctx = canvas.getContext('2d')!;
 
   for (let i = 0; i < rows; i++) {
@@ -187,10 +197,19 @@ function createPlates(statuses: TankStatus[]): THREE.Mesh {
     ctx.font = '400 34px "Microsoft JhengHei", system-ui, sans-serif';
     ctx.fillText(st.sub, canvas.width / 2, top + 101);
   }
+  if (tex) tex.needsUpdate = true;
+}
+
+function createPlates(statuses: TankStatus[]) {
+  const rows = UNIT.tanks;
+  const canvas = document.createElement('canvas');
+  canvas.width = PLATE.widthPx;
+  canvas.height = PLATE.rowPx * rows;
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
+  drawPlates(canvas, statuses);
 
   const quads: THREE.BufferGeometry[] = [];
   for (let i = 0; i < rows; i++) {
@@ -199,18 +218,61 @@ function createPlates(statuses: TankStatus[]): THREE.Mesh {
     for (let k = 0; k < uv.count; k++) uv.setY(k, (i + uv.getY(k)) / rows);
     uv.needsUpdate = true;
     // 右下角（使用者指定）：貼在該層玻璃正面外側
-    q.translate(TANK.width / 2 - PLATE.w / 2 - 0.09, tankFloorY(i) + 0.21, TANK.depth / 2 + 0.03);
+    // 往內收 0.24：鏡頭改成框單層之後水平只看得到約 2.14 寬，
+    // 原本貼齊右緣的位置（外緣 x=1.085）會被畫面切掉
+    q.translate(TANK.width / 2 - PLATE.w / 2 - 0.33, tankFloorY(i) + 0.21, TANK.depth / 2 + 0.03);
     quads.push(q);
   }
 
   const mesh = new THREE.Mesh(mergeGeometries(quads), new THREE.MeshBasicMaterial({ map: tex }));
   mesh.name = 'TankPlates';
   mesh.renderOrder = 11; // 要蓋在玻璃(10)之上，否則會被半透明玻璃洗淡
-  return mesh;
+  return { mesh, canvas, tex };
 }
 
-/** 主櫃（鏡頭初始 zoom in 的那一座，D15） */
-export function createCabinet(statuses: TankStatus[]): THREE.Group {
+/**
+ * 一座櫃子。上鎖的層要掛鎖，鎖是合併進同一個 mesh 的，
+ * 所以「哪幾層上鎖」變了就得整組重建——但那只在解鎖時發生，一次而已。
+ * 名牌文字則走 canvas 重畫，不重建幾何（住客狀態會一直變）。
+ */
+export class CabinetView {
+  readonly group = new THREE.Group();
+  private plates: { mesh: THREE.Mesh; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture } | null = null;
+  private lockSignature = '';
+
+  constructor(readonly cabinetIndex: number, statuses: TankStatus[]) {
+    this.group.name = `Cabinet${cabinetIndex}`;
+    this.group.position.x = cabinetIndex * CABINET_PITCH;
+    this.setStatuses(statuses);
+  }
+
+  setStatuses(statuses: TankStatus[]) {
+    const sig = statuses.map((s) => (s.locked ? '1' : '0')).join('');
+    if (sig !== this.lockSignature) {
+      this.lockSignature = sig;
+      this.rebuild(statuses);
+      return;
+    }
+    if (this.plates) drawPlates(this.plates.canvas, statuses, this.plates.tex);
+  }
+
+  private rebuild(statuses: TankStatus[]) {
+    for (const child of [...this.group.children]) {
+      this.group.remove(child);
+      if (child instanceof THREE.Mesh) child.geometry.dispose();
+    }
+    const built = buildCabinet(statuses);
+    // 一定要先複製一份：`add()` 會把子物件從原本的父節點移除，
+    // 直接走 children 陣列會邊走邊縮，結果只搬到一半（名牌與燈條就是這樣不見的）
+    for (const c of [...built.group.children]) this.group.add(c);
+    this.plates = built.plates;
+  }
+}
+
+function buildCabinet(statuses: TankStatus[]): {
+  group: THREE.Group;
+  plates: { mesh: THREE.Mesh; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture };
+} {
   const g = new THREE.Group();
   g.name = 'Cabinet';
 
@@ -243,7 +305,8 @@ export function createCabinet(statuses: TankStatus[]): THREE.Group {
     g.add(lockMesh);
   }
 
-  g.add(createPlates(statuses));
+  const plates = createPlates(statuses);
+  g.add(plates.mesh);
 
-  return g;
+  return { group: g, plates };
 }

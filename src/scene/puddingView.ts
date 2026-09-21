@@ -74,7 +74,7 @@ export class PuddingView {
    * @param floorY  啟用層地板的世界高度
    * @param basinY  泡澡時身體要沉到多低（相對地板）
    */
-  update(p: Pudding, dt: number, floorY: number, basinSink: number) {
+  update(p: Pudding, dt: number, ox: number, floorY: number, basinSink: number) {
     if (p.species !== this.shownSpecies) this.applySpecies(p.species);
 
     // 變白：往白色 lerp，突變前的預兆就是這條
@@ -92,7 +92,7 @@ export class PuddingView {
     this.wasAirborne = airborne;
     if (this.squashT > 0) this.squashT = Math.max(0, this.squashT - dt);
 
-    let x = p.pos.x, z = p.pos.z, y = floorY;
+    let x = ox + p.pos.x, z = p.pos.z, y = floorY;
     if (airborne) {
       // 大彈跳（突變那一跳）跳得比平常高，看得出來「要發生什麼事」
       const h = BALANCE.hopHeight * (p.pendingMutation ? 2.6 : 1);
@@ -101,8 +101,6 @@ export class PuddingView {
     if (bathing) {
       this.bob += dt;
       y = floorY - basinSink + Math.sin(this.bob * 1.8) * 0.006;
-      x = p.pos.x;
-      z = p.pos.z;
     }
     this.root.position.set(x, y, z);
 

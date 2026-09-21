@@ -29,10 +29,11 @@ function randomFloorPoint(state: GameState, self: Pudding, ctx: SimContext): Vec
     if (dist(p, self.pos) < 0.12) continue; // 原地跳看起來像卡住
     let clear = true;
     for (const other of state.puddings) {
-      if (other.id === self.id) continue;
+      if (other.id === self.id || other.zone !== self.zone) continue;
       if (dist(p, other.pos) < BALANCE.puddingSpacing) { clear = false; break; }
     }
     if (clear) for (const b of state.basins) {
+      if (b.zone !== self.zone) continue;
       if (dist(p, b.pos) < 0.26) { clear = false; break; }
     }
     if (clear) return p;
@@ -61,14 +62,15 @@ export function milkRatio(p: Pudding): number {
 }
 
 /** 掉一份原料在地上；滿了就不掉（計畫：上限 5 份，滿了後續不再掉） */
-export function spawnDrop(state: GameState, species: SpeciesId, at: Vec2, ctx: SimContext): boolean {
-  if (state.drops.length >= BALANCE.dropCap) return false;
+export function spawnDrop(state: GameState, zone: string, species: SpeciesId, at: Vec2, ctx: SimContext): boolean {
+  // 上限是「每一區各自 5 份」：解鎖第二區之後，兩區的地板要各自算
+  if (state.drops.filter((d) => d.zone === zone).length >= BALANCE.dropCap) return false;
   // 沿澡盆外圍的一圈掉，不掉在盆心——掉進盆裡會被盆身遮住，看起來像沒產出
   const a = range(ctx.rng, 0, Math.PI * 2);
   const r = BALANCE.dropSpawnRadius;
   const x = Math.min(ctx.floor.maxX, Math.max(ctx.floor.minX, at.x + Math.cos(a) * r));
   const z = Math.min(ctx.floor.maxZ, Math.max(ctx.floor.minZ, at.z + Math.sin(a) * r * 0.7));
-  state.drops.push({ id: `d${state.nextId++}`, species, pos: { x, z }, bornAt: state.time });
+  state.drops.push({ id: `d${state.nextId++}`, zone, species, pos: { x, z }, bornAt: state.time });
   ctx.emit({ type: 'drop', species, x, z });
   return true;
 }
@@ -149,7 +151,7 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
     state.stats.picked++;
     ctx.emit({ type: 'pick', species: p.species, x: at.x, z: at.z, auto: true });
   } else {
-    spawnDrop(state, p.species, at, ctx);
+    spawnDrop(state, p.zone, p.species, at, ctx);
   }
 
   if (basin && basin.occupantId === p.id) basin.occupantId = null;
@@ -163,7 +165,7 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
 /** 決定下一跳要去哪：缺焦糖且有盆可用就去泡澡，否則在地板上隨機挑一點 */
 function chooseNextHop(state: GameState, p: Pudding, ctx: SimContext): void {
   if (wantsBath(p)) {
-    const bi = findBasinFor(state, p.pos.x, p.pos.z);
+    const bi = findBasinFor(state, p.zone, p.pos.x, p.pos.z);
     const basin = bi === null ? undefined : state.basins[bi];
     if (bi !== null && basin && basinAvailable(basin)) {
       basin.occupantId = p.id; // 先佔位，第二隻才不會同時跳進同一盆

@@ -17,7 +17,7 @@ export class DropsView {
   private readonly dummy = new THREE.Object3D();
   private t = 0;
 
-  constructor(private readonly floorY: number) {
+  constructor() {
     const geo = new THREE.IcosahedronGeometry(SIZE, 0);
     const mat = new THREE.MeshToonMaterial({ gradientMap: toonGradient() });
     this.mesh = new THREE.InstancedMesh(geo, mat, BALANCE.dropCap);
@@ -28,21 +28,22 @@ export class DropsView {
     this.mesh.frustumCulled = false;
   }
 
-  /** 每幀更新：位置、剛掉出來的彈跳、緩慢自轉（告訴玩家「這個可以點」） */
-  sync(state: GameState, dt: number) {
+  /** 每幀更新：位置、剛掉出來的彈跳、緩慢自轉（告訴玩家「這個可以點」）。只畫啟用區。 */
+  sync(state: GameState, zone: string, ox: number, oy: number, dt: number) {
     this.t += dt;
-    const n = Math.min(state.drops.length, BALANCE.dropCap);
+    const mine = state.drops.filter((d) => d.zone === zone);
+    const n = Math.min(mine.length, BALANCE.dropCap);
     this.mesh.count = n;
     this.ids.length = n;
 
     for (let i = 0; i < n; i++) {
-      const d = state.drops[i];
+      const d = mine[i];
       if (!d) continue;
       this.ids[i] = d.id;
       const age = Math.max(0, state.time - d.bornAt);
       const pop = age < 0.45 ? Math.sin((age / 0.45) * Math.PI) * 0.08 : 0; // 掉出來時彈一下
       const idle = Math.sin(this.t * 2.2 + i) * 0.006;
-      this.dummy.position.set(d.pos.x, this.floorY + SIZE * 0.8 + pop + idle, d.pos.z);
+      this.dummy.position.set(ox + d.pos.x, oy + SIZE * 0.8 + pop + idle, d.pos.z);
       this.dummy.rotation.set(0.5, this.t * 0.8 + i, 0.2);
       this.dummy.scale.setScalar(age < 0.25 ? 0.4 + (age / 0.25) * 0.6 : 1);
       this.dummy.updateMatrix();

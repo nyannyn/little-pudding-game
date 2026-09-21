@@ -76,32 +76,29 @@ export class BasinsView {
   private readonly tubMat = toonMaterial(0xffffff, { vertexColors: true });
   private readonly liquidMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.92 });
 
-  constructor(private readonly floorY: number) {
+  constructor() {
     this.group.name = 'Basins';
   }
 
-  /** 澡盆的世界座標（UI 點擊與粒子要用） */
-  worldPos(state: GameState, i: number): THREE.Vector3 {
-    const b = state.basins[i];
-    if (!b) return new THREE.Vector3();
-    return new THREE.Vector3(b.pos.x, this.floorY + BASIN.height * 0.6, b.pos.z);
-  }
-
-  /** 只有在「盆數／液體／份數」真的變了才重建幾何 */
-  sync(state: GameState) {
-    const sig = state.basins.map((b) => `${b.pos.x.toFixed(2)},${b.liquid ?? '-'},${b.units}`).join('|');
+  /**
+   * 只畫「玩家正在看的那一區」的澡盆。其他區照樣在模擬，只是不畫——
+   * 鏡頭一次只框一層，多畫的東西看不到卻照吃 draw call（預算只有 30）。
+   */
+  sync(state: GameState, zone: string, ox: number, oy: number) {
+    const mine = state.basins.filter((b) => b.zone === zone);
+    const sig = `${zone}|${ox.toFixed(2)}|` + mine.map((b) => `${b.pos.x.toFixed(2)},${b.liquid ?? '-'},${b.units}`).join('|');
     if (sig === this.signature) return;
     this.signature = sig;
 
     const tubs: THREE.BufferGeometry[] = [];
     const liquids: THREE.BufferGeometry[] = [];
-    for (const b of state.basins) {
-      tubs.push(...tubGeometries(b.pos.x, this.floorY, b.pos.z));
+    for (const b of mine) {
+      tubs.push(...tubGeometries(ox + b.pos.x, oy, b.pos.z));
       if (b.liquid && b.units > 0) {
         const level = (b.units / BALANCE.basinCapacity) * (BASIN.height - 0.014) + 0.008;
         const disc = new THREE.CircleGeometry(BASIN.radius * 0.93, 16);
         disc.rotateX(-Math.PI / 2);
-        disc.translate(b.pos.x, this.floorY + level, b.pos.z);
+        disc.translate(ox + b.pos.x, oy + level, b.pos.z);
         liquids.push(paint(disc, LIQUIDS[b.liquid].color));
       }
     }

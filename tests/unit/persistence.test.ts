@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/game/balance';
 import { advance, createWorld, settleOffline, syncForSave } from '../../src/game/sim';
 import { clear, load, parseSave, save } from '../../src/game/storage';
-import { createNewSave, migrate } from '../../src/game/state';
+import { SCHEMA_VERSION, createNewSave, migrate } from '../../src/game/state';
+import { START_ZONE, zoneKey } from '../../src/game/zones';
 import { FLOOR, fillBasinDirect, makeWorld } from './helpers';
 
 /** 讓兩個世界從完全一樣的起點出發（同種子、同澡盆狀態） */
@@ -70,7 +71,7 @@ describe('AC2-6 存檔損壞不崩', () => {
     for (const bad of ['{garbage', 'null', '[]', '{}', '"nope"'] as const) {
       const r = parseSave(bad, { seed: 1, now: 0 });
       expect(r.state.puddings.length).toBeGreaterThan(0);
-      expect(r.state.schemaVersion).toBe(1);
+      expect(r.state.schemaVersion).toBe(SCHEMA_VERSION);
       expect(r.restored).toBe(false);
     }
   });
@@ -86,7 +87,7 @@ describe('AC2-6 存檔損壞不崩', () => {
     expect(r.state.coins).toBe(77);
     expect(r.state.puddings[0]!.species).toBe('matcha');
     expect(r.state.puddings[0]!.caramel).toBeGreaterThan(0);
-    expect(r.state.schemaVersion).toBe(1);
+    expect(r.state.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('負數與 NaN 會被夾回合法範圍', () => {
@@ -121,5 +122,43 @@ describe('AC2-6 存檔損壞不崩', () => {
     advance(wa, 120);
     advance(wb, 120);
     expect(visible(wa.state)).toEqual(visible(wb.state));
+  });
+});
+
+describe('schema v1 → v2：舊存檔沒有分區欄位', () => {
+  /** v1 的存檔長這樣：布丁／澡盆／掉落物都沒有 `zone`，整份也沒有 `zones` */
+  const v1 = {
+    schemaVersion: 1,
+    coins: 321,
+    stock: { caramel: 2, milk: 1 },
+    puddings: [{ id: 'p1', species: 'caramel', caramel: 70, pos: { x: 0.1, z: 0 } }],
+    basins: [{ liquid: 'caramel', units: 2, pos: { x: -0.52, z: 0.12 } }],
+    drops: [{ id: 'd1', species: 'caramel', pos: { x: 0.2, z: 0 } }],
+  };
+
+  it('全部補進起始區，沒有任何東西消失', () => {
+    const s = migrate(v1, { seed: 1, now: 0 });
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(s.coins).toBe(321);
+    expect(s.puddings).toHaveLength(1);
+    expect(s.puddings[0]!.zone).toBe(START_ZONE);
+    expect(s.basins[0]!.zone).toBe(START_ZONE);
+    expect(s.drops[0]!.zone).toBe(START_ZONE);
+    expect(s.activeZone).toBe(START_ZONE);
+    expect(s.zones.find((z) => z.id === START_ZONE)!.unlocked).toBe(true);
+    expect(s.zones.filter((z) => z.unlocked)).toHaveLength(1);
+  });
+
+  it('不認得的 zone 字串會被拉回起始區，而不是變成孤兒', () => {
+    const s = migrate({ ...v1, puddings: [{ id: 'p1', zone: 'c9t9' }] }, { seed: 1, now: 0 });
+    expect(s.puddings[0]!.zone).toBe(START_ZONE);
+  });
+
+  it('已解鎖的分區會被保留，activeZone 指向沒解鎖的區會被拉回起始區', () => {
+    const upper = zoneKey(0, 2);
+    const raw = { ...v1, zones: [{ id: upper, unlocked: true }], activeZone: zoneKey(1, 1) };
+    const s = migrate(raw, { seed: 1, now: 0 });
+    expect(s.zones.find((z) => z.id === upper)!.unlocked).toBe(true);
+    expect(s.activeZone).toBe(START_ZONE);
   });
 });

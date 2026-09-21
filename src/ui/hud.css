@@ -54,7 +54,7 @@
   align-items: center;
   pointer-events: auto;
 }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.chips { display: flex; gap: 6px; flex-wrap: nowrap; flex: 1; min-width: 0; }
 .chip {
   display: inline-flex;
   align-items: center;
@@ -71,9 +71,36 @@
 .iconbtn { padding: 8px; border-radius: 999px; }
 
 /* ── 布丁狀態 ─────────────────────────────── */
+/* ── 櫥窗切換（解鎖第二區之後才出現） ─────── */
+.zones {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 4px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+.zones[hidden] { display: none; }
+.zones button {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 3px 10px;
+  font-size: 18px;
+  line-height: 1;
+}
+.zones .name { font-size: 12.5px; white-space: nowrap; padding: 0 2px; }
+
 .living {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 50px);
+  top: calc(env(safe-area-inset-top, 0px) + 88px);
   left: 8px;
   display: flex;
   flex-direction: column;
@@ -136,6 +163,7 @@
 .dock .line > button { flex: 1; justify-content: center; min-width: 0; }
 .dock .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dock .n { font-variant-numeric: tabular-nums; color: var(--accent-ink); font-weight: 600; }
+.dock .n.zero { color: var(--danger); }
 .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .primary .n { color: #fff; }
 

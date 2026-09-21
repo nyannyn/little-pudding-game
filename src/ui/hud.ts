@@ -3,6 +3,7 @@ import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../game/bal
 import { describePudding } from '../game/pudding';
 import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
+import { nextLockedZone, puddingsIn, unlockedZones } from '../game/zones';
 import { icon, type IconName } from './icons';
 
 export interface HudActions {
@@ -15,6 +16,8 @@ export interface HudActions {
   buyStock(liquid: LiquidId, qty: number): void;
   buyEquipment(id: EquipmentId): void;
   buyBasin(liquid: LiquidId): void;
+  unlockZone(zoneId: string): void;
+  switchZone(zoneId: string): void;
   toggleMute(): boolean;
 }
 
@@ -53,9 +56,9 @@ function totalIngredients(s: GameState): number {
 export class Hud {
   readonly root: HTMLElement;
   private readonly chipCoins: HTMLElement;
-  private readonly chipStock: Partial<Record<LiquidId, HTMLElement>> = {};
   private readonly chipIng: HTMLElement;
   private readonly chipDes: HTMLElement;
+  private readonly zonesBar: HTMLElement;
   private readonly living: HTMLElement;
   private readonly ordersBox: HTMLElement;
   private readonly dockPour: HTMLElement;
@@ -68,6 +71,8 @@ export class Hud {
   private readonly welcome: HTMLElement;
   private readonly muteBtn: HTMLElement;
 
+  private zoneOrder: string[] = [];
+  private activeZone = '';
   private pourKeys = '';
   private orderKeys = '';
   private sheetOpen = false;
@@ -84,6 +89,11 @@ export class Hud {
           </div>
           <button class="iconbtn" data-a="mute" aria-label="音效">${icon('sound')}</button>
           <button class="iconbtn" data-a="shop" aria-label="商店">${icon('cart')}</button>
+        </div>
+        <div class="zones" hidden>
+          <button data-a="zoneStep" data-arg="-1" aria-label="上一個櫥窗">&#8249;</button>
+          <span class="name"></span>
+          <button data-a="zoneStep" data-arg="1" aria-label="下一個櫥窗">&#8250;</button>
         </div>
         <div class="living"></div>
         <div class="orders"></div>
@@ -114,6 +124,7 @@ export class Hud {
     this.chipCoins = q('[data-k="coins"] b');
     this.chipIng = q('[data-k="ing"] b');
     this.chipDes = q('[data-k="des"] b');
+    this.zonesBar = q('.zones');
     this.living = q('.living');
     this.ordersBox = q('.orders');
     this.dockPour = q('[data-k="pour"]');
@@ -144,6 +155,8 @@ export class Hud {
       case 'buyStock': this.act.buyStock(arg as LiquidId, 5); break;
       case 'buyEquip': this.act.buyEquipment(arg as EquipmentId); break;
       case 'buyBasin': this.act.buyBasin(arg as LiquidId); break;
+      case 'unlockZone': this.act.unlockZone(arg); break;
+      case 'zoneStep': this.stepZone(Number(arg)); break;
       case 'shop': this.toggleShop(true); break;
       case 'closeShop': this.toggleShop(false); break;
       case 'closeWelcome': this.welcome.hidden = true; break;
@@ -153,6 +166,15 @@ export class Hud {
         break;
       }
     }
+  }
+
+  /** 在已解鎖的分區之間循環切換（只有一區時整條列會藏起來） */
+  private stepZone(dir: number) {
+    const list = this.zoneOrder;
+    if (list.length < 2) return;
+    const i = list.indexOf(this.activeZone);
+    const next = list[(i + dir + list.length) % list.length];
+    if (next) this.act.switchZone(next);
   }
 
   private toggleShop(open: boolean) {
@@ -185,7 +207,7 @@ export class Hud {
     this.chipIng.textContent = String(totalIngredients(state));
     this.chipDes.textContent = String(totalDesserts(state));
 
-    this.syncStockChips(state);
+    this.syncZones(state);
     this.syncPourButtons(state);
     this.syncLiving(state);
     this.syncOrders(state);
@@ -205,20 +227,18 @@ export class Hud {
     if (this.sheetOpen) this.renderShop(state);
   }
 
-  private syncStockChips(state: GameState) {
-    const chips = this.root.querySelector('.chips')!;
-    const shown: LiquidId[] = ['caramel', 'milk', ...state.ownedBasins.filter((l) => l !== 'caramel' && l !== 'milk')];
-    for (const l of shown) {
-      let node = this.chipStock[l];
-      if (!node) {
-        node = el(`<span class="chip" data-k="stock-${l}">${icon(LIQUID_ICON[l])}<b>0</b></span>`);
-        chips.appendChild(node);
-        this.chipStock[l] = node;
-      }
-      const b = node.querySelector('b')!;
-      b.textContent = String(state.stock[l]);
-      node.classList.toggle('low', state.stock[l] === 0);
-    }
+  private syncZones(state: GameState) {
+    // 順序固定成「同一座由下往上，再換下一座」，按左右鍵才不會亂跳
+    const list = unlockedZones(state)
+      .slice()
+      .sort((a, b) => a.cabinet - b.cabinet || a.tier - b.tier);
+    this.zoneOrder = list.map((z) => z.id);
+    this.activeZone = state.activeZone;
+    this.zonesBar.hidden = list.length < 2;
+    if (list.length < 2) return;
+    const z = list.find((q) => q.id === state.activeZone);
+    const n = z ? puddingsIn(state, z.id).length : 0;
+    (this.zonesBar.querySelector('.name') as HTMLElement).textContent = z ? `${z.name}・${n} 隻` : '';
   }
 
   private syncPourButtons(state: GameState) {
@@ -229,22 +249,30 @@ export class Hud {
       this.dockPour.innerHTML = liquids
         .map(
           (l) =>
-            `<button data-a="pour" data-arg="${l}">${icon(LIQUID_ICON[l])}<span class="label">倒${LIQUID_SHORT[l]}</span></button>`,
+            `<button data-a="pour" data-arg="${l}">${icon(LIQUID_ICON[l])}<span class="label">倒${LIQUID_SHORT[l]}</span><span class="n"></span></button>`,
         )
         .join('');
     }
+    // 庫存直接寫在按鈕上：上方 chips 擠五個會換行撞到櫥窗切換列，
+    // 而且「還剩幾份」本來就該長在「要倒的那顆按鈕」上
     for (const l of liquids) {
       const btn = this.dockPour.querySelector<HTMLButtonElement>(`[data-arg="${l}"]`);
-      if (btn) btn.disabled = state.stock[l] <= 0;
+      if (!btn) continue;
+      btn.disabled = state.stock[l] <= 0;
+      const n = btn.querySelector('.n') as HTMLElement;
+      n.textContent = String(state.stock[l]);
+      n.classList.toggle('zero', state.stock[l] === 0);
     }
   }
 
   private syncLiving(state: GameState) {
-    while (this.living.childElementCount > state.puddings.length) this.living.lastElementChild?.remove();
-    while (this.living.childElementCount < state.puddings.length) {
+    // 只列「看得到的那一區」的住客：其他區照樣在運作，但狀態列擠不下也沒意義
+    const mine = puddingsIn(state, state.activeZone);
+    while (this.living.childElementCount > mine.length) this.living.lastElementChild?.remove();
+    while (this.living.childElementCount < mine.length) {
       this.living.appendChild(el(`<div class="row">${icon('pudding')}<span class="t"></span><span class="bar"><i></i></span></div>`));
     }
-    state.puddings.forEach((p, i) => {
+    mine.forEach((p, i) => {
       const row = this.living.children[i] as HTMLElement | undefined;
       if (!row) return;
       (row.querySelector('.t') as HTMLElement).textContent = describePudding(p);
@@ -317,6 +345,18 @@ export class Hud {
         <div class="grow"><div class="name">T${info.tier}　${info.name}</div><div class="desc">${info.desc}</div></div>
         ${owned ? '<span class="owned">已安裝</span>' : `<button data-a="buyEquip" data-arg="${id}" ${state.coins < info.price ? 'disabled' : ''}>${info.price}</button>`}
       </div>`);
+    }
+
+    rows.push('<h3>擴建櫥窗</h3>');
+    const nz = nextLockedZone(state);
+    if (nz) {
+      rows.push(`<div class="item">
+        <div class="grow"><div class="name">${nz.name}</div>
+        <div class="desc">解鎖後多一隻住客與一個澡盆，產量翻倍</div></div>
+        <button data-a="unlockZone" data-arg="${nz.id}" ${state.coins < nz.price ? 'disabled' : ''}>${nz.price}</button>
+      </div>`);
+    } else {
+      rows.push('<div class="item"><div class="grow desc">所有櫥窗都開了。</div></div>');
     }
 
     rows.push('<h3>風味澡盆</h3>');

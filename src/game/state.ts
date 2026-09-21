@@ -1,7 +1,12 @@
 import { BALANCE, EQUIPMENT_IDS, type EquipmentId } from './balance';
 import { LIQUID_IDS, SPECIES_IDS, type LiquidId, type SpeciesId } from './species';
+import { START_ZONE, defaultZones, type Zone } from './zones';
 
-export const SCHEMA_VERSION = 1;
+/**
+ * 2（2026-09-21）：加入分區。v1 的存檔沒有 `zone` 欄位，
+ * migrate 會把所有布丁／澡盆／掉落物補成起始區，不然它們會從所有查詢裡消失。
+ */
+export const SCHEMA_VERSION = 2;
 
 /** 布丁在地板上的行為狀態 */
 export type PuddingMode = 'hopping' | 'resting' | 'bathing';
@@ -10,6 +15,8 @@ export interface Vec2 { x: number; z: number }
 
 export interface Pudding {
   id: string;
+  /** 住在哪一區（`zones.ts`） */
+  zone: string;
   species: SpeciesId;
   /** 0–100，會隨時間下降；低於門檻就想泡澡 */
   caramel: number;
@@ -40,6 +47,8 @@ export interface Pudding {
 }
 
 export interface Basin {
+  /** 放在哪一區 */
+  zone: string;
   /** 目前裝的液體；null＝空盆（空了才可以換液體） */
   liquid: LiquidId | null;
   /** 剩餘份數 */
@@ -57,6 +66,8 @@ export interface Basin {
 
 export interface Drop {
   id: string;
+  /** 掉在哪一區 */
+  zone: string;
   /** 掉的是哪個物種的原料 */
   species: SpeciesId;
   pos: Vec2;
@@ -93,6 +104,10 @@ export interface GameState {
   basins: Basin[];
   drops: Drop[];
   orders: Order[];
+  /** 全部分區（含未解鎖的），解鎖狀態存在這裡 */
+  zones: Zone[];
+  /** 玩家目前在看哪一區：鏡頭對著它，HUD 的動作也作用在它身上 */
+  activeZone: string;
   equipment: Record<EquipmentId, boolean>;
   /** 下一張訂單卡的生成時間（遊戲秒） */
   nextOrderAt: number;
@@ -144,6 +159,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
 
   const puddings: Pudding[] = spots.slice(0, 2).map((pos, i) => ({
     id: `p${i + 1}`,
+    zone: START_ZONE,
     species: 'caramel' as SpeciesId,
     caramel: i === 0 ? 24 : 58,
     bathHistory: [],
@@ -173,14 +189,24 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     ingredients: zeroBySpecies(),
     desserts: zeroBySpecies(),
     puddings,
-    basins: [{ liquid: null, units: 0, preferredLiquid: null, pos: { ...basinPos }, occupantId: null }],
+    basins: [{ zone: START_ZONE, liquid: null, units: 0, preferredLiquid: null, pos: { ...basinPos }, occupantId: null }],
+    zones: defaultZones(),
+    activeZone: START_ZONE,
     drops: [],
     orders: [],
     equipment: noEquipment(),
     nextOrderAt: BALANCE.orderIntervalMin,
-    nextId: 1,
+    // 開局的住客叫 p1、p2，流水號要從它們之後開始：
+    // 從 1 開始的話，解鎖第二區生出來的布丁會叫 p1 撞號，
+    // scene 端以 id 為鍵的 view Map 就會綁到錯的那一隻。
+    nextId: puddings.length + 1,
     stats: { baths: 0, sold: 0, mutations: 0, picked: 0, crafted: 0 },
   };
+}
+
+/** 這一區在這份 state 裡是不是已解鎖（migrate 內部用，避免循環 import zones.findZone） */
+function findZoneUnlocked(s: GameState, id: string): boolean {
+  return s.zones.some((z) => z.id === id && z.unlocked);
 }
 
 function num(v: unknown, fallback: number): number {
@@ -223,12 +249,26 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     ? (r.ownedBasins.filter((x) => LIQUID_IDS.includes(x as LiquidId)) as LiquidId[])
     : [];
 
+  // 分區：v1 存檔沒有這欄，補成起始區——不補的話這些布丁不屬於任何一區，
+  // 所有以 zone 過濾的查詢都會漏掉它們，玩家的住客會憑空消失。
+  const knownZones = new Set(base.zones.map((z) => z.id));
+  const zoneOf = (v: unknown): string => (typeof v === 'string' && knownZones.has(v) ? v : START_ZONE);
+  if (Array.isArray(r.zones)) {
+    for (const z of out.zones) {
+      const src = (r.zones as Partial<Zone>[]).find((x) => x?.id === z.id);
+      if (src?.unlocked === true) z.unlocked = true;
+    }
+  }
+  out.activeZone = zoneOf(r.activeZone);
+  if (!(findZoneUnlocked(out, out.activeZone))) out.activeZone = START_ZONE;
+
   out.puddings = r.puddings.map((p, i) => {
     const src = (p ?? {}) as Partial<Pudding>;
     const tpl = base.puddings[Math.min(i, base.puddings.length - 1)] as Pudding;
     const pos = { x: num(src.pos?.x, tpl.pos.x), z: num(src.pos?.z, tpl.pos.z) };
     return {
       id: typeof src.id === 'string' ? src.id : `p${i + 1}`,
+      zone: zoneOf(src.zone),
       species: SPECIES_IDS.includes(src.species as SpeciesId) ? (src.species as SpeciesId) : 'caramel',
       caramel: Math.min(100, Math.max(0, num(src.caramel, 100))),
       bathHistory: Array.isArray(src.bathHistory)
@@ -258,6 +298,7 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     out.basins = r.basins.map((b, i) => {
       const src = (b ?? {}) as Partial<Basin>;
       return {
+        zone: zoneOf(src.zone),
         liquid: LIQUID_IDS.includes(src.liquid as LiquidId) ? (src.liquid as LiquidId) : null,
         units: Math.max(0, Math.min(BALANCE.basinCapacity, num(src.units, 0))),
         preferredLiquid: LIQUID_IDS.includes(src.preferredLiquid as LiquidId) ? (src.preferredLiquid as LiquidId) : null,
@@ -272,6 +313,7 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
         const src = (d ?? {}) as Partial<Drop>;
         return {
           id: typeof src.id === 'string' ? src.id : `d${i + 1}`,
+          zone: zoneOf(src.zone),
           species: SPECIES_IDS.includes(src.species as SpeciesId) ? (src.species as SpeciesId) : 'caramel',
           pos: { x: num(src.pos?.x, 0), z: num(src.pos?.z, 0) },
           bornAt: num(src.bornAt, out.time),
@@ -302,6 +344,13 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     picked: Math.max(0, num(st.picked, 0)),
     crafted: Math.max(0, num(st.crafted, 0)),
   };
+
+  // 舊存檔的 nextId 可能落後於實際用掉的號碼（或根本沒有這欄），
+  // 不推到最大值之後，接下來生成的 id 會跟既有的撞號
+  const used = [...out.puddings, ...out.drops, ...out.orders]
+    .map((x) => Number(/(\d+)$/.exec(x.id)?.[1] ?? 0))
+    .filter((n) => Number.isFinite(n));
+  out.nextId = Math.max(out.nextId, ...used, 0) + 1;
 
   out.schemaVersion = SCHEMA_VERSION;
   return out;

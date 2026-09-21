@@ -59,8 +59,8 @@ const CASES = [
     ac: 'AC2-9',
     why: '拿掉掉落上限，地上會堆到第 6 份',
     file: 'src/game/pudding.ts',
-    from: 'if (state.drops.length >= BALANCE.dropCap) return false;',
-    to: 'if (state.drops.length >= 9999) return false;',
+    from: 'if (state.drops.filter((d) => d.zone === zone).length >= BALANCE.dropCap) return false;',
+    to: 'if (state.drops.filter((d) => d.zone === zone).length >= 9999) return false;',
     test: '地上已經 5 份時',
   },
   {

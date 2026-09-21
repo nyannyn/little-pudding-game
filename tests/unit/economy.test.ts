@@ -15,6 +15,7 @@ import type { SimEvent } from '../../src/game/events';
 import { advance } from '../../src/game/sim';
 import { SPECIES, dessertPrice } from '../../src/game/species';
 import { createNewSave } from '../../src/game/state';
+import { START_ZONE } from '../../src/game/zones';
 import { advanceUntil, fillBasinDirect, makeWorld, only, runOneBath } from './helpers';
 
 const sink = (_e: SimEvent) => {};
@@ -105,9 +106,9 @@ describe('經濟：撿、加工、賣', () => {
   it('買特殊澡盆後盆子數量增加、可以倒抹茶', () => {
     const s = createNewSave({ seed: 7, now: 0 });
     s.coins = BALANCE.specialBasinPrice + 100;
-    expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, sink).ok).toBe(true);
+    expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, START_ZONE, sink).ok).toBe(true);
     expect(s.basins.length).toBe(2);
-    expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, sink).ok).toBe(false);
+    expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, START_ZONE, sink).ok).toBe(false);
 
     expect(buyStock(s, 'matcha', 2, sink).ok).toBe(true);
     expect(fillBasin(s, 1, 'matcha', sink).ok).toBe(true);
