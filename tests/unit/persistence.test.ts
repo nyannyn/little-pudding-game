@@ -1,0 +1,125 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { BALANCE } from '../../src/game/balance';
+import { advance, createWorld, settleOffline, syncForSave } from '../../src/game/sim';
+import { clear, load, parseSave, save } from '../../src/game/storage';
+import { createNewSave, migrate } from '../../src/game/state';
+import { FLOOR, fillBasinDirect, makeWorld } from './helpers';
+
+/** 讓兩個世界從完全一樣的起點出發（同種子、同澡盆狀態） */
+function primed(seed = 424242) {
+  const w = makeWorld({ seed });
+  w.state.equipment.autoFill = true;
+  w.state.equipment.collector = true;
+  w.state.stock.caramel = 5000;
+  fillBasinDirect(w.state, 'caramel');
+  return w;
+}
+
+/** 比較兩份存檔裡「玩家看得到」的部分 */
+function visible(s: ReturnType<typeof createNewSave>) {
+  return {
+    coins: s.coins,
+    ingredients: { ...s.ingredients },
+    desserts: { ...s.desserts },
+    stock: { ...s.stock },
+    baths: s.stats.baths,
+    drops: s.drops.length,
+  };
+}
+
+describe('AC2-5 離線結算上限 8 小時', () => {
+  it('離開 24 小時＝只補跑 8 小時', () => {
+    const a = primed();
+    const settled = settleOffline(a, a.state.lastSeenAt + 24 * 3600 * 1000);
+    expect(settled).toBe(BALANCE.offlineCapSec);
+
+    const b = primed();
+    advance(b, BALANCE.offlineCapSec);
+
+    expect(visible(a.state)).toEqual(visible(b.state));
+  });
+
+  it('離開 1 小時就只跑 1 小時，結果比 8 小時少', () => {
+    const a = primed();
+    expect(settleOffline(a, a.state.lastSeenAt + 3600 * 1000)).toBe(3600);
+    const b = primed();
+    advance(b, BALANCE.offlineCapSec);
+    expect(a.state.stats.baths).toBeLessThan(b.state.stats.baths);
+  });
+
+  it('沒有自動注液閥時，澡盆用完就停產', () => {
+    const w = makeWorld({ seed: 7 });
+    fillBasinDirect(w.state, 'caramel', BALANCE.basinCapacity);
+    settleOffline(w, w.state.lastSeenAt + 8 * 3600 * 1000);
+    expect(w.state.stats.baths).toBe(BALANCE.basinCapacity);
+    expect(w.state.basins[0]!.units).toBe(0);
+  });
+
+  it('時間倒退（使用者改系統時間）不會倒扣', () => {
+    const w = primed();
+    const t0 = w.state.time;
+    expect(settleOffline(w, w.state.lastSeenAt - 5000)).toBe(0);
+    expect(w.state.time).toBe(t0);
+  });
+});
+
+describe('AC2-6 存檔損壞不崩', () => {
+  beforeEach(() => clear());
+
+  it('壞 JSON、null、空物件都回一個能玩的新檔', () => {
+    for (const bad of ['{garbage', 'null', '[]', '{}', '"nope"'] as const) {
+      const r = parseSave(bad, { seed: 1, now: 0 });
+      expect(r.state.puddings.length).toBeGreaterThan(0);
+      expect(r.state.schemaVersion).toBe(1);
+      expect(r.restored).toBe(false);
+    }
+  });
+
+  it('沒有存檔時開新檔', () => {
+    expect(load({ seed: 1, now: 0 }).restored).toBe(false);
+  });
+
+  it('欄位缺一半的舊檔會被補齊而不是丟掉', () => {
+    const partial = { schemaVersion: 0, coins: 77, puddings: [{ id: 'p1', species: 'matcha' }] };
+    const r = parseSave(JSON.stringify(partial), { seed: 1, now: 0 });
+    expect(r.restored).toBe(true);
+    expect(r.state.coins).toBe(77);
+    expect(r.state.puddings[0]!.species).toBe('matcha');
+    expect(r.state.puddings[0]!.caramel).toBeGreaterThan(0);
+    expect(r.state.schemaVersion).toBe(1);
+  });
+
+  it('負數與 NaN 會被夾回合法範圍', () => {
+    const evil = {
+      coins: -500, time: -10, tint: 1,
+      stock: { caramel: -3, milk: Number.NaN },
+      puddings: [{ id: 'p1', caramel: 9999, tint: 5, species: 'nope' }],
+      drops: new Array(50).fill({ id: 'd', species: 'caramel', pos: { x: 0, z: 0 } }),
+    };
+    const s = migrate(evil, { seed: 1, now: 0 });
+    expect(s.coins).toBe(0);
+    expect(s.time).toBe(0);
+    expect(s.stock.caramel).toBe(0);
+    expect(s.stock.milk).toBe(0);
+    expect(s.puddings[0]!.caramel).toBe(100);
+    expect(s.puddings[0]!.tint).toBe(1);
+    expect(s.puddings[0]!.species).toBe('caramel');
+    expect(s.drops.length).toBe(BALANCE.dropCap);
+  });
+
+  it('存檔→讀回→接著跑，亂數序列接得上（同一份存檔重開兩次結果一樣）', () => {
+    const w = primed(31337);
+    advance(w, 90);
+    save(syncForSave(w, 1_000_000));
+
+    const a = load({ seed: 1, now: 0 }).state;
+    const b = load({ seed: 1, now: 0 }).state;
+    expect(a.rngState).toBe(b.rngState);
+
+    const wa = createWorld(a, FLOOR);
+    const wb = createWorld(b, FLOOR);
+    advance(wa, 120);
+    advance(wb, 120);
+    expect(visible(wa.state)).toEqual(visible(wb.state));
+  });
+});

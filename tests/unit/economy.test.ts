@@ -1,0 +1,176 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buyEquipment,
+  buySpecialBasin,
+  buyStock,
+  craft,
+  fillBasin,
+  fulfillOrder,
+  pickDrop,
+  sellDessert,
+  sellIngredient,
+} from '../../src/game/actions';
+import { BALANCE, EQUIPMENT } from '../../src/game/balance';
+import type { SimEvent } from '../../src/game/events';
+import { advance } from '../../src/game/sim';
+import { SPECIES, dessertPrice } from '../../src/game/species';
+import { createNewSave } from '../../src/game/state';
+import { advanceUntil, fillBasinDirect, makeWorld, only, runOneBath } from './helpers';
+
+const sink = (_e: SimEvent) => {};
+
+describe('AC2-7 金幣與庫存不會變成負的', () => {
+  it('錢不夠買設備時 state 完全不動', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.coins = 10;
+    const before = JSON.stringify(s);
+    const r = buyEquipment(s, 'restock', sink);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('焦糖幣');
+    expect(JSON.stringify(s)).toBe(before);
+  });
+
+  it('錢不夠買補貨時 state 完全不動', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.coins = 1;
+    const before = JSON.stringify(s);
+    expect(buyStock(s, 'caramel', 5, sink).ok).toBe(false);
+    expect(JSON.stringify(s)).toBe(before);
+  });
+
+  it('庫存不夠時倒不進澡盆，且庫存不會變負', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.stock.caramel = 0;
+    const r = fillBasin(s, 0, 'caramel', sink);
+    expect(r.ok).toBe(false);
+    expect(s.stock.caramel).toBe(0);
+    expect(s.basins[0]!.units).toBe(0);
+  });
+
+  it('原料不夠時加工失敗且不扣料', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.ingredients.caramel = BALANCE.ingredientsPerDessert - 1;
+    expect(craft(s, 'caramel', sink).ok).toBe(false);
+    expect(s.ingredients.caramel).toBe(BALANCE.ingredientsPerDessert - 1);
+    expect(s.desserts.caramel).toBe(0);
+  });
+
+  it('沒買澡盆就不能倒特殊液體、也不能買特殊液體', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.coins = 9999;
+    s.stock.matcha = 3;
+    expect(fillBasin(s, 0, 'matcha', sink).ok).toBe(false);
+    expect(buyStock(s, 'matcha', 1, sink).ok).toBe(false);
+    expect(s.stock.matcha).toBe(3);
+  });
+});
+
+describe('經濟：撿、加工、賣', () => {
+  it('撿起來就入庫，賣掉就加錢', () => {
+    const w = makeWorld({ puddings: 1 });
+    fillBasinDirect(w.state, 'caramel');
+    expect(runOneBath(w, 'caramel')).toBe(true);
+    const drop = w.state.drops[0]!;
+
+    expect(pickDrop(w.state, drop.id, sink).ok).toBe(true);
+    expect(w.state.ingredients.caramel).toBe(1);
+    expect(w.state.drops.length).toBe(0);
+
+    const coins = w.state.coins;
+    expect(sellIngredient(w.state, 'caramel', 1, sink).ok).toBe(true);
+    expect(w.state.coins).toBe(coins + SPECIES.caramel.ingredientPrice);
+  });
+
+  it('同一份原料不能撿兩次', () => {
+    const w = makeWorld({ puddings: 1 });
+    expect(runOneBath(w, 'caramel')).toBe(true);
+    const id = w.state.drops[0]!.id;
+    expect(pickDrop(w.state, id, sink).ok).toBe(true);
+    expect(pickDrop(w.state, id, sink).ok).toBe(false);
+    expect(w.state.ingredients.caramel).toBe(1);
+  });
+
+  it('兩份原料換一份甜點，甜點售價是原料的 3 倍', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.ingredients.caramel = 2;
+    expect(craft(s, 'caramel', sink).ok).toBe(true);
+    expect(s.ingredients.caramel).toBe(0);
+    expect(s.desserts.caramel).toBe(1);
+
+    const coins = s.coins;
+    expect(sellDessert(s, 'caramel', 1, sink).ok).toBe(true);
+    expect(s.coins).toBe(coins + SPECIES.caramel.ingredientPrice * BALANCE.dessertPriceMult);
+  });
+
+  it('買特殊澡盆後盆子數量增加、可以倒抹茶', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.coins = BALANCE.specialBasinPrice + 100;
+    expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, sink).ok).toBe(true);
+    expect(s.basins.length).toBe(2);
+    expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, sink).ok).toBe(false);
+
+    expect(buyStock(s, 'matcha', 2, sink).ok).toBe(true);
+    expect(fillBasin(s, 1, 'matcha', sink).ok).toBe(true);
+    expect(s.basins[1]!.units).toBe(1);
+  });
+
+  it('澡盆裡有焦糖時不能改倒牛奶', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    expect(fillBasin(s, 0, 'caramel', sink).ok).toBe(true);
+    const r = fillBasin(s, 0, 'milk', sink);
+    expect(r.ok).toBe(false);
+    expect(s.basins[0]!.liquid).toBe('caramel');
+  });
+});
+
+describe('AC2-10 訂單卡', () => {
+  it('時間到會生成訂單卡，有貨就能成交', () => {
+    const w = makeWorld({ puddings: 1 });
+    expect(advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1)).toBeGreaterThanOrEqual(0);
+    const o = w.state.orders[0]!;
+    expect(o.qty).toBeGreaterThanOrEqual(1);
+    expect(o.qty).toBeLessThanOrEqual(3);
+
+    const unit = dessertPrice(o.species, BALANCE.dessertPriceMult);
+    expect(o.price).toBeGreaterThanOrEqual(Math.round(unit * o.qty * BALANCE.orderPriceMultMin) - 1);
+    expect(o.price).toBeLessThanOrEqual(Math.round(unit * o.qty * BALANCE.orderPriceMultMax) + 1);
+
+    w.state.desserts[o.species] = o.qty;
+    const coins = w.state.coins;
+    expect(fulfillOrder(w.state, o.id, sink).ok).toBe(true);
+    expect(w.state.coins).toBe(coins + o.price);
+    expect(w.state.orders.find((x) => x.id === o.id)).toBeUndefined();
+  });
+
+  it('沒有對應物種的甜點就只能看它過期', () => {
+    const w = makeWorld({ puddings: 1 });
+    advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1);
+    const o = w.state.orders[0]!;
+    expect(fulfillOrder(w.state, o.id, sink).ok).toBe(false);
+
+    advance(w, BALANCE.orderTtlSec + 2);
+    expect(w.state.orders.find((x) => x.id === o.id)).toBeUndefined();
+  });
+
+  it('過期的訂單不能事後補交', () => {
+    const w = makeWorld({ puddings: 1 });
+    advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1);
+    const o = w.state.orders[0]!;
+    w.state.desserts[o.species] = o.qty;
+    o.expiresAt = w.state.time - 1;
+    expect(fulfillOrder(w.state, o.id, sink).ok).toBe(false);
+  });
+
+  it('桌上訂單不會超過上限', () => {
+    const w = makeWorld({ puddings: 1 });
+    advance(w, BALANCE.orderIntervalMax * 10);
+    expect(w.state.orders.length).toBeLessThanOrEqual(BALANCE.orderMaxActive);
+  });
+});
+
+describe('設備定價維持「幾次泡澡的收入」的級距', () => {
+  it('T1 < T2 < T3', () => {
+    expect(EQUIPMENT.autoFill.price).toBeLessThan(EQUIPMENT.crafter.price);
+    expect(EQUIPMENT.crafter.price).toBeLessThan(EQUIPMENT.restock.price);
+  });
+});
