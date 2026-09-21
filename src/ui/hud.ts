@@ -80,6 +80,7 @@ export class Hud {
   private pourKeys = '';
   private orderKeys = '';
   private sheetOpen = false;
+  private shopHtml = '';
   private lastRefresh = -1;
 
   constructor(parent: HTMLElement, private readonly act: HudActions) {
@@ -406,11 +407,17 @@ export class Hud {
       rows.push(`<div class="item">
         ${cuteIcon(LIQUID_ICON[l], 'tile')}
         <div class="grow"><div class="name">${info.name}澡盆</div>
-        <div class="desc">泡滿 48 小時會變成${SPECIES[info.flavorFor as SpeciesId].name}</div></div>
+        <div class="desc">泡 ${Math.ceil(BALANCE.flavorThresholdSec / BALANCE.flavorExposurePerBath)} 次澡會變成${SPECIES[info.flavorFor as SpeciesId].name}</div></div>
         ${owned ? '<span class="owned">已擁有</span>' : `<button data-a="buyBasin" data-arg="${l}" ${state.coins < BALANCE.specialBasinPrice ? 'disabled' : ''}>${BALANCE.specialBasinPrice}</button>`}
       </div>`);
     }
 
-    this.sheetBody.innerHTML = rows.join('');
+    // 內容沒變就不重寫 DOM：商店開著時 update 每 160ms 進來一次，
+    // 每次都換掉 innerHTML 會把玩家手指正按著的按鈕換成新節點——pointerdown 與 pointerup
+    // 落在不同節點，click 不會發生，體感就是「商店按鈕偶爾按不動」（e2e 也因此逾時）。
+    const html = rows.join('');
+    if (html === this.shopHtml) return;
+    this.shopHtml = html;
+    this.sheetBody.innerHTML = html;
   }
 }
