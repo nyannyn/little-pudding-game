@@ -7,3 +7,5 @@ tests/e2e/__screenshots__/*-actual.png
 *.blend1
 .DS_Store
 Thumbs.db
+# 迭代過程的預覽圖：可由 tools/ 的腳本重新產生，且視覺證據不進公開 repo
+docs/previews/

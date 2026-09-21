@@ -3,7 +3,19 @@ import type * as THREE from 'three';
 export interface LpgStats { fps: number; drawCalls: number; triangles: number; ready: boolean }
 
 declare global {
-  interface Window { __lpg: { stats: LpgStats; state?: unknown } }
+  interface Window {
+    __lpg: {
+      stats: LpgStats;
+      state?: unknown;
+      three?: {
+        scene: THREE.Scene;
+        camera: THREE.PerspectiveCamera;
+        renderer: THREE.WebGLRenderer;
+        controls: { target: THREE.Vector3; update(): void };
+        raycaster: THREE.Raycaster;
+      };
+    };
+  }
 }
 
 // `?debug=1` 顯示面板；數字永遠寫進 window.__lpg.stats 供 Playwright 讀

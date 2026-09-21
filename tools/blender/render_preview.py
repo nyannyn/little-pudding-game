@@ -20,6 +20,11 @@ def render_preview(out_prefix: str, size: int = 512, target=None, angles=(0, 90,
     scene.render.film_transparent = True
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
+    # 預覽要看的是「材質底色對不對」，AgX 會把飽和色洗成米白；一律用 Standard
+    try:
+        scene.view_settings.view_transform = "Standard"
+    except TypeError:
+        pass
 
     # 取要拍的物件範圍
     objs = [o for o in (target or scene.objects) if o.type == "MESH" and not o.hide_render]
@@ -42,11 +47,12 @@ def render_preview(out_prefix: str, size: int = 512, target=None, angles=(0, 90,
     # 三點光：主光暖、補光冷、背光；預覽用，不影響匯出（GLB 不帶燈）
     lights = []
     for name, loc, energy, color in (
-        ("PreviewKey", (4, -4, 6), 1200, (1.0, 0.93, 0.8)),
-        ("PreviewFill", (-5, -3, 3), 400, (0.85, 0.9, 1.0)),
-        ("PreviewRim", (0, 5, 4), 600, (1.0, 1.0, 1.0)),
+        ("PreviewKey", (4, -4, 6), 3400, (1.0, 0.93, 0.8)),
+        ("PreviewFill", (-5, -3, 3), 1150, (0.85, 0.9, 1.0)),
+        ("PreviewRim", (0, 5, 4), 1700, (1.0, 1.0, 1.0)),
     ):
-        ld = bpy.data.lights.new(name, "POINT"); ld.energy = energy; ld.color = color
+        # 燈的位置隨 radius 線性縮放，能量必須隨 radius 平方縮放，否則小物件會過曝
+        ld = bpy.data.lights.new(name, "POINT"); ld.energy = energy * radius * radius; ld.color = color
         lo = bpy.data.objects.new(name, ld); lo.location = (cx + loc[0] * radius, cy + loc[1] * radius, cz + loc[2] * radius)
         scene.collection.objects.link(lo); lights.append(lo)
 
