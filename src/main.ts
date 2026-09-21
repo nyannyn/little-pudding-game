@@ -15,6 +15,7 @@ import {
   unlockZone,
 } from './game/actions';
 import type { SimEvent } from './game/events';
+import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
 import { unlockedAtLevel } from './game/shop';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
@@ -133,6 +134,13 @@ const newSaveOptions = {
 
 const loaded = fresh ? { state: createNewSave(newSaveOptions), restored: false } : load(newSaveOptions);
 const state: GameState = loaded.state;
+// `?lv=N&coins=M`：看商店各等級長相用（跟 `?pop=` 一樣是量測／簽核參數，不是遊戲功能）
+{
+  const lv = Number(params.get('lv'));
+  if (lv >= 1) state.xp = Math.max(state.xp, BALANCE.levelXp[Math.min(lv, BALANCE.levelXp.length) - 1] ?? 0);
+  const coins = Number(params.get('coins'));
+  if (coins > 0) state.coins = coins;
+}
 const world = createWorld(state, floor);
 
 // ── 櫃體：主櫃永遠在，解鎖的鄰櫃升級成完整櫃子 ────────
