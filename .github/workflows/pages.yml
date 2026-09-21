@@ -1,0 +1,59 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時只跑一個部署；排隊中的舊 commit 直接取消
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Pages 的網址是 https://<user>.github.io/<repo>/，資產路徑要跟著加前綴。
+      # vite.config.ts 讀 VITE_BASE，本機開發不設就是 /。
+      - name: Build
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+          NODE_ENV: production
+        run: npm run build
+
+      # 沒有 index.html 就等於部署了一包空氣，先擋下來
+      - name: Verify build output
+        run: |
+          test -f dist/index.html || { echo "dist/index.html 不存在"; exit 1; }
+          test -f dist/models/pudding_base.glb || { echo "布丁模型沒有被複製進 dist"; exit 1; }
+          grep -q "/${{ github.event.repository.name }}/assets/" dist/index.html \
+            || { echo "index.html 沒有帶上 base 前綴，手機端會 404"; exit 1; }
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
