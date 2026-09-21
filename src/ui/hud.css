@@ -183,6 +183,13 @@
 .hud .zones button:active:not(:disabled) { transform: none; opacity: 0.7; }
 .zones .name { font-size: 13px; font-weight: 700; white-space: nowrap; padding: 0 2px; }
 .zones:not([hidden]) ~ .living { top: calc(env(safe-area-inset-top, 0px) + 104px); }
+.living .row .t { white-space: nowrap; }
+/* 320px 寬（iPhone SE）：左欄只剩 146px，字縮一號、量條縮短，才不會折成兩行 */
+@media (max-width: 359px) {
+  .living .row { font-size: 11px; gap: 4px; padding-right: 6px; }
+  .living .row .bar { width: 30px; }
+  .hud .orders { width: 126px; } /* 寫在 .orders 規則之前，要提高特異度才蓋得過 */
+}
 
 /* ── 布丁狀態 ─────────────────────────────── */
 /* 上方左欄由上而下：資源列 → 櫥窗切換（有才出現）→ 住客狀態；右欄是訂單卡。
@@ -232,7 +239,15 @@
   flex-direction: column;
   gap: 8px;
   pointer-events: auto;
+  /* 整欄不得伸到啟用層的地板（畫面高度約 45% 以下是布丁與掉落物）：
+     iPhone SE 三張卡會疊到 309px、地板在 257px 起，布丁整隻被蓋住還點不到。
+     超過就在欄內捲動。 */
+  max-height: calc(42vh - 56px - env(safe-area-inset-top, 0px));
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-bottom: 6px;
 }
+.orders::-webkit-scrollbar { display: none; }
 /* 卡片要矮：最多三張疊在右欄，超過約 240px 就會蓋到啟用層的地板（布丁在那裡） */
 .order {
   background: var(--paper) var(--leaf);

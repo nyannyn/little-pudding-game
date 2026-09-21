@@ -91,3 +91,58 @@ test('點畫布上的原料撿得到（投影偏移有套進射線）', async ({
   await page.waitForTimeout(200);
   expect(await page.evaluate(() => window.__lpg.state!.drops.length)).toBe(target.drops - 1);
 });
+
+/**
+ * 訂單欄不得蓋住啟用層的地板（布丁與掉落物），最窄的手機（320×568）也一樣。
+ * 由來：三張訂單卡在 iPhone SE 疊到 309px，地板從 257px 起，兩隻布丁整個在卡片後面且點不到。
+ * 卡片矩形要跟欄的可見範圍取交集（欄會捲動，被剪掉的部分不算蓋住）。
+ * 負向對照：拿掉 .orders 的 max-height → SE 上兩隻布丁被蓋而紅。
+ */
+test.describe('320px 寬', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test('三張訂單卡加五份掉落物，沒有任何布丁或原料被卡片蓋住', async ({ page }) => {
+    await page.goto('/?fresh=1&seed=5');
+    await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+    await page.evaluate(() => {
+      const s = window.__lpg.state!;
+      for (let i = 0; i < 3; i++) s.orders.push({ id: `o${i}`, species: 'caramel', qty: 2, price: 100 + i, createdAt: s.time, expiresAt: s.time + 300 });
+      const b = s.basins[0]!;
+      for (let i = 0; i < 5; i++) {
+        const a = i * 1.2566;
+        s.drops.push({ id: `dd${i}`, zone: 'c0t1', species: 'caramel', pos: { x: b.pos.x + 0.32 * Math.cos(a), z: b.pos.z + 0.224 * Math.sin(a) }, bornAt: s.time - 5 });
+      }
+    });
+    await page.waitForTimeout(700);
+
+    const r = await page.evaluate(() => {
+      const { camera, scene } = window.__lpg.three!;
+      const proj = (x: number, y: number, z: number) => {
+        const mv = camera.matrixWorldInverse.elements, p = camera.projectionMatrix.elements;
+        const cx = mv[0]! * x + mv[4]! * y + mv[8]! * z + mv[12]!;
+        const cy = mv[1]! * x + mv[5]! * y + mv[9]! * z + mv[13]!;
+        const cz = mv[2]! * x + mv[6]! * y + mv[10]! * z + mv[14]!;
+        const px = p[0]! * cx + p[4]! * cy + p[8]! * cz + p[12]!;
+        const py = p[1]! * cx + p[5]! * cy + p[9]! * cz + p[13]!;
+        const pw = p[3]! * cx + p[7]! * cy + p[11]! * cz + p[15]!;
+        return { x: ((px / pw + 1) / 2) * innerWidth, y: ((1 - py / pw) / 2) * innerHeight };
+      };
+      const pts: { kind: string; x: number; y: number }[] = [];
+      scene.traverse((o) => {
+        if (o.parent === scene && o.getObjectByName('Pudding_Body')) pts.push({ kind: 'pudding', ...proj(o.position.x, o.position.y + 0.12, o.position.z) });
+      });
+      const drops = scene.getObjectByName('Drops') as unknown as { count: number; instanceMatrix: { array: ArrayLike<number> } };
+      const e = drops.instanceMatrix.array;
+      for (let i = 0; i < drops.count; i++) pts.push({ kind: 'drop', ...proj(e[i * 16 + 12]!, e[i * 16 + 13]!, e[i * 16 + 14]!) });
+      const col = document.querySelector('.orders')!.getBoundingClientRect();
+      const cards = [...document.querySelectorAll('.order')]
+        .map((el) => { const b = el.getBoundingClientRect(); return { l: Math.max(b.left, col.left), t: Math.max(b.top, col.top), r: Math.min(b.right, col.right), b: Math.min(b.bottom, col.bottom) }; })
+        .filter((c) => c.b > c.t);
+      const covered = pts.filter((q) => cards.some((c) => q.x >= c.l - 8 && q.x <= c.r + 8 && q.y >= c.t - 8 && q.y <= c.b + 8));
+      return { cards: cards.length, pts: pts.length, covered };
+    });
+    expect(r.cards).toBeGreaterThan(0);
+    expect(r.pts).toBe(7);
+    expect(r.covered, '被訂單卡蓋住的布丁／原料').toEqual([]);
+  });
+});
