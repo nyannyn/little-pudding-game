@@ -1,15 +1,16 @@
 // 中後期：用 state 作弊跳過累積，看每個階段的畫面與行為。
 // A 全自動運作 5 遊戲分鐘 → B 解鎖上層／下層／二號櫥窗（鏡頭橫移）、拉遠上限 → C 牛奶突變 → D 晚期商店。
 // 看什麼：draw calls ≤ 30、切區後住客／澡盆／設備有沒有跟著換、toast 有沒有蓋住布丁、突變動畫、無 console error。
-import { boot, launch, newPage, report, shot, summary, tap } from './lib.mjs';
+import { boot, launch, newPage, report, shopTab, shot, summary, tap } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser);
 
 // A. 買齊 T1+T2，看 5 遊戲分鐘
 await boot(page, '?fresh=1&seed=777&fastTime=10');
-await page.evaluate(() => { const s = window.__lpg.state; s.coins = 600; s.stock.caramel = 30; });
+await page.evaluate(() => { const s = window.__lpg.state; s.coins = 600; s.stock.caramel = 30; s.xp = 99999; /* D25：作弊跳階段，等級給滿 */ });
 await tap(page, '商店');
+await shopTab(page, 'equipment');
 for (const id of ['collector', 'autoFill', 'crafter', 'seller']) { await page.locator(`[data-a="buyEquip"][data-arg="${id}"]`).click(); await page.waitForTimeout(150); }
 await shot(page, 'mid-A1-shop');
 await tap(page, '關閉');
@@ -20,8 +21,8 @@ await shot(page, 'mid-A2-automated');
 
 // B. 三區全開，鏡頭跟著走；拉遠到上限
 await page.evaluate(() => { const s = window.__lpg.state; s.coins = 5000; s.equipment.restock = true; });
-for (let i = 0; i < 3; i++) {
-  await tap(page, '商店'); await page.locator('[data-a="unlockZone"]').click(); await tap(page, '關閉');
+for (const [i, zone] of ['c0t2', 'c0t0', 'c1t1'].entries()) {
+  await tap(page, '商店'); await shopTab(page, 'zone'); await page.locator(`[data-a="unlockZone"][data-arg="${zone}"]`).click(); await tap(page, '關閉');
   await page.waitForTimeout(1800);
   await summary(page, `B 解鎖 ${i + 1}`); await shot(page, `mid-B${i + 1}-unlock`);
 }

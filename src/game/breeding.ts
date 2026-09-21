@@ -1,4 +1,5 @@
 import { BALANCE } from './balance';
+import { grantXp } from './level';
 import { cross, phenotype, type Genes } from './genetics';
 import type { SimContext } from './pudding';
 import { range } from './rng';
@@ -120,6 +121,7 @@ export function breed(state: GameState, a: Pudding, b: Pudding, ctx: SimContext,
     x: child.pos.x,
     z: child.pos.z,
   });
+  grantXp(state, BALANCE.xp.birth, ctx.emit);
   return child;
 }
 

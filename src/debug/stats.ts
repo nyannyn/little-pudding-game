@@ -8,6 +8,8 @@ declare global {
     __lpg: {
       stats: LpgStats;
       state?: GameState;
+      /** 測試用：走遊戲自己的 grantXp（會丟 levelUp 事件），不是直接改欄位 */
+      grantXp?: (amount: number) => void;
       three?: {
         scene: THREE.Scene;
         camera: THREE.PerspectiveCamera;

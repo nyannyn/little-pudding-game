@@ -75,13 +75,37 @@ const CASES = [
     ac: 'AC2-7',
     why: '買設備時先扣錢再檢查餘額，失敗後 state 就不再等於原樣',
     file: 'src/game/actions.ts',
-    from: `  if (state.equipment[id]) return fail('已經買過了');
+    from: `  if (gate) return gate;
   if (state.coins < info.price) return fail('焦糖幣不夠');
   state.coins -= info.price;`,
-    to: `  if (state.equipment[id]) return fail('已經買過了');
+    to: `  if (gate) return gate;
   state.coins -= info.price;
   if (state.coins < 0) return fail('焦糖幣不夠');`,
     test: '錢不夠買設備時',
+  },
+  {
+    ac: 'D25',
+    why: '拿掉設備的等級守衛，Lv 不夠的玩家直接呼叫 action 也買得到（UI 鎖著就沒意義）',
+    file: 'src/game/actions.ts',
+    from: `  const gate = levelGate(state, info.level);
+  if (gate) return gate;
+  if (state.coins < info.price) return fail('焦糖幣不夠');
+  state.coins -= info.price;
+  state.equipment[id] = true;`,
+    to: `  const gate = null as ActionResult | null;
+  if (gate) return gate;
+  if (state.coins < info.price) return fail('焦糖幣不夠');
+  state.coins -= info.price;
+  state.equipment[id] = true;`,
+    test: '等級不夠買不到設備',
+  },
+  {
+    ac: 'D25',
+    why: '目錄把分區的門檻寫成 Lv.1（跟 action 守衛不同一組數字），「目錄 locked ＝ action 買不到」就不再成立',
+    file: 'src/game/shop.ts',
+    from: `      status: z.unlocked ? 'owned' : gate(z.level),`,
+    to: `      status: z.unlocked ? 'owned' : gate(1),`,
+    test: '目錄狀態跟 action 守衛一致',
   },
 ];
 

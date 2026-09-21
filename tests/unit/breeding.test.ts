@@ -22,7 +22,7 @@ import {
   type AlleleId,
   type SpeciesId,
 } from '../../src/game/species';
-import { createNewSave, migrate, type GameState, type Pudding } from '../../src/game/state';
+import { SCHEMA_VERSION, createNewSave, migrate, type GameState, type Pudding } from '../../src/game/state';
 import { START_ZONE } from '../../src/game/zones';
 import { FLOOR, advanceUntil, makeWorld } from './helpers';
 
@@ -407,7 +407,7 @@ describe('存檔相容（schema 3）', () => {
     const s = migrate(JSON.parse(JSON.stringify(old)));
     expect(s.puddings[0]!.species).toBe('matcha');
     expect(s.puddings[0]!.genes).toEqual(['matcha', 'matcha']);
-    expect(s.schemaVersion).toBe(3);
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION); // 之後每次升版都會走到這裡，不寫死數字
   });
 
   it('存檔的 species 與 genes 打架時以 genes 為準（species 只是快取）', () => {

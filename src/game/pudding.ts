@@ -2,6 +2,7 @@ import { BALANCE } from './balance';
 import { basinAvailable, consumeBathUnit, findBasinFor } from './basin';
 import type { EventSink } from './events';
 import { applySpeciesAsPure } from './genetics';
+import { grantXp } from './level';
 import { range, type Rng } from './rng';
 import { LIQUIDS, SPECIES, type SpeciesId } from './species';
 import type { GameState, Pudding, Vec2 } from './state';
@@ -91,6 +92,7 @@ function land(state: GameState, p: Pudding, ctx: SimContext): void {
     p.flavorExposure = {};
     state.stats.mutations++;
     ctx.emit({ type: 'mutate', puddingId: p.id, from, to: p.species, x: p.pos.x, z: p.pos.z });
+    grantXp(state, BALANCE.xp.mutate, ctx.emit);
   }
   p.pendingMutation = null;
 
@@ -144,6 +146,7 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
 
   state.stats.baths++;
   ctx.emit({ type: 'bathDone', puddingId: p.id, liquid });
+  grantXp(state, BALANCE.xp.bath, ctx.emit);
 
   // 原料：裝了收集手就直接入庫，否則掉在盆邊等玩家點
   const bi = p.basinIndex;
@@ -153,6 +156,7 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
     state.ingredients[p.species]++;
     state.stats.picked++;
     ctx.emit({ type: 'pick', species: p.species, x: at.x, z: at.z, auto: true });
+    grantXp(state, BALANCE.xp.pick, ctx.emit);
   } else {
     spawnDrop(state, p.zone, p.species, at, ctx);
   }

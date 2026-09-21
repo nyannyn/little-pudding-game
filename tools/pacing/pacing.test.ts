@@ -10,6 +10,7 @@ import {
   sellDessert,
   unlockZone,
 } from '../../src/game/actions';
+import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
 import { applyGenes } from '../../src/game/genetics';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../../src/game/species';
@@ -83,8 +84,7 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
     const zoneFirst = profile === 'zone-first' && state.zones.filter((z) => z.unlocked).length < 2;
     if (!zoneFirst) {
       for (const id of BUY_ORDER) {
-        if (!state.equipment[id] && state.coins >= EQUIPMENT[id].price) {
-          buyEquipment(state, id, noop);
+        if (!state.equipment[id] && state.coins >= EQUIPMENT[id].price && buyEquipment(state, id, noop).ok) {
           mark(`buy ${id}`);
         }
       }
@@ -92,6 +92,7 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
     // 留 20 幣做補貨
     if (nz && state.coins >= nz.price + 20 && unlockZone(state, nz.id, SPAWN, noop).ok) mark(`unlock ${nz.name}`);
     for (const c of [100, 500, 1000, 3000]) if (state.coins >= c) mark(`coins ${c}`);
+    mark(`Lv.${levelFor(state.xp)}`);
   }
 
   const lines = Object.entries(milestones)
@@ -99,7 +100,7 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
     .map(([k, s]) => `${(s / 60).toFixed(1).padStart(7)} min  ${k}`);
   console.log(
     `\n=== ${profile} (seed ${seed}, react every ${REACT_SEC}s, ${HOURS}h) ===\n${lines.join('\n')}\n` +
-      `end: coins=${Math.floor(state.coins)} baths=${state.stats.baths} orders=${state.stats.sold} puddings=${state.puddings.length} ` +
+      `end: coins=${Math.floor(state.coins)} xp=${state.xp} baths=${state.stats.baths} orders=${state.stats.sold} puddings=${state.puddings.length} ` +
       `equip=${EQUIPMENT_IDS.filter((e) => state.equipment[e]).join(',')}\n` +
       `species=${SPECIES_IDS.filter((id) => state.puddings.some((p) => p.species === id)).join(',')}\n` +
       `hybrid orders: new=${hybridOrders.new} done=${hybridOrders.done} expired=${hybridOrders.expired}\n`,

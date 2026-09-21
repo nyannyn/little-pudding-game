@@ -347,11 +347,13 @@
 .hud .shopbtn { padding: 5px; }
 .shopbtn .ic { width: 30px; height: 30px; }
 
-/* ── 商店抽屜 ─────────────────────────────── */
+/* ── 商店抽屜（D25）：分頁＋兩欄商品卡 ────────
+   商品圖是 Fluent Emoji 3D 的 WebP（src/ui/shopArt.ts），不是線條圖示。
+   鎖住的商品不藏：灰掉＋掛 Lv 牌，讓玩家看得到下一個目標。 */
 .sheet {
   position: absolute;
   inset: auto 0 0 0;
-  max-height: 78%;
+  height: 82%; /* 固定高度：分頁內容有多有少，用 max-height 的話切頁時整排分頁鈕會上下跳 */
   background: var(--paper-2) var(--leaf);
   border: 2px solid var(--wood-light);
   border-bottom: 0;
@@ -366,81 +368,218 @@
 .sheet header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 12px 8px 16px;
+  gap: 10px;
+  padding: 12px 12px 6px 14px;
 }
 .sheet h2 {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
-  padding: 4px 16px;
+  padding: 4px 14px;
   background: linear-gradient(#c6905b, var(--wood));
   border: 2px solid var(--wood-dark);
   border-radius: 12px;
   color: #fff6e3;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
   box-shadow: 0 2px 0 var(--wood-dark);
-}
-.sheet .body { overflow: auto; padding: 4px 12px 16px; -webkit-overflow-scrolling: touch; }
-.sheet h3 {
-  margin: 14px 0 6px 4px;
-  font-size: 12.5px;
-  color: var(--ink-soft);
-  letter-spacing: 0.04em;
-}
-.sheet h3:first-child { margin-top: 4px; }
-.item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px 9px 12px;
-  margin-bottom: 8px;
-  background: var(--paper);
-  border: 2px solid var(--wood-light);
-  border-radius: 16px;
-  box-shadow: 0 2px 0 var(--wood-light);
-}
-.item .grow { flex: 1; min-width: 0; }
-.item .ic.tile {
-  width: 40px;
-  height: 40px;
-  padding: 7px;
-  box-sizing: border-box;
-  border-radius: 50%;
-  background: #ffe7c2;
-  color: #8a5a35;
-  box-shadow: inset 0 -3px 0 rgba(90, 61, 40, 0.12);
-}
-.item .name { font-size: 14px; font-weight: 700; }
-.item .desc { font-size: 12px; color: var(--ink-soft); }
-.item .owned {
-  font-size: 12px;
-  color: var(--green-deep);
-  background: #dff0d3;
-  border-radius: 999px;
-  padding: 4px 10px;
   white-space: nowrap;
 }
-/* 商店裡的按鈕全是花錢：黃色＋錢幣 */
-.hud .item button {
-  font-weight: 700;
+/* 店長等級＋經驗條 */
+.sheet .lvl { flex: 1; min-width: 0; }
+.sheet .lvl .row { display: flex; align-items: center; gap: 5px; font-size: 13px; line-height: 1.2; }
+.sheet .lvl .row img { width: 20px; height: 20px; }
+.sheet .lvl .row b { font-size: 14px; }
+.sheet .lvl .xptext { color: var(--ink-soft); font-size: 11px; font-weight: 400; margin-left: auto; font-variant-numeric: tabular-nums; }
+.sheet .xpbar {
+  margin-top: 4px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--paper-3);
+  box-shadow: inset 0 1px 2px rgba(90, 61, 40, 0.18);
+  overflow: hidden;
+}
+.sheet .xpbar > i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#ffe08a, var(--yellow-dark)); }
+
+/* 分頁：一排圖示磚，作用中的往上凸、綠底 */
+.sheet .tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px 0;
+}
+.hud .sheet .tabs button {
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 2px 4px;
+  min-height: 54px;
+  font-size: 12px;
+  border-radius: 14px 14px 4px 4px;
+  position: relative;
+  --edge: var(--wood-light);
+}
+.hud .sheet .tabs button img { width: 26px; height: 26px; }
+.hud .sheet .tabs button[aria-selected="true"] {
+  --edge: var(--green-deep);
+  background: linear-gradient(#98cc78, var(--green));
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
+}
+.hud .sheet .tabs button[aria-selected="true"]:active { transform: translateY(1px); }
+/* 這頁有新東西／有東西可賣：紅點 */
+.sheet .tabs .dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--coral);
+  border: 2px solid #fff8e8;
+}
+.sheet .tabs .dot[hidden] { display: none; }
+
+.sheet .body { overflow: auto; padding: 10px 12px 16px; -webkit-overflow-scrolling: touch; }
+.sheet .grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.sheet .empty {
+  padding: 26px 12px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-weight: 400;
+  font-size: 13px;
+}
+
+/* 商品卡 */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+  padding: 10px 8px 9px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  border-radius: 18px;
+  box-shadow: 0 3px 0 var(--wood-light);
+}
+.card .art {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  background: radial-gradient(circle at 50% 35%, #fff3d6, #f5e2bf 75%);
+  box-shadow: inset 0 -4px 0 rgba(90, 61, 40, 0.08);
+  margin-bottom: 3px;
+}
+.card .art .main {
+  position: absolute;
+  inset: 10px;
+  width: 68px;
+  height: 68px;
+  pointer-events: none;
+}
+.card .art .corner {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+}
+/* 份數／NEW 徽章 */
+.card .art .badge,
+.card .art .new {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--yellow);
+  color: #6a4512;
+  border: 2px solid #fff8e8;
+  font-variant-numeric: tabular-nums;
+}
+.card .art .new { top: -6px; left: -6px; right: auto; background: var(--coral); color: #fff; }
+.card .name { font-size: 13.5px; line-height: 1.25; }
+.card .desc { font-size: 11px; font-weight: 400; color: var(--ink-soft); line-height: 1.35; }
+.card .stock { font-size: 11px; color: var(--ink-soft); font-weight: 400; }
+.card .stock b { color: var(--ink); }
+.card .foot { margin-top: auto; padding-top: 6px; width: 100%; display: flex; justify-content: center; }
+.hud .card button.buy {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 13px;
   --edge: var(--yellow-dark);
   background: linear-gradient(#ffe08a, var(--yellow));
   color: #6a4512;
-  min-height: 38px;
-  padding: 6px 12px;
-  border-radius: 13px;
   font-variant-numeric: tabular-nums;
 }
-.hud .item button:disabled { --edge: #dccdb5; background: #efe4d0; color: #b9a689; }
-.hud .item button::before {
+.hud .card button.buy:disabled { --edge: #dccdb5; background: #efe4d0; color: #b9a689; }
+.hud .card button.buy::before {
   /* 錢幣：跟資源列同一顆 */
   content: "";
   width: 1.15em;
   height: 1.15em;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9.5' fill='%23ffe08a' stroke='%23a86d12' stroke-width='1.8'/%3E%3Cpath d='M12 8v8M10 9.8h3a1.8 1.8 0 0 1 0 3.6h-3' fill='none' stroke='%23a86d12' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-.hud .item button:disabled::before { filter: grayscale(1); opacity: 0.5; }
+.hud .card button.buy:disabled::before { opacity: 0.45; }
+/* 賣出：綠色，錢是進來的 */
+.hud .card button.buy.sell {
+  --edge: var(--green-deep);
+  background: linear-gradient(#98cc78, var(--green));
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+.card .owned,
+.card .lockedtag,
+.card .needs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 34px;
+  font-size: 12px;
+  border-radius: 12px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+.card .owned { color: var(--green-deep); background: #dff0d3; }
+.card .lockedtag { color: #8a6d4d; background: var(--paper-3); }
+.card .lockedtag img { width: 18px; height: 18px; }
+.card .needs { color: var(--ink-soft); background: var(--paper-3); font-weight: 400; }
+/* 鎖住的商品：整張卡壓淡、圖灰掉 */
+.card[data-status="locked"] { background: #f6ecd9; }
+.card[data-status="locked"] .art .main { opacity: 0.4; }
+.card[data-status="locked"] .art .corner { opacity: 0.4; }
+.card[data-status="locked"] .name,
+.card[data-status="locked"] .desc { opacity: 0.7; }
+.card[data-status="owned"] .art { background: radial-gradient(circle at 50% 35%, #eef7e6, #d9ecc9 75%); }
+
+/* 商店鈕角落的等級牌 */
+.hud .shopbtn { position: relative; overflow: visible; }
+.shopbtn .lvl {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 15px;
+  border-radius: 999px;
+  background: linear-gradient(#ffe08a, var(--yellow));
+  border: 1.5px solid var(--yellow-dark);
+  color: #6a4512;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── 新手引導：對話泡泡＋說話者名牌 ─────── */
 .hint {

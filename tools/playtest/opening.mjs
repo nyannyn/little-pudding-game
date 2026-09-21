@@ -1,7 +1,7 @@
 // 新手流程：只按 HUD 按鈕、照引導做（不改 state），記錄引導句／toast／購買的時間線。
 // 看什麼：引導有沒有卡在同一句、第一次出貨／第一台設備／第一張訂單在第幾分鐘、有沒有 console error。
 // 用法：node tools/playtest/opening.mjs   （FAST=倍速，預設 4；MIN=要玩幾分鐘遊戲時間，預設 8）
-import { boot, launch, newPage, report, shot, tap } from './lib.mjs';
+import { boot, launch, newPage, report, shopTab, shot, tap } from './lib.mjs';
 
 const FAST = Number(process.env.FAST ?? 4);
 const MIN = Number(process.env.MIN ?? 8);
@@ -32,7 +32,9 @@ while (Date.now() < endAt) {
     await page.waitForTimeout(150);
     // 引導叫你補貨就買液體，否則買第一台買得起的設備（querySelector 是文件順序，不能把兩個 selector 混在一起）
     const wantStock = s.hint.includes('補貨');
-    const bought = await page.evaluate((wantStock) => { const b = document.querySelector(wantStock ? '[data-a="buyStock"]:not([disabled])' : '[data-a="buyEquip"]:not([disabled])'); if (b) { const name = b.closest('.item').querySelector('.name').textContent; b.click(); return name; } return null; }, wantStock);
+    // D25：商店有分頁；引導叫買設備時商店會自己開在設備頁，補貨則要切到補貨頁
+    if (wantStock) await shopTab(page, 'stock');
+    const bought = await page.evaluate((wantStock) => { const b = document.querySelector(wantStock ? '[data-a="buyStock"]:not([disabled])' : '[data-a="buyEquip"]:not([disabled])'); if (b) { const name = b.closest('.card').querySelector('.name').textContent; b.click(); return name; } return null; }, wantStock);
     if (bought) log(s.t, `[buy] ${bought}`);
     await tap(page, '關閉');
   }

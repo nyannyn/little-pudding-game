@@ -57,6 +57,12 @@ export async function summary(page, label) {
 }
 
 /** 按 HUD 按鈕（名稱前綴比對：按鈕上還有數量徽章）；按不了就回 false */
+/** 商店分頁（D25）：stock／equipment／basin／zone／sell */
+export async function shopTab(page, tab) {
+  await page.locator(`[data-a="shopTab"][data-arg="${tab}"]`).click();
+  await page.waitForTimeout(120);
+}
+
 export async function tap(page, name) {
   const b = page.getByRole('button', { name: new RegExp('^' + name) }).first();
   if (!(await b.isEnabled().catch(() => false))) return false;

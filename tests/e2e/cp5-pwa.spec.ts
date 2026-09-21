@@ -57,6 +57,7 @@ test('新手引導跟著玩家的進度走，按 × 之後不再出現', async (
   // 買下第一台設備＝玩家懂了，提示自己收掉
   await page.evaluate(() => { (window.__lpg.state as GameState).coins = 9999; });
   await page.getByRole('button', { name: '商店' }).click();
+  await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="collector"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
   await expect(hint).toBeHidden();
