@@ -8,6 +8,10 @@ declare global {
     __lpg: {
       stats: LpgStats;
       state?: GameState;
+      /** `?pause=1` 時手動推一幀（秒）；截圖與 e2e 用來抓固定時間點的畫面 */
+      step?: (dt: number) => void;
+      /** 音效播放計數與解鎖狀態：截圖證不了聲音，e2e 靠這個斷言「按下去真的有排進 AudioContext」 */
+      sfx?: { played: { splat: number; coin: number; pour: number }; isUnlocked: boolean; muted: boolean };
       /** 測試用：走遊戲自己的 grantXp（會丟 levelUp 事件），不是直接改欄位 */
       grantXp?: (amount: number) => void;
       three?: {

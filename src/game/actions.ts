@@ -28,7 +28,7 @@ function levelGate(state: GameState, need: number): ActionResult | null {
 export function fillBasin(state: GameState, basinIndex: number, liquid: LiquidId, emit: EventSink): ActionResult {
   const r = pourIntoBasin(state, basinIndex, liquid, 1);
   if (!r.ok) return fail(r.error ?? '倒不進去');
-  emit({ type: 'pour', basinIndex, liquid, auto: false });
+  emit({ type: 'pour', basinIndex, liquid, units: r.poured, auto: false });
   return OK;
 }
 

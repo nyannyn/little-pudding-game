@@ -26,7 +26,7 @@ function autoFill(state: GameState, emit: EventSink): void {
     if (!liquid) return;
     if (state.stock[liquid] <= 0) return;
     const r = pourIntoBasin(state, i, liquid, BALANCE.basinCapacity);
-    if (r.ok) emit({ type: 'pour', basinIndex: i, liquid, auto: true });
+    if (r.ok) emit({ type: 'pour', basinIndex: i, liquid, units: r.poured, auto: true });
   });
 }
 

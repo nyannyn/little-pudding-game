@@ -18,7 +18,7 @@ export type SimEvent =
   | { type: 'orderNew'; orderId: string; species: SpeciesId; qty: number; price: number }
   | { type: 'orderDone'; orderId: string; species: SpeciesId; coins: number; auto: boolean }
   | { type: 'orderExpired'; orderId: string; species: SpeciesId }
-  | { type: 'pour'; basinIndex: number; liquid: LiquidId; auto: boolean }
+  | { type: 'pour'; basinIndex: number; liquid: LiquidId; units: number; auto: boolean }
   | { type: 'buy'; what: string; cost: number; auto: boolean }
   | { type: 'levelUp'; level: number; from: number }
   | { type: 'error'; message: string };
