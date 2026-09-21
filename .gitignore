@@ -9,3 +9,7 @@ tests/e2e/__screenshots__/*-actual.png
 Thumbs.db
 # 迭代過程的預覽圖：可由 tools/ 的腳本重新產生，且視覺證據不進公開 repo
 docs/previews/
+
+# e2e 截圖每次跑都會重產，二進位檔在公開 repo 只是雜訊（同 docs/previews 的理由）
+tests/e2e/__screenshots__/
+test-results/
