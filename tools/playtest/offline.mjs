@@ -11,7 +11,8 @@ await tap(page, '倒焦糖');
 await page.waitForTimeout(6500); // 每 5 秒存檔一次
 await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
 await page.waitForTimeout(300);
-const saved = await page.evaluate(() => localStorage.getItem('lpg.save.v1'));
+// ?fresh=1 是測試模式，寫的是另一格 lpg.save.test（玩家那格 lpg.save.v1 不會被碰）
+const saved = await page.evaluate(() => localStorage.getItem('lpg.save.test'));
 await page.context().close();
 
 for (const [label, stock] of [['庫存充足', 40], ['庫存用完', 0]]) {
@@ -19,6 +20,7 @@ for (const [label, stock] of [['庫存充足', 40], ['庫存用完', 0]]) {
   raw.lastSeenAt = Date.now() - 30 * 60 * 1000;
   raw.stock.caramel = stock;
   raw.basins[0].units = stock ? 3 : 0; raw.basins[0].liquid = stock ? 'caramel' : null;
+  // 這一輪要當「真的玩家回來了」，所以塞的是玩家那一格、開的網址也不帶 fresh
   page = await newPage(browser, 'iPhone 14', { fn: (v) => localStorage.setItem('lpg.save.v1', v), arg: JSON.stringify(raw) });
   await boot(page, '');
   const welcome = await page.evaluate(() => { const w = document.querySelector('.welcome'); return w && !w.hidden ? w.querySelector('p').textContent : '(沒有歡迎卡)'; });

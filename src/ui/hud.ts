@@ -5,6 +5,7 @@ import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type Specie
 import type { GameState } from '../game/state';
 import { nextLockedZone, puddingsIn, unlockedZones } from '../game/zones';
 import { dismissHints, hintsDismissed, nextHint } from './hints';
+import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
 
 export interface HudActions {
@@ -71,6 +72,7 @@ export class Hud {
   private readonly hint: HTMLElement;
   private readonly toasts: HTMLElement;
   private readonly welcome: HTMLElement;
+  private readonly a2hs: HTMLElement;
   private readonly muteBtn: HTMLElement;
 
   private hintOff = hintsDismissed();
@@ -123,6 +125,13 @@ export class Hud {
             <button data-a="closeWelcome">看看櫥窗</button>
           </div>
         </div>
+        <div class="welcome a2hs" hidden>
+          <div class="card">
+            <h2>把農場加到主畫面</h2>
+            <p>按 Safari 下方的分享鈕，選「加入主畫面」。從主畫面開才存得住進度——留在 Safari 分頁裡，七天沒回來就會被清掉。</p>
+            <button data-a="closeA2hs">知道了</button>
+          </div>
+        </div>
       </div>`);
     parent.appendChild(this.root);
 
@@ -141,7 +150,8 @@ export class Hud {
     this.sheetBody = q('.sheet .body');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
-    this.welcome = q('.welcome');
+    this.welcome = q('.welcome:not(.a2hs)');
+    this.a2hs = q('.a2hs');
     this.muteBtn = q('[data-a="mute"]');
 
     this.root.addEventListener('click', (e) => this.onClick(e));
@@ -174,6 +184,10 @@ export class Hud {
       case 'shop': this.toggleShop(true); break;
       case 'closeShop': this.toggleShop(false); break;
       case 'closeWelcome': this.welcome.hidden = true; break;
+      case 'closeA2hs':
+        dismissHomeScreenTip();
+        this.a2hs.hidden = true;
+        break;
       case 'hintOff':
         dismissHints();
         this.hintOff = true;
@@ -205,6 +219,15 @@ export class Hud {
   /** 場景端也會叫（點櫃子上的鎖牌＝去商店解鎖） */
   openShop() {
     this.toggleShop(true);
+  }
+
+  /** 歡迎卡正開著（「加到主畫面」那張要讓路，不然兩張疊在一起） */
+  get welcomeVisible(): boolean {
+    return !this.welcome.hidden;
+  }
+
+  showHomeScreenTip() {
+    this.a2hs.hidden = false;
   }
 
   showWelcome(text: string) {

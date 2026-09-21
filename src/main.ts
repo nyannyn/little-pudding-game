@@ -17,7 +17,7 @@ import {
 import type { SimEvent } from './game/events';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
-import { load, save } from './game/storage';
+import { load, save, useTestSave } from './game/storage';
 import { createNewSave, type GameState, type Vec2 } from './game/state';
 import { basinsIn, findZone, puddingsIn, unlockedZones, zoneKey } from './game/zones';
 import { createRenderer } from './scene/renderer';
@@ -45,6 +45,7 @@ import { PuddingView } from './scene/puddingView';
 import { spawnPudding } from './scene/puddingMesh';
 import { Sfx } from './scene/audio';
 import { nextHint } from './ui/hints';
+import { shouldSuggestHomeScreen } from './ui/homeScreen';
 import { Hud } from './ui/hud';
 import { measureVisibleBand, viewOffsetY } from './ui/viewport';
 import { createStats } from './debug/stats';
@@ -113,6 +114,8 @@ sfx.attachUnlock(renderer.domElement);
 const seedParam = Number(params.get('seed'));
 const fastTime = Math.max(1, Number(params.get('fastTime')) || 1);
 const fresh = params.get('fresh') === '1';
+// 測試模式寫到另一個存檔格：在自己手機上開一次測試網址，不可以把真的進度洗掉
+if (fresh) useTestSave(true);
 
 const newSaveOptions = {
   seed: Number.isFinite(seedParam) && seedParam > 0 ? seedParam : undefined,
@@ -233,6 +236,14 @@ if (loaded.restored) {
   }
 } else {
   state.lastSeenAt = Date.now();
+}
+
+// 加到主畫面：Safari 分頁裡的存檔七天沒互動就會被清掉，加到主畫面的 web app 不吃那條規則。
+// 測試模式不提示；歡迎卡開著的話讓路，等下一次再說（兩張卡疊在一起沒人看得懂）。
+if (!fresh && shouldSuggestHomeScreen()) {
+  setTimeout(() => {
+    if (!hud.welcomeVisible) hud.showHomeScreenTip();
+  }, 0);
 }
 
 // ── 玩家動作 ──────────────────────────────────────────
@@ -436,9 +447,14 @@ function nearestBasinIndex(point: THREE.Vector3): number {
 }
 
 // ── 存檔 ──────────────────────────────────────────────
-let sinceSave = 0;
+let lastSaveAt = performance.now();
+let saveWarned = false;
 function persist() {
-  save(syncForSave(world, Date.now()));
+  // save() 回傳 false＝這次的進度留不到下次（無痕／配額滿／storage 被擋）。
+  // 靜默失敗最糟：玩家會一路玩下去，然後整份消失。
+  if (save(syncForSave(world, Date.now())) || saveWarned) return;
+  saveWarned = true;
+  hud.toast('這個瀏覽器存不了進度，關掉分頁就會歸零（無痕模式？）', true);
 }
 window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
@@ -560,9 +576,9 @@ renderer.setAnimationLoop(() => {
 
   hud.update(state, now);
 
-  sinceSave += dt;
-  if (sinceSave > 5) {
-    sinceSave = 0;
+  // 存檔間隔算真實時間：dt 被夾在 0.1 秒，跟著 dt 累加的話低 fps 的手機會愈存愈稀
+  if (now - lastSaveAt > 5000) {
+    lastSaveAt = now;
     persist();
   }
 

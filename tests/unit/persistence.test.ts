@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/game/balance';
 import { advance, createWorld, settleOffline, syncForSave } from '../../src/game/sim';
-import { clear, load, parseSave, save } from '../../src/game/storage';
+import { SAVE_KEY, TEST_SAVE_KEY, activeSaveKey, clear, load, parseSave, save, useTestSave } from '../../src/game/storage';
 import { SCHEMA_VERSION, createNewSave, migrate } from '../../src/game/state';
 import { START_ZONE, zoneKey } from '../../src/game/zones';
 import { FLOOR, fillBasinDirect, makeWorld } from './helpers';
@@ -160,5 +160,52 @@ describe('schema v1 → v2：舊存檔沒有分區欄位', () => {
     const s = migrate(raw, { seed: 1, now: 0 });
     expect(s.zones.find((z) => z.id === upper)!.unlocked).toBe(true);
     expect(s.activeZone).toBe(START_ZONE);
+  });
+});
+
+describe('測試模式寫另一個存檔格', () => {
+  afterEach(() => {
+    useTestSave(false);
+    clear();
+  });
+
+  it('預設寫玩家那格，切過去寫測試那格', () => {
+    expect(activeSaveKey()).toBe(SAVE_KEY);
+    useTestSave(true);
+    expect(activeSaveKey()).toBe(TEST_SAVE_KEY);
+    useTestSave(false);
+    expect(activeSaveKey()).toBe(SAVE_KEY);
+  });
+
+  it('測試模式存過之後，玩家的存檔原封不動', () => {
+    useTestSave(false);
+    clear();
+    const player = primed(11);
+    player.state.coins = 123456;
+    save(syncForSave(player, 1_000_000));
+
+    useTestSave(true);
+    const tester = primed(22);
+    tester.state.coins = 7;
+    save(syncForSave(tester, 2_000_000));
+
+    useTestSave(false);
+    const back = load({ seed: 1, now: 0 });
+    expect(back.restored).toBe(true);
+    expect(back.state.coins).toBe(123456);
+  });
+
+  it('清檔只清當下那一格', () => {
+    useTestSave(false);
+    const player = primed(33);
+    player.state.coins = 999;
+    save(syncForSave(player, 1_000_000));
+
+    useTestSave(true);
+    save(syncForSave(primed(44), 1_000_000));
+    clear();
+
+    useTestSave(false);
+    expect(load({ seed: 1, now: 0 }).state.coins).toBe(999);
   });
 });
