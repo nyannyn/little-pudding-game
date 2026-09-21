@@ -3,7 +3,8 @@
 three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebView 包 App。設計與 checkpoint 見記憶庫的計畫檔與 STATE.md。
 
 ## 指令
-- `npm run dev -- --host`：開發（手機同熱點開 `http://<PC IP>:5173`；`?debug=1` 顯示 fps／draw calls／三角形數）
+- `npm run dev`：本機開發；`?debug=1` 顯示 fps／draw calls／三角形數
+- 手機實測走 GitHub Pages：push `master` 自動部署到 `https://nyannyn.github.io/little-pudding-game/`（`.github/workflows/`）；PC 沒有 Wi-Fi 卡且防火牆擋 5173 入站，區網直連不可行
 - `npm run build`：tsc 型別檢查＋vite build
 - `npm test`：vitest（`src/game` 純邏輯）
 - `npm run e2e`：Playwright（iPhone 視口，無頭 WebGL）
