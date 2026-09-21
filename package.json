@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "models:optimize": "node tools/optimize-models.mjs",
-    "test:negative": "node tools/check-negative-controls.mjs"
+    "test:negative": "node tools/check-negative-controls.mjs",
+    "smoke:live": "node tools/smoke-live.mjs"
   },
   "dependencies": {
     "three": "0.186.0"
