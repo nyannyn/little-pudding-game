@@ -282,10 +282,12 @@ function buildCabinet(statuses: TankStatus[]): {
   g.add(carcass);
 
   const floors = new THREE.Mesh(mergeGeometries(tankFloorGeometries()), toonMaterial(CABINET_COLORS.floor));
+  floors.name = 'TankFloors'; // main.ts 點擊用：點到哪一層就切到哪一區
   floors.receiveShadow = true;
   g.add(floors);
 
   const glass = new THREE.Mesh(mergeGeometries(tankGlassGeometries()), createGlassMaterial());
+  glass.name = 'TankGlass';
   glass.renderOrder = 10; // 透明物最後畫
   g.add(glass);
 

@@ -202,6 +202,11 @@ export class Hud {
     this.lastRefresh = -1; // 下一次 update 一定要重畫商店內容
   }
 
+  /** 場景端也會叫（點櫃子上的鎖牌＝去商店解鎖） */
+  openShop() {
+    this.toggleShop(true);
+  }
+
   showWelcome(text: string) {
     const p = this.welcome.querySelector('p');
     if (p) p.textContent = text;

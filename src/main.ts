@@ -19,7 +19,7 @@ import { advance, createWorld, drainEvents, settleOffline, syncForSave } from '.
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
 import { load, save } from './game/storage';
 import { createNewSave, type GameState, type Vec2 } from './game/state';
-import { basinsIn, findZone, puddingsIn, unlockedZones } from './game/zones';
+import { basinsIn, findZone, puddingsIn, unlockedZones, zoneKey } from './game/zones';
 import { createRenderer } from './scene/renderer';
 import { MAX_AZIMUTH, createCamera, createControls, fitBoxDistance, applyDistance } from './scene/camera';
 import { addLighting, focusShadow } from './scene/lighting';
@@ -370,8 +370,40 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
     // 點澡盆＝倒它上次裝的那種；還沒倒過就給焦糖（開局就是要先倒焦糖）
     const i = nearestBasinIndex(hitBasin.point);
     if (i >= 0) report(fillBasin(state, i, state.basins[i]?.preferredLiquid ?? 'caramel', world.emit));
+    return;
   }
+
+  // 點櫃子本身：鎖牌／名牌／鄰櫃 → 對應的那一區。
+  // 鎖著的去商店（畫面上寫著價格，玩家自然會去點它）；已解鎖的直接切過去，不必回上面按 ‹ ›。
+  const hitTier = raycaster.intersectObjects(tierTargets(), false)[0];
+  if (hitTier) tapZone(hitTier.point);
 });
+
+const TIER_TARGET_NAMES = new Set(['TankPlates', 'TankLocks', 'TankGlass', 'TankFloors', 'NeighbourLock', 'NeighbourGlass', 'NeighbourWood']);
+function tierTargets(): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (TIER_TARGET_NAMES.has(o.name)) out.push(o);
+  });
+  return out;
+}
+
+function tapZone(point: THREE.Vector3) {
+  const cabinet = Math.round(point.x / CABINET_PITCH);
+  let tier = 0;
+  for (let t = 0; t < UNIT.tanks; t++) if (point.y >= zoneWorld(cabinet, t).y - 0.02) tier = t;
+  const id = zoneKey(cabinet, tier);
+  const z = findZone(state, id);
+  if (!z) {
+    hud.toast('這一層還沒開放');
+    return;
+  }
+  if (!z.unlocked) {
+    hud.openShop();
+    return;
+  }
+  if (z.id !== state.activeZone && report(switchZone(state, z.id))) focusActiveZone();
+}
 
 function nearestBasinIndex(point: THREE.Vector3): number {
   const { ox } = activeOrigin();
