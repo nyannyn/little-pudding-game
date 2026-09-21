@@ -4,13 +4,19 @@ import { intRange, pick, range, type Rng } from './rng';
 import { SPECIES_IDS, dessertPrice } from './species';
 import type { GameState, Order } from './state';
 
+/** 訂單物種有多少比例從「目前住客的物種」抽；其餘從全部四種抽（D25） */
+export const ORDER_OWNED_SPECIES_RATIO = 0.8;
+
 /**
  * 訂單卡（經營軸的最小版）。
- * 物種從全部四種抽——玩家沒養出來的那種只能眼睜睜看它過期，
- * 這就是「培育多物種」的動機，所以**不可以**只從已有物種抽。
+ * 物種 80% 從玩家養得出來的物種抽、20% 從全部四種抽（D25）：
+ * 養不出來的那種只能眼睜睜看它過期，這就是「培育多物種」的動機，所以不可以完全不抽；
+ * 但只養焦糖時若四種均抽，四分之三的訂單注定過期，玩家看到的只是一連串「過期了」。
  */
 export function generateOrder(state: GameState, rng: Rng): Order {
-  const species = pick(rng, SPECIES_IDS);
+  const owned = SPECIES_IDS.filter((id) => state.puddings.some((p) => p.species === id));
+  const fromOwned = owned.length > 0 && rng.next() < ORDER_OWNED_SPECIES_RATIO;
+  const species = pick(rng, fromOwned ? owned : SPECIES_IDS);
   const qty = intRange(rng, 1, 3);
   const mult = range(rng, BALANCE.orderPriceMultMin, BALANCE.orderPriceMultMax);
   const unit = dessertPrice(species, BALANCE.dessertPriceMult);

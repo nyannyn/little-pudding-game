@@ -25,7 +25,8 @@ async function eyeRatio(page: Page): Promise<number> {
 
 test('眼睛不會被單軸拉長；泡澡時才瞇起來', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto('/?debug=1&fresh=1&seed=31&fastTime=20');
+  // 8 倍速：泡澡 12 秒＝現實 1.5 秒，等 lerp 的 900ms 內布丁還在盆裡；20 倍會在量之前就泡完
+  await page.goto('/?debug=1&fresh=1&seed=31&fastTime=8');
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
   // 讓 lerp 跑到穩定值
   await page.waitForTimeout(800);

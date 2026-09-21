@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
+import { fillBasin } from '../../src/game/actions';
+import { advance, createWorld } from '../../src/game/sim';
 import { createNewSave } from '../../src/game/state';
 import { START_ZONE } from '../../src/game/zones';
 import { nextHint } from '../../src/ui/hints';
@@ -17,6 +19,20 @@ describe('新手引導完全從 state 推導', () => {
     const s = fresh();
     s.stock.caramel = 0;
     expect(nextHint(s)?.id).toBe('restock');
+  });
+
+  it('真實流程：手動倒一份、布丁跳進去把盆用空，仍要說「泡澡中」再說「去撿」（不能退回「倒焦糖」）', () => {
+    const s = fresh();
+    const w = createWorld(s, { minX: -0.9, maxX: 0.9, minZ: -0.55, maxZ: 0.55 });
+    expect(fillBasin(s, 0, 'caramel', w.emit).ok).toBe(true);
+    for (let i = 0; i < 120 && !s.puddings.some((p) => p.mode === 'bathing'); i++) advance(w, 0.5);
+    expect(s.puddings.some((p) => p.mode === 'bathing')).toBe(true);
+    expect(s.basins[0]!.units).toBe(0); // 手動只倒一份，進盆就被用掉
+    expect(nextHint(s)?.id).toBe('bathing');
+
+    for (let i = 0; i < 200 && s.drops.length === 0; i++) advance(w, 0.5);
+    expect(s.drops.length).toBeGreaterThan(0);
+    expect(nextHint(s)?.id).toBe('pick');
   });
 
   it('倒了之後換成「泡澡中」／「去撿」', () => {

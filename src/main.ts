@@ -45,6 +45,7 @@ import { PuddingView } from './scene/puddingView';
 import { spawnPudding } from './scene/puddingMesh';
 import { Sfx } from './scene/audio';
 import { Hud } from './ui/hud';
+import { measureVisibleBand, viewOffsetY } from './ui/viewport';
 import { createStats } from './debug/stats';
 
 const params = new URLSearchParams(location.search);
@@ -431,15 +432,33 @@ window.__lpg.state = state;
 let last = performance.now();
 let bubbleT = 0;
 
+/**
+ * HUD 蓋掉上下兩截，把鏡頭的「畫面中心」移到看得見那一段的中心（D26）。
+ * 只動投影（setViewOffset），不動 target 與角度：拉遠、環繞、切區都照舊。
+ */
+function applyHudOffset() {
+  const w = container.clientWidth, h = container.clientHeight;
+  const dy = viewOffsetY(h, measureVisibleBand(h));
+  if (dy === 0) camera.clearViewOffset();
+  else camera.setViewOffset(w, h, 0, dy, w, h);
+}
+
 function resize() {
   const w = container.clientWidth, h = container.clientHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   applyDistance(camera, controls, tierDistance(), cabinetDistance());
+  applyHudOffset();
   focusActiveZone(true);
 }
 window.addEventListener('resize', resize);
+// 動作列高度會變（倒○○的按鈕隨解鎖的澡盆變多），變了就重算偏移
+applyHudOffset();
+if ('ResizeObserver' in window) {
+  const dock = document.querySelector('.hud .dock');
+  if (dock) new ResizeObserver(applyHudOffset).observe(dock);
+}
 
 renderer.setAnimationLoop(() => {
   const now = performance.now();

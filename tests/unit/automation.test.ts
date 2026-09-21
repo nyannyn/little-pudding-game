@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/game/balance';
 import { advance } from '../../src/game/sim';
+import { LIQUIDS } from '../../src/game/species';
 import { createNewSave } from '../../src/game/state';
 import { fillBasinDirect, makeWorld, only } from './helpers';
 
@@ -102,7 +103,7 @@ describe('補貨合約', () => {
     w.state.equipment.restock = true;
     w.state.stock.caramel = 0;
     w.state.stock.milk = 0;
-    w.state.coins = 8; // 只買得起 2 份
+    w.state.coins = LIQUIDS.caramel.unitPrice * 2; // 只買得起 2 份
     advance(w, 1);
     expect(w.state.coins).toBeGreaterThanOrEqual(0);
     expect(w.state.stock.caramel + w.state.stock.milk).toBe(2);

@@ -38,21 +38,23 @@ export function nextHint(state: GameState): Hint | null {
   if (Object.values(state.equipment).some(Boolean)) return null;
 
   const zone = state.activeZone;
-  const basins = basinsIn(state, zone);
-  const hasLiquid = basins.some((b) => b.units > 0);
 
-  if (!hasLiquid) {
-    return state.stock.caramel > 0
-      ? { id: 'pour', text: '先按下面的「倒焦糖」。布丁缺焦糖的時候會自己跳進澡盆。' }
-      : { id: 'restock', text: '焦糖用完了。開右上角的商店補貨，再倒進澡盆。' };
-  }
-
+  // 「正在發生的事」排在「倒澡盆」前面：手動倒一次只有一份，布丁一跳進盆裡 units 就歸零，
+  // 若先檢查盆空不空，泡澡中／撿原料這兩句永遠輪不到，玩家從頭到尾只會看到「倒焦糖」。
   if (puddingsIn(state, zone).some((p) => p.mode === 'bathing')) {
     return { id: 'bathing', text: '泡澡中。泡完會在盆邊掉一份原料。' };
   }
 
   if (dropsIn(state, zone).length > 0) {
     return { id: 'pick', text: '地上有原料了，點它或按「撿原料」收進庫存。' };
+  }
+
+  const basins = basinsIn(state, zone);
+  const hasLiquid = basins.some((b) => b.units > 0);
+  if (!hasLiquid) {
+    return state.stock.caramel > 0
+      ? { id: 'pour', text: '先按下面的「倒焦糖」。布丁缺焦糖的時候會自己跳進澡盆。' }
+      : { id: 'restock', text: '焦糖用完了。開右上角的商店補貨，再倒進澡盆。' };
   }
 
   const craftable = SPECIES_IDS.reduce(

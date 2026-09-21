@@ -1,0 +1,94 @@
+import { test } from 'vitest';
+import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../../src/game/balance';
+import {
+  buyEquipment,
+  buyStock,
+  craft,
+  fillBasin,
+  fulfillOrder,
+  pickAllDrops,
+  sellDessert,
+  unlockZone,
+} from '../../src/game/actions';
+import { advance, createWorld } from '../../src/game/sim';
+import { SPECIES_IDS, type LiquidId } from '../../src/game/species';
+import { createNewSave } from '../../src/game/state';
+import { nextLockedZone } from '../../src/game/zones';
+
+/**
+ * 節奏量表（D24）：不是驗收測試，是「幾分鐘達到哪個里程碑」的儀表。
+ * `npm run pacing` 跑；環境變數 REACT_SEC（玩家幾秒看一次畫面，預設 3）、SIM_HOURS（預設 3）。
+ *
+ * 兩種玩法各跑一次：
+ * - equip-first：買得起就買設備（順序固定），剩下的錢才拿去解鎖分區
+ * - zone-first：先存錢解鎖第一個分區，之後才買設備
+ * 訂單卡：只賣「沒被進行中訂單預留」的甜點，訂單一接得到就交——跟自動販售口同一套規則。
+ */
+const FLOOR = { minX: -0.9, maxX: 0.9, minZ: -0.55, maxZ: 0.55 };
+const REACT_SEC = Number(process.env.REACT_SEC ?? 3);
+const HOURS = Number(process.env.SIM_HOURS ?? 3);
+const SPAWN = { puddingPos: { x: 0.1, z: 0.05 }, basinPos: { x: 0.62, z: 0.28 } };
+const BUY_ORDER: EquipmentId[] = ['collector', 'autoFill', 'crafter', 'seller', 'restock'];
+
+function run(profile: 'equip-first' | 'zone-first', seed: number) {
+  const state = createNewSave({ seed, now: 0 });
+  const w = createWorld(state, FLOOR);
+  const noop = () => {};
+  const milestones: Record<string, number> = {};
+  const mark = (k: string) => {
+    if (!(k in milestones)) milestones[k] = state.time;
+  };
+
+  const total = HOURS * 3600;
+  for (let t = 0; t < total; t += REACT_SEC) {
+    advance(w, REACT_SEC);
+    state.basins.forEach((b, i) => {
+      if (b.units === 0 && state.stock.caramel > 0) fillBasin(state, i, 'caramel', noop);
+    });
+    if (state.drops.length) {
+      pickAllDrops(state, noop, false);
+      mark('first pick');
+    }
+    for (const s of SPECIES_IDS) while (state.ingredients[s] >= BALANCE.ingredientsPerDessert) craft(state, s, noop);
+    if (state.stats.crafted > 0) mark('first craft');
+    for (const o of [...state.orders]) {
+      if (state.desserts[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
+    }
+    for (const s of SPECIES_IDS) {
+      const reserved = state.orders.filter((o) => o.species === s).reduce((n, o) => n + o.qty, 0);
+      const spare = state.desserts[s] - reserved;
+      if (spare > 0 && sellDessert(state, s, spare, noop).ok) mark('first sale');
+    }
+    const l: LiquidId = 'caramel';
+    if (state.stock[l] < 2) buyStock(state, l, 5, noop);
+
+    const nz = nextLockedZone(state);
+    const zoneFirst = profile === 'zone-first' && state.zones.filter((z) => z.unlocked).length < 2;
+    if (!zoneFirst) {
+      for (const id of BUY_ORDER) {
+        if (!state.equipment[id] && state.coins >= EQUIPMENT[id].price) {
+          buyEquipment(state, id, noop);
+          mark(`buy ${id}`);
+        }
+      }
+    }
+    // 留 20 幣做補貨
+    if (nz && state.coins >= nz.price + 20 && unlockZone(state, nz.id, SPAWN, noop).ok) mark(`unlock ${nz.name}`);
+    for (const c of [100, 500, 1000, 3000]) if (state.coins >= c) mark(`coins ${c}`);
+  }
+
+  const lines = Object.entries(milestones)
+    .sort((a, b) => a[1] - b[1])
+    .map(([k, s]) => `${(s / 60).toFixed(1).padStart(7)} min  ${k}`);
+  console.log(
+    `\n=== ${profile} (seed ${seed}, react every ${REACT_SEC}s, ${HOURS}h) ===\n${lines.join('\n')}\n` +
+      `end: coins=${Math.floor(state.coins)} baths=${state.stats.baths} orders=${state.stats.sold} puddings=${state.puddings.length} ` +
+      `equip=${EQUIPMENT_IDS.filter((e) => state.equipment[e]).join(',')}\n`,
+  );
+}
+
+test('pacing report', () => {
+  run('equip-first', 7);
+  run('zone-first', 7);
+  run('equip-first', 99);
+});

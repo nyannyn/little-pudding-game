@@ -139,6 +139,9 @@ describe('AC2-4 風味突變（48 小時曝露）', () => {
 
     expect(p.flavorExposure.matcha).toBe(BALANCE.flavorThresholdSec - 3600);
     expect(p.pendingMutation).toBeNull();
+    // 倒空盆子再往前跑：要驗的是「這次落地不突變」，不能讓它在這 60 秒內又泡一次
+    w.state.basins[0]!.units = 0;
+    w.state.basins[0]!.liquid = null;
     advance(w, 60);
     expect(p.species).toBe('caramel');
   });

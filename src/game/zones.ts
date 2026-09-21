@@ -29,14 +29,14 @@ export const START_ZONE = zoneKey(0, 1);
 
 /**
  * v1 的四個分區。價格級距刻意拉開：
- * 上層是「第一次擴張」（大約 130 份焦糖原料），鄰櫃是長期目標。
+ * 上層是「第一次擴張」（約 20 次泡澡的淨收入，勤勞玩家 20 分鐘內；D24），鄰櫃是長期目標。
  */
 export function defaultZones(): Zone[] {
   return [
     { id: zoneKey(0, 1), cabinet: 0, tier: 1, name: '一號櫥窗・中層', unlocked: true, price: 0 },
-    { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', unlocked: false, price: 800 },
-    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', unlocked: false, price: 1600 },
-    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', unlocked: false, price: 3200 },
+    { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', unlocked: false, price: 200 },
+    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', unlocked: false, price: 500 },
+    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', unlocked: false, price: 1200 },
   ];
 }
 

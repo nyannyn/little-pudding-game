@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { BALANCE } from '../../src/game/balance';
 import type { GameState } from '../../src/game/state';
 
 /**
@@ -35,7 +36,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   const poured = await state(page);
   expect(poured.basins[0]!.units).toBe(1);
   expect(poured.basins[0]!.liquid).toBe('caramel');
-  expect(poured.stock.caramel).toBe(3);
+  expect(poured.stock.caramel).toBe(BALANCE.startStock.caramel! - 1);
 
   // ② 布丁自己跳進去泡澡（沒有任何玩家操作）
   await page.waitForFunction(() => (window.__lpg.state as GameState).puddings.some((p) => p.mode === 'bathing'), null, { timeout: 60_000 });

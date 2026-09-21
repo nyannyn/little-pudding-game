@@ -62,10 +62,10 @@ export interface LiquidInfo {
 }
 
 export const LIQUIDS: Record<LiquidId, LiquidInfo> = {
-  caramel: { id: 'caramel', name: '香醇濃郁的熱焦糖', color: 0xc07a2c, caramelAfterBath: 100, unitPrice: 4, needsBasin: false, flavorFor: null },
-  milk: { id: 'milk', name: '冰鮮牛乳', color: 0xfdfaf2, caramelAfterBath: 60, unitPrice: 4, needsBasin: false, flavorFor: null },
-  matcha: { id: 'matcha', name: '宇治抹茶湯', color: 0x7fa762, caramelAfterBath: 80, unitPrice: 10, needsBasin: true, flavorFor: 'matcha' },
-  strawberry: { id: 'strawberry', name: '大湖草莓醬', color: 0xe2708c, caramelAfterBath: 80, unitPrice: 10, needsBasin: true, flavorFor: 'strawberry' },
+  caramel: { id: 'caramel', name: '香醇濃郁的熱焦糖', color: 0xc07a2c, caramelAfterBath: 100, unitPrice: 2, needsBasin: false, flavorFor: null },
+  milk: { id: 'milk', name: '冰鮮牛乳', color: 0xfdfaf2, caramelAfterBath: 60, unitPrice: 2, needsBasin: false, flavorFor: null },
+  matcha: { id: 'matcha', name: '宇治抹茶湯', color: 0x7fa762, caramelAfterBath: 80, unitPrice: 6, needsBasin: true, flavorFor: 'matcha' },
+  strawberry: { id: 'strawberry', name: '大湖草莓醬', color: 0xe2708c, caramelAfterBath: 80, unitPrice: 6, needsBasin: true, flavorFor: 'strawberry' },
 };
 
 export const LIQUID_IDS = Object.keys(LIQUIDS) as LiquidId[];

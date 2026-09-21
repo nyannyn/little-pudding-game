@@ -12,6 +12,8 @@ import {
 } from '../../src/game/actions';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
 import type { SimEvent } from '../../src/game/events';
+import { generateOrder } from '../../src/game/orders';
+import { createRng } from '../../src/game/rng';
 import { advance } from '../../src/game/sim';
 import { SPECIES, dessertPrice } from '../../src/game/species';
 import { createNewSave } from '../../src/game/state';
@@ -160,6 +162,20 @@ describe('AC2-10 訂單卡', () => {
     w.state.desserts[o.species] = o.qty;
     o.expiresAt = w.state.time - 1;
     expect(fulfillOrder(w.state, o.id, sink).ok).toBe(false);
+  });
+
+  it('D25：只養焦糖時，訂單絕大多數是焦糖，但仍偶爾出別種當引子', () => {
+    const w = makeWorld({ puddings: 1 });
+    const rng = createRng(3);
+    const counts: Record<string, number> = {};
+    const N = 400;
+    for (let i = 0; i < N; i++) {
+      const o = generateOrder(w.state, rng);
+      counts[o.species] = (counts[o.species] ?? 0) + 1;
+    }
+    // 期望值 0.8 + 0.2/4 = 0.85；四種均抽會是 0.25（負向對照：把 ORDER_OWNED_SPECIES_RATIO 改 0 就紅）
+    expect((counts.caramel ?? 0) / N).toBeGreaterThan(0.75);
+    expect(Object.keys(counts).length).toBeGreaterThan(1);
   });
 
   it('桌上訂單不會超過上限', () => {
