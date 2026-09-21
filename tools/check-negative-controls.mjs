@@ -64,6 +64,14 @@ const CASES = [
     test: '地上已經 5 份時',
   },
   {
+    ac: 'AC3-1',
+    why: '把賣原料的金幣加總改成 0，只有「賣後金幣增加」那一步會紅',
+    file: 'src/game/actions.ts',
+    from: '  const coins = SPECIES[species].ingredientPrice * n;',
+    to: '  const coins = 0;',
+    test: '撿起來就入庫，賣掉就加錢',
+  },
+  {
     ac: 'AC2-7',
     why: '買設備時先扣錢再檢查餘額，失敗後 state 就不再等於原樣',
     file: 'src/game/actions.ts',

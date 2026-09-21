@@ -274,7 +274,16 @@ function persist() {
   save(syncForSave(world, Date.now()));
 }
 window.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') persist();
+  if (document.visibilityState === 'hidden') {
+    persist();
+    return;
+  }
+  // 回到前景要補跑那段時間。每幀的 dt 被夾在 0.1 秒（避免一幀跑掉整個世界），
+  // 所以切出去十分鐘再回來，不補跑的話那十分鐘就整段消失——手機上這是常態不是例外。
+  settleOffline(world, Date.now());
+  drainEvents(world);
+  last = performance.now(); // 不重設的話下一幀的 dt 會是離開的總時長
+  hud.update(state, performance.now(), true);
 });
 window.addEventListener('pagehide', persist);
 
