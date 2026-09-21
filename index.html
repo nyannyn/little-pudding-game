@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#f6e7d2" />
+    <title>小布丁農場</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f6e7d2; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; width: 100%; height: 100%; }
+      #debug { position: fixed; top: env(safe-area-inset-top, 0); left: 0; padding: 6px 8px; font: 12px/1.4 ui-monospace, monospace; color: #3b2a1a; background: rgba(255,255,255,.7); pointer-events: none; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="debug" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
