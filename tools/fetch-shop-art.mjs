@@ -18,17 +18,13 @@ const COMMIT = '1ffb34c752ecf5d402f04cfb4b392c77f57c54bc';
 const OUT = 'src/assets/shop';
 const SIZE = 160;
 
-/** 我們的商品 key → Fluent Emoji 的資產目錄名 */
+/**
+ * 我們的商品 key → Fluent Emoji 的資產目錄名。
+ * 不在這張表裡的（設備五件、蜂蜜罐、紙盒牛奶、草莓果醬）是自己畫的 SVG，直接放在同目錄。
+ */
 const ART = {
-  caramel: 'Honey pot',
-  milk: 'Glass of milk',
   matcha: 'Teacup without handle',
   strawberry: 'Strawberry',
-  autoFill: 'Shower',
-  collector: 'Magnet',
-  crafter: 'Factory',
-  seller: 'Convenience store',
-  restock: 'Scroll',
   bathtub: 'Bathtub',
   window: 'Window',
   store: 'Department store',

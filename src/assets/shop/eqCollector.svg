@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 原料收集手：頂板滑軌＋垂下來的夾爪（對應 equipmentMesh.ts 的 collector） -->
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#eef2f6"/>
+      <stop offset=".5" stop-color="#cfd6dd"/>
+      <stop offset="1" stop-color="#a9b4c0"/>
+    </linearGradient>
+    <linearGradient id="metalH" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef2f6"/>
+      <stop offset="1" stop-color="#b3bec9"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4a898"/>
+      <stop offset="1" stop-color="#d9705f"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="80" cy="146" rx="46" ry="8" fill="#5a3d28" opacity=".14"/>
+  <!-- 滑軌 -->
+  <rect x="22" y="18" width="116" height="14" rx="7" fill="url(#metalH)"/>
+  <rect x="30" y="22" width="100" height="4" rx="2" fill="#8a97a6" opacity=".5"/>
+  <!-- 滑車 -->
+  <rect x="64" y="14" width="32" height="22" rx="6" fill="url(#metal)"/>
+  <!-- 吊桿 -->
+  <rect x="76" y="34" width="8" height="40" rx="4" fill="url(#metal)"/>
+  <!-- 夾爪本體（配色） -->
+  <rect x="56" y="70" width="48" height="26" rx="8" fill="url(#accent)"/>
+  <rect x="60" y="74" width="40" height="7" rx="3.5" fill="#ffffff" opacity=".35"/>
+  <!-- 兩根爪 -->
+  <path d="M62 96 L58 118 Q58 126 66 126 L72 126" fill="none" stroke="#d9705f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M98 96 L102 118 Q102 126 94 126 L88 126" fill="none" stroke="#d9705f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 夾著的原料方塊 -->
+  <path d="M80 104 L94 111 L94 127 L80 134 L66 127 L66 111 Z" fill="#e6b45c"/>
+  <path d="M66 111 L80 118 L94 111 L80 104 Z" fill="#f6d28a"/>
+  <path d="M80 118 L80 134 L66 127 L66 111 Z" fill="#c9923a"/>
+</svg>

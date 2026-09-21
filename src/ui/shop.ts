@@ -19,8 +19,8 @@ import { ART, INGREDIENT_ART, artFor, type ArtSpec } from './shopArt';
 export type ShopPage = ShopTab | 'sell';
 
 const TABS: { id: ShopPage; label: string; art: keyof typeof ART }[] = [
-  { id: 'stock', label: '補貨', art: 'caramel' },
-  { id: 'equipment', label: '設備', art: 'collector' },
+  { id: 'stock', label: '補貨', art: 'honeyJar' },
+  { id: 'equipment', label: '設備', art: 'eqCrafter' },
   { id: 'basin', label: '澡盆', art: 'bathtub' },
   { id: 'zone', label: '擴建', art: 'window' },
   { id: 'sell', label: '賣出', art: 'ingCaramel' },
