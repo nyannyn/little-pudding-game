@@ -52,6 +52,10 @@ export class DropsView {
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    // InstancedMesh 的射線檢測先用「所有實例合起來的包圍球」粗篩；那顆球是第一次被要到時才算，
+    // 而第一次通常發生在 count 還是 0 的時候 → 半徑 −1 的空球，之後不管掉幾份原料射線都打不到，
+    // 玩家點地上的原料永遠沒反應。實例最多 5 個，每幀重算不痛。
+    this.mesh.computeBoundingSphere();
   }
 
   /** 射線打到第幾個 instance → 那一份原料的 id */

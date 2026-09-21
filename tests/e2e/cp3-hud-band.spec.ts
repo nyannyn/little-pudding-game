@@ -51,3 +51,43 @@ test('布丁與澡盆都投影在 HUD 沒遮到的那一段', async ({ page }) =
   expect(r.view?.enabled).toBe(true);
   expect(r.view?.offsetY ?? 0).toBeGreaterThan(0);
 });
+
+/**
+ * 鏡頭有投影偏移之後，點畫布撿原料的射線也要跟著對：
+ * 把掉落物的世界座標投影到畫面、在那一點點下去，原料要被撿走；
+ * 往下點 offsetY 那麼多（＝沒有偏移時它會出現的位置）則不能撿到——這是「偏移沒套進射線」的負向對照。
+ */
+test('點畫布上的原料撿得到（投影偏移有套進射線）', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/?fresh=1&seed=31&fastTime=8');
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+  await page.getByRole('button', { name: /^倒焦糖/ }).click();
+  await page.waitForFunction(() => window.__lpg.state!.drops.length > 0, null, { timeout: 60_000 });
+  await page.waitForTimeout(700); // 剛掉出來會彈一下（0.45 遊戲秒），等它落定再量
+
+  const target = await page.evaluate(() => {
+    const { camera, scene } = window.__lpg.three!;
+    // InstancedMesh 的實例矩陣：第 0 個實例的平移在 elements[12..14]（不用 getMatrixAt，那需要 three 的 Matrix4 物件）
+    const drops = scene.getObjectByName('Drops') as unknown as { instanceMatrix: { array: ArrayLike<number> } };
+    const e = drops.instanceMatrix.array;
+    const x = e[12]!, y = e[13]!, z = e[14]!;
+    const mv = camera.matrixWorldInverse.elements, p = camera.projectionMatrix.elements;
+    const cx = mv[0]! * x + mv[4]! * y + mv[8]! * z + mv[12]!;
+    const cy = mv[1]! * x + mv[5]! * y + mv[9]! * z + mv[13]!;
+    const cz = mv[2]! * x + mv[6]! * y + mv[10]! * z + mv[14]!;
+    const px = p[0]! * cx + p[4]! * cy + p[8]! * cz + p[12]!;
+    const py = p[1]! * cx + p[5]! * cy + p[9]! * cz + p[13]!;
+    const pw = p[3]! * cx + p[7]! * cy + p[11]! * cz + p[15]!;
+    return { sx: ((px / pw + 1) / 2) * innerWidth, sy: ((1 - py / pw) / 2) * innerHeight, offsetY: camera.view?.offsetY ?? 0, drops: window.__lpg.state!.drops.length };
+  });
+  expect(target.offsetY).toBeGreaterThan(20);
+
+  // 負向對照：點在「沒有偏移時」的位置，不能撿到
+  await page.mouse.click(target.sx, target.sy + target.offsetY);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => window.__lpg.state!.drops.length)).toBe(target.drops);
+
+  await page.mouse.click(target.sx, target.sy);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => window.__lpg.state!.drops.length)).toBe(target.drops - 1);
+});
