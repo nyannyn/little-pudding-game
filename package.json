@@ -13,6 +13,7 @@
     "models:optimize": "node tools/optimize-models.mjs",
     "test:negative": "node tools/check-negative-controls.mjs",
     "pacing": "vitest run --config tools/pacing/vitest.config.ts --root . --reporter=verbose --silent=false",
+    "playtest": "node tools/playtest/opening.mjs && node tools/playtest/taps.mjs && node tools/playtest/layout.mjs && node tools/playtest/midgame.mjs && node tools/playtest/offline.mjs && node tools/playtest/shop-click.mjs",
     "smoke:live": "node tools/smoke-live.mjs"
   },
   "dependencies": {

@@ -8,6 +8,8 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `npm run build`：tsc 型別檢查＋vite build
 - `npm test`：vitest（`src/game` 純邏輯）
 - `npm run e2e`：Playwright（iPhone 視口，無頭 WebGL）
+- `npm run pacing`：無頭跑 3 小時遊戲時間，印每個里程碑在第幾分鐘（調數值前後各跑一次）
+- `npm run playtest`：從頭試玩找 bug 的整套腳本（`tools/playtest/`）；流程與判讀見 `.claude/skills/playtest/SKILL.md`
 - `npm run models:optimize`：壓縮 `public/models/*.glb` 並檢查資產預算（超標 exit 1）
 
 ## 分層鐵則
