@@ -24,6 +24,13 @@ export class PuddingView {
   private readonly bodyMat: THREE.MeshToonMaterial | null;
   private readonly caramelMat: THREE.MeshToonMaterial | null;
   private readonly eyes: THREE.Object3D | null;
+  /**
+   * 眼睛節點在 GLB 裡的原始 y 縮放（實測 0.1387，等比縮放的一部分）。
+   * 閉眼要「乘上一個係數」，不是「把 scale.y 設成絕對值」——
+   * 直接設 1 會把眼睛拉高 7.2 倍（使用者回報「眼睛被拉長、澡盆裡才正常」，
+   * 因為泡澡時設的 0.12 剛好接近原始值，反而看起來對）。
+   */
+  private readonly eyeBaseY: number;
   private readonly baseScale: number;
   private squashT = 0;
   private wasAirborne = false;
@@ -52,6 +59,8 @@ export class PuddingView {
     if (caramel instanceof THREE.Mesh) caramel.material = (caramel.material as THREE.MeshToonMaterial).clone();
     this.bodyMat = body instanceof THREE.Mesh ? (body.material as THREE.MeshToonMaterial) : null;
     this.caramelMat = caramel instanceof THREE.Mesh ? (caramel.material as THREE.MeshToonMaterial) : null;
+
+    this.eyeBaseY = this.eyes?.scale.y ?? 1;
 
     this.shownSpecies = p.species;
     this.applySpecies(p.species);
@@ -123,10 +132,11 @@ export class PuddingView {
       s.setScalar(this.baseScale);
     }
 
-    // 閉眼：泡澡時把眼睛壓扁成一條線（比換 mesh 便宜，也不必多一個 draw call）
+    // 閉眼：泡澡時把眼睛壓扁成一條線（比換 mesh 便宜，也不必多一個 draw call）。
+    // 係數乘在原始縮放上，不可以直接指定絕對值。
     if (this.eyes) {
-      const closed = bathing ? 0.12 : 1;
-      this.eyes.scale.y += (closed - this.eyes.scale.y) * Math.min(1, dt * 10);
+      const target = this.eyeBaseY * (bathing ? 0.22 : 1);
+      this.eyes.scale.y += (target - this.eyes.scale.y) * Math.min(1, dt * 10);
     }
 
     // 面向移動方向，跳躍時才轉（泡澡時面向鏡頭）
