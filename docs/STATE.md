@@ -196,7 +196,7 @@
 - **顏色空間會讓「同一個 hex」變色**：GLTFLoader 讀 `baseColorFactor` 是線性值，`new Color(0xff7885)` 走 sRGB→線性，腮紅明顯變濃（截圖並排才看得出來）。抄 GLB 的值要用 `setRGB(r,g,b, LinearSRGBColorSpace)`。
 - `PuddingView` 只剩骨架（`root` Group＋兩個空節點 `Pudding_Body`／`Pudding_Eyes`），照舊掛在 scene 裡，所以 `cp3-hud-band`／`cp3-pudding-look`／`tools/playtest/lib.mjs` 讀 scene graph 的量法不用改。
 - 副作用：陰影 pass 現在蓋整顆 1004 面（原本只有本體 468），每隻三角形 1696→2232；AC1-1 兩隻 4464 仍在 2000–5000 內但貼近上限。
-- 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 3 條（體色寫死成白 → 紅過；眼睛 instance 抄成本體矩陣 → 紅過。第三條讀的是 `Puddings_Eyes.instanceMatrix` 不是骨架——`cp3-pudding-look` 只量骨架，pool 抄錯矩陣它照樣綠；比值要除掉同一隻本體的比值，跳躍時根節點自己會拉長 1.19）、`npm run build` 綠、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**視覺簽核被退回（不是通過）**：使用者要「不同口味不同建模」→ D46（兩種輪廓＋五種加件，最壞 23 draw calls）；狀態卡改表情＋頭頂小圖示 → D47；順序定為 7-2a → 7-1b／7-2b → 7-3。
+- 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 3 條（體色寫死成白 → 紅過；眼睛 instance 抄成本體矩陣 → 紅過。第三條讀的是 `Puddings_Eyes.instanceMatrix` 不是骨架——`cp3-pudding-look` 只量骨架，pool 抄錯矩陣它照樣綠；比值要除掉同一隻本體的比值，跳躍時根節點自己會拉長 1.19）、`npm run build` 綠、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**視覺簽核被退回（不是通過）**：使用者要「不同口味不同建模」→ D47（兩種輪廓＋五種加件，最壞 23 draw calls）；狀態卡改表情＋頭頂小圖示 → D48；順序定為 7-2a → 7-1b／7-2b → 7-3。
 - `tools/measure-pop.mjs` 使用者說刪，已刪（cp7-instancing 鎖住 15 隻）。
 
 ## WP7-2a `zoneCapacity` 15＋平衡（2026-09-23，分支 `feat/zone-capacity-15`，獨立 worktree）
@@ -207,7 +207,9 @@
 - pacing 改前（cap 3）12.1／22.1／31.9 分、32.6k 幣、12 隻 → 改後 11.1／21.1／35.1 分、67.2k 幣、60 隻。**不調價的話是 3.7／9.0／14.3 分**——住客翻五倍等於產量翻五倍，價格不跟上整條擴張線會在 15 分鐘內走完。
 - `npm run pacing` 在乾淨 worktree 連跑兩次結果完全相同（之前在主樹量到不一致，是因為另一個 session 正在改 `balance.ts`／`pacing.test.ts`）。
 - 實跑證據：無頭 iPhone 開注液閥灌牛乳，真的靠繁殖住到 15 隻（13 次生產），20 draw calls、零 console 錯誤、住滿提示自己改口成「每一區 15 隻」。截圖 `docs/previews/wp7-2a-cap15-bred.png`。
-- **畫面問題照舊**（已排進 D47）：15 隻時左側狀態卡蓋掉大半個櫥窗。
+- **畫面問題照舊**（已排進 D48）：15 隻時左側狀態卡蓋掉大半個櫥窗。
+- **rebase 到 `89a632f`（origin 的每區設備 D45＋販賣機 D46）**：只有兩個 docs 檔衝突（merge-tree 先驗過），碼全自動合。**rebase 後重量 pacing**——每區重買設備會動到經濟，價格得重驗：11.1／21.7／35.9 分（rebase 前 11.1／21.1／35.1），價格不必重選。rebase 後單元 181 綠、e2e 53/53 綠、`npm run build` 綠。
+- **決策編號第二次撞號**：本地寫 D46／D47 時 origin 已有 D44（WebGL context lost）／D45（每區設備）／D46（販賣機），rebase 時改成 **D47 物種外觀／D48 狀態卡**。**並行 session 多的時候，決策編號等 rebase 完再定**。
 
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
