@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/game/balance';
 import { advance } from '../../src/game/sim';
+import { puddingMood } from '../../src/game/pudding';
 import { advanceUntil, fillBasinDirect, keepFed, makeWorld, only, runOneBath } from './helpers';
 
 describe('AC2-1 缺焦糖會去泡澡', () => {
@@ -222,5 +223,31 @@ describe('AC2-9 掉落上限', () => {
     }
     expect(kinds.has('egg')).toBe(true);
     expect(kinds.has('ingredient')).toBe(true);
+  });
+});
+
+describe('D48 頭頂小圖示看的狀態（puddingMood）', () => {
+  it('真實流程：焦糖低的布丁跳進盆裡泡澡，泡澡中不算「想泡澡」（否則泡澡的布丁頭上也冒澡盆）', () => {
+    const w = makeWorld({ puddings: 1 });
+    const p = only(w.state);
+    p.bornAt = w.state.time - BALANCE.matureAgeSec - 1;
+    fillBasinDirect(w.state, 'caramel');
+    p.caramel = 5;
+    expect(puddingMood(p, w.state.time)).toBe('wantsBath');
+
+    expect(advanceUntil(w, (x) => only(x.state).mode === 'bathing', 60)).toBeGreaterThanOrEqual(0);
+    expect(p.caramel).toBeLessThan(BALANCE.batheThreshold); // 前提：進盆當下焦糖仍低
+    expect(puddingMood(p, w.state.time)).toBe('bathing');
+  });
+
+  it('幼布丁：出生未滿 matureAgeSec 是 baby，滿了變 idle；想泡澡壓過幼布丁', () => {
+    const w = makeWorld({ puddings: 1 });
+    const p = only(w.state);
+    p.caramel = 90;
+    p.bornAt = w.state.time;
+    expect(puddingMood(p, w.state.time)).toBe('baby');
+    expect(puddingMood(p, w.state.time + BALANCE.matureAgeSec)).toBe('idle');
+    p.caramel = 5;
+    expect(puddingMood(p, w.state.time)).toBe('wantsBath');
   });
 });

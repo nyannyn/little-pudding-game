@@ -23,7 +23,7 @@ export const ALLELES: AlleleId[] = ['caramel', 'panna', 'matcha', 'strawberry'];
 export interface SpeciesInfo {
   id: SpeciesId;
   name: string;
-  /** 短名（狀態列一行塞得下；全名留給商店／toast） */
+  /** 短名（商店按鈕、澡盆名這類一行要塞得下的地方；全名留給商店／toast） */
   shortName: string;
   /** 該物種產出的原料名 */
   ingredient: string;

@@ -28,10 +28,13 @@ test('眼睛不會被單軸拉長；泡澡時才瞇起來', async ({ page }) => 
   // 8 倍速：泡澡 12 秒＝現實 1.5 秒，等 lerp 的 900ms 內布丁還在盆裡；20 倍會在量之前就泡完
   await page.goto('/?debug=1&fresh=1&seed=31&fastTime=8');
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+  // 新檔第一隻焦糖只有 24（想泡澡），D48 之後牠會垂眼；量「正常眼睛」要先把大家餵飽，量完再還原
+  const saved = await page.evaluate(() => (window.__lpg.state as GameState).puddings.map((p) => { const c = p.caramel; p.caramel = 90; return c; }));
   // 讓 lerp 跑到穩定值
   await page.waitForTimeout(800);
 
   const resting = await eyeRatio(page);
+  await page.evaluate((cs) => (window.__lpg.state as GameState).puddings.forEach((p, i) => { p.caramel = cs[i]!; }), saved);
   expect(resting).toBeGreaterThan(0.9);
   expect(resting).toBeLessThan(1.1);
 

@@ -26,12 +26,9 @@ for (const device of ['iPhone 14', 'iPhone SE']) {
   const outOfBand = pts.filter((q) => q.kind === 'pudding' && (q.y < h.topbar.b + 40 || q.y > h.dock.t - 60));
   const problems = [];
   if (overlap(h.zones, h.orders)) problems.push('切換列與訂單欄重疊');
-  if (h.rows.some((r) => overlap(r, h.orders))) problems.push('住客列伸進訂單欄');
-  if (h.rows.some((r) => r.b - r.t > 36)) problems.push('住客列折成兩行');
   if (nextHit !== 'zoneStep') problems.push(`「下一個櫥窗」被 ${nextHit} 蓋住`);
   if (covered.length) problems.push(`訂單卡蓋住 ${covered.map((c) => c.kind).join(',')}`);
   if (outOfBand.length) problems.push('布丁投影落在 HUD 帶外');
-  if (h.hint && h.rows.some((r) => overlap(r, h.hint))) problems.push('提示泡泡蓋住住客列');
   console.log(`${device} (${h.vw}x${h.vh}) → ${problems.length ? '✗ ' + problems.join('；') : '✓ 無疊'}`);
   bad += problems.length;
   await shot(page, `layout-${device.replace(' ', '')}`);

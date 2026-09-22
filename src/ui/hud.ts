@@ -1,7 +1,6 @@
 import './hud.css';
 import { BALANCE, type EquipmentId } from '../game/balance';
 import { levelFor } from '../game/level';
-import { describePudding } from '../game/pudding';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { puddingsIn, unlockedZones } from '../game/zones';
@@ -80,7 +79,6 @@ export class Hud {
   private readonly chipIng: HTMLElement;
   private readonly chipDes: HTMLElement;
   private readonly zonesBar: HTMLElement;
-  private readonly living: HTMLElement;
   private readonly ordersBox: HTMLElement;
   private readonly dockPour: HTMLElement;
   private readonly btnPick: HTMLButtonElement;
@@ -131,7 +129,6 @@ export class Hud {
           <span class="name"></span>
           <button data-a="zoneStep" data-arg="1" aria-label="下一個櫥窗">&#8250;</button>
         </div>
-        <div class="living"></div>
         <div class="orders"></div>
         <div class="dock">
           <div class="line" data-k="pour"></div>
@@ -200,7 +197,6 @@ export class Hud {
     this.chipIng = q('[data-k="ing"] b');
     this.chipDes = q('[data-k="des"] b');
     this.zonesBar = q('.zones');
-    this.living = q('.living');
     this.ordersBox = q('.orders');
     this.dockPour = q('[data-k="pour"]');
     this.btnPick = q('[data-a="pick"]');
@@ -407,7 +403,6 @@ export class Hud {
 
     this.syncZones(state);
     this.syncPourButtons(state);
-    this.syncLiving(state);
     this.syncOrders(state);
 
     const drops = state.drops.length;
@@ -498,23 +493,6 @@ export class Hud {
       n.textContent = String(state.stock[l]);
       n.classList.toggle('zero', state.stock[l] === 0);
     }
-  }
-
-  private syncLiving(state: GameState) {
-    // 只列「看得到的那一區」的住客：其他區照樣在運作，但狀態列擠不下也沒意義
-    const mine = puddingsIn(state, state.activeZone);
-    while (this.living.childElementCount > mine.length) this.living.lastElementChild?.remove();
-    while (this.living.childElementCount < mine.length) {
-      this.living.appendChild(el(`<div class="row">${icon('pudding', 'bubble')}<span class="t"></span><span class="bar"><i></i></span></div>`));
-    }
-    mine.forEach((p, i) => {
-      const row = this.living.children[i] as HTMLElement | undefined;
-      if (!row) return;
-      (row.querySelector('.t') as HTMLElement).textContent = describePudding(p, state.time);
-      const bar = row.querySelector('.bar') as HTMLElement;
-      (bar.firstElementChild as HTMLElement).style.width = `${Math.round(p.caramel)}%`;
-      bar.classList.toggle('low', p.caramel < BALANCE.batheThreshold);
-    });
   }
 
   private syncOrders(state: GameState) {

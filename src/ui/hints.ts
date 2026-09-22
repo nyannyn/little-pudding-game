@@ -1,4 +1,5 @@
 import { BALANCE, EQUIPMENT } from '../game/balance';
+import { puddingMood } from '../game/pudding';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
 import { equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
 import { basinsIn, dropsIn, puddingsIn, unlockedZones } from '../game/zones';
@@ -61,7 +62,7 @@ function stalledHint(state: GameState): Hint | null {
   const zone = state.activeZone;
   const basins = basinsIn(state, zone);
   if (basins.some((b) => b.units > 0)) return null;
-  if (!puddingsIn(state, zone).some((p) => p.mode !== 'bathing' && p.caramel < BALANCE.batheThreshold)) return null;
+  if (!puddingsIn(state, zone).some((p) => puddingMood(p, state.time) === 'wantsBath')) return null;
 
   // 庫存裡現在還倒得出來的東西（＝動作列上還沒變灰的那幾顆）
   const pourable = (['caramel', 'milk', ...state.ownedBasins] as LiquidId[]).filter((l) => state.stock[l] > 0);

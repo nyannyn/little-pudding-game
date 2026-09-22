@@ -21,6 +21,7 @@ import {
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
+import { puddingMood } from './game/pudding';
 import { unlockedAtLevel } from './game/shop';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
@@ -53,6 +54,7 @@ import { Particles } from './scene/particles';
 import { ENTER as POUR_ENTER, PourView, THICKNESS, flowSeconds } from './scene/pourView';
 import { PuddingView } from './scene/puddingView';
 import { loadPuddingParts, PuddingPool } from './scene/puddingPool';
+import { MoodIcons } from './scene/moodIcons';
 import { Sfx } from './scene/audio';
 import { nextHint } from './ui/hints';
 import { shouldSuggestHomeScreen } from './ui/homeScreen';
@@ -611,6 +613,9 @@ const noPudding = params.get('noPudding') === '1';
 let creating = false;
 /** 所有布丁共用的 InstancedMesh（D41）；GLB 載好才有 */
 let pool: PuddingPool | null = null;
+/** 頭頂小圖示（D48）：想泡澡／幼布丁，取代原本左側的狀態卡 */
+const moodIcons = new MoodIcons();
+scene.add(moodIcons.mesh);
 
 /** 每隻布丁一個 view（只是骨架，mesh 在 pool 裡）；非啟用區的每幀不進 pool，就不吃 draw call */
 async function ensureViews() {
@@ -713,16 +718,20 @@ function frame(dt: number, now: number) {
   coins.update(dt);
 
   pool?.begin();
+  moodIcons.begin(dt);
   for (const p of state.puddings) {
     const view = views.get(p.id);
     if (!view) continue;
     const visible = p.zone === state.activeZone;
     view.root.visible = visible;
     if (!visible) continue;
-    view.update(p, dt, ox, oy, BASIN_SINK);
+    const mood = puddingMood(p, state.time);
+    view.update(p, dt, ox, oy, BASIN_SINK, mood);
     pool?.add(view);
+    moodIcons.add(view.root, mood, camera);
   }
   pool?.commit();
+  moodIcons.commit();
 
   // 切區時把鏡頭平移過去，保留玩家自己轉過的角度與縮放
   moveTmp.copy(desiredTarget).sub(controls.target);
