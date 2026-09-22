@@ -105,7 +105,11 @@ export class CoinsView {
     }
   }
 
-  update(dt: number) {
+  update(dtRaw: number) {
+    // 主迴圈的 dt 已經夾在 0.1（`main.ts` 的 setAnimationLoop），這裡再夾一次是給
+    // `window.__lpg.step(dt)` 那條 debug 路徑用的：截圖工具會一次推一整秒，
+    // 不夾的話整段演出會在單一幀裡跑完，截到的是殘影（2026-09-22 第一次截圖就踩到）。
+    const dt = Math.min(dtRaw, 0.05);
     for (let i = this.coins.length - 1; i >= 0; i--) {
       const c = this.coins[i];
       if (!c) continue;
