@@ -30,6 +30,7 @@ import { createNewSave, type GameState, type Vec2 } from './game/state';
 import { basinsIn, findZone, puddingsIn, unlockedZones, zoneKey } from './game/zones';
 import { createRenderer } from './scene/renderer';
 import { MAX_AZIMUTH, createCamera, createControls, fitBoxDistance, applyDistance } from './scene/camera';
+import { CoinsView } from './scene/coinsView';
 import { addLighting, focusShadow } from './scene/lighting';
 import {
   CABINET_PITCH,
@@ -120,7 +121,8 @@ const drops = new DropsView();
 const equipment = new EquipmentView();
 const particles = new Particles();
 const pours = new PourView(basins, particles);
-scene.add(basins.group, drops.mesh, equipment.group, particles.points, pours.group);
+const coins = new CoinsView();
+scene.add(basins.group, drops.mesh, equipment.group, particles.points, pours.group, coins.mesh);
 
 const sfx = new Sfx();
 // 掛 window 不掛 canvas：教學的第一個動作是 HUD 上的「倒焦糖」按鈕，事件不會經過 canvas
@@ -451,6 +453,24 @@ function handle(e: SimEvent) {
   }
 }
 
+/**
+ * 賣出的金幣從外帶窗口彈出來、撒在窗前的地板上、消失（D42）。
+ *
+ * 生成點卡在 z=0.60：窗口 mesh 在 `d/2 − 0.02 = 0.68`、前玻璃在 0.7，
+ * 從 0.68 生會卡在窗體裡、落在玻璃後面；布丁地板是 ±0.4，落在 0.42–0.60
+ * 這條前緣帶才不會蓋住布丁。沒買販售口時（手動出貨）用同一條帶的正中央。
+ */
+function spawnCoins(earned: number, ox: number, oy: number) {
+  const hasWindow = state.equipment.seller;
+  const x = ox + (hasWindow ? -0.3 : 0);
+  const z = 0.6;
+  const y = oy + 0.28; // 窗體頂在 floorY+0.25，從它上緣冒出來才不會第一幀就被擋住
+  // 金額越大越多枚，但看得清楚比例更重要：2–6 枚
+  const n = Math.max(2, Math.min(6, 2 + Math.floor(earned / 40)));
+  coins.burst(x, y, z, n, oy);
+  particles.burst(x, y, z, 0xffe08a, 10); // 窗口冒一下，告訴玩家錢是從這裡出來的
+}
+
 // ── 觸控：點掉落物撿起來、點澡盆倒液體 ────────────────
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -635,9 +655,17 @@ const paused = params.get('pause') === '1';
 
 function frame(dt: number, now: number) {
   advance(world, dt * fastTime);
-  for (const e of drainEvents(world)) handle(e);
+  // 同一幀的成交金額要**累加成一次金幣彈出**：`shipDesserts` 是逐物種賣的，
+  // 一次出貨可能在同一幀丟出好幾個 sell／orderDone，用「距上次 N 秒才准播」的節流
+  // 會把同幀的其他幾筆吃掉（D42）
+  let earned = 0;
+  for (const e of drainEvents(world)) {
+    if (e.type === 'sell' || e.type === 'orderDone') earned += e.coins;
+    handle(e);
+  }
 
   const { ox, oy, ceilY } = activeOrigin();
+  if (earned > 0) spawnCoins(earned, ox, oy);
 
   // 泡澡冒泡：靠狀態每隔一段時間生一顆，不必為此發事件
   bubbleT += dt;
@@ -656,6 +684,7 @@ function frame(dt: number, now: number) {
   drops.sync(state, state.activeZone, ox, oy, dt);
   equipment.sync(state, state.activeZone, ox, oy, ceilY);
   particles.update(dt);
+  coins.update(dt);
 
   for (const p of state.puddings) {
     const view = views.get(p.id);

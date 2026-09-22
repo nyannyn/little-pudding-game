@@ -170,7 +170,10 @@ export function shipDesserts(state: GameState, emit: EventSink, auto = false): S
 
 /**
  * 出貨之後「還差幾份才交得出來」的那張訂單：缺最少的那一張。
- * 只給 UI 用——按了出貨卻沒動靜時要說得出是哪一張單在扣著甜點。
+ *
+ * **唯讀查詢，不動 state**——這個檔案其餘的每一個匯出都是「玩家動作」，
+ * 只有這個不是；放在這裡是因為它讀的是 `shipDesserts` 的預留規則，兩邊要一起改。
+ * 只給 UI 用：按了出貨卻沒動靜時要說得出是哪一張單在扣著甜點。
  */
 export function nearestPendingOrder(state: GameState): { order: Order; short: number } | null {
   let best: { order: Order; short: number } | null = null;

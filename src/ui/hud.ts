@@ -71,6 +71,9 @@ const CHIP_TIPS: Record<string, string> = {
 };
 
 export class Hud {
+  /** 警告類提示被 × 關掉之後，多久再講一次（毫秒，真實時間） */
+  private static readonly WARNING_SNOOZE_MS = 45_000;
+
   readonly root: HTMLElement;
   private readonly chipCoins: HTMLElement;
   private readonly chipEgg: HTMLElement;
@@ -100,6 +103,9 @@ export class Hud {
 
   private hintOff = hintsDismissed();
   private hintId = '';
+  /** 被 × 關掉的那一則（只在這一次開著的頁面裡有效，不進 localStorage） */
+  private hintClosed = '';
+  private hintClosedAt = 0;
   private zoneOrder: string[] = [];
   private activeZone = '';
   private pourKeys = '';
@@ -134,7 +140,11 @@ export class Hud {
             <button data-a="ship" class="tilebtn primary">${cuteIcon('box', 'tile')}<span class="label">出貨</span><span class="n"></span></button>
           </div>
         </div>
-        <div class="hint" hidden><span class="who">小布丁</span><span class="t"></span><button data-a="hintOff" aria-label="不再顯示">${icon('close')}</button></div>
+        <div class="hint" hidden>
+          <span class="who">小提示</span>
+          <button class="x" data-a="hintClose" aria-label="收起這則提示">${icon('close')}</button>
+          <div class="body"><span class="t"></span><button class="never" data-a="hintOff">不再顯示提示</button></div>
+        </div>
         <div class="toasts"></div>
         <div class="tipbubble" hidden><span class="who">小布丁</span><span class="t"></span></div>
         <div class="welcome" hidden>
@@ -250,6 +260,11 @@ export class Hud {
         // 還原成功之後由 main.ts 重新載入整頁：把讀檔那條路徑跑一次，
         // 比在活著的世界裡逐欄位換掉安全得多
         if (!this.act.importSave(this.saveText.value)) this.toast('這串碼看起來不完整，請整串重貼一次', true);
+        break;
+      case 'hintClose':
+        this.hintClosed = this.hintId;
+        this.hintClosedAt = performance.now();
+        this.hint.hidden = true;
         break;
       case 'hintOff':
         dismissHints();
@@ -388,11 +403,11 @@ export class Hud {
     (this.btnShip.querySelector('.n') as HTMLElement).textContent = desserts ? String(desserts) : '';
 
     this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
-    this.syncHint(state);
+    this.syncHint(state, nowMs);
     if (this.shop.open) this.shop.render(state);
   }
 
-  private syncHint(state: GameState) {
+  private syncHint(state: GameState, nowMs: number) {
     const h = nextHint(state);
     if (this.hintOff && !h?.warning) {
       this.hint.hidden = true;
@@ -409,7 +424,22 @@ export class Hud {
       this.hint.dataset.hint = h.id;
       (this.hint.querySelector('.t') as HTMLElement).textContent = h.text;
     }
-    this.hint.hidden = false;
+    this.hint.hidden = this.isClosed(h, nowMs);
+  }
+
+  /**
+   * × 關掉的那一則要不要繼續藏著。
+   *
+   * 教學句：藏到換下一則為止（id 變了就重新出現）。
+   * **警告類（農場停住、住滿了）：只藏 `WARNING_SNOOZE_MS`**——這種狀況不會因為時間過去
+   * 自己好轉，`id` 也不會變，所以「關掉＝這一整場都不再講」等於把玩家重新關回
+   * 那個沒人告訴他農場已經死掉的狀態（2026-09-22 修好的正是這個洞）。
+   * 要真的永久安靜，按「不再顯示提示」。
+   */
+  private isClosed(h: { id: string; warning?: boolean }, nowMs: number): boolean {
+    if (h.id !== this.hintClosed) return false;
+    if (!h.warning) return true;
+    return nowMs - this.hintClosedAt < Hud.WARNING_SNOOZE_MS;
   }
 
   private syncZones(state: GameState) {
