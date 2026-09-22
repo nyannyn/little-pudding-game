@@ -1,10 +1,11 @@
 import { BALANCE } from './balance';
 import { basinAvailable, consumeBathUnit, findBasinFor } from './basin';
 import type { EventSink } from './events';
+import { breedFromBath } from './breeding';
 import { applySpeciesAsPure } from './genetics';
 import { range, type Rng } from './rng';
 import { LIQUIDS, SPECIES, type SpeciesId } from './species';
-import type { GameState, Pudding, Vec2 } from './state';
+import type { DropKind, GameState, Pudding, Vec2 } from './state';
 
 /** 啟用層地板的 2D 邊界。由 scene 層（`cabinet.floorBounds()`）算好傳進來——
  *  `game/` 不可以 import three.js，也不該知道 y 在哪一層。 */
@@ -55,15 +56,15 @@ export function wantsBath(p: Pudding): boolean {
   return p.caramel < BALANCE.batheThreshold;
 }
 
-/** 最近 milkWindow 次泡澡裡牛奶的占比 */
-export function milkRatio(p: Pudding): number {
-  if (p.bathHistory.length === 0) return 0;
-  const milk = p.bathHistory.filter((l) => l === 'milk').length;
-  return milk / p.bathHistory.length;
-}
-
 /** 掉一份原料在地上；滿了就不掉（計畫：上限 5 份，滿了後續不再掉） */
-export function spawnDrop(state: GameState, zone: string, species: SpeciesId, at: Vec2, ctx: SimContext): boolean {
+export function spawnDrop(
+  state: GameState,
+  zone: string,
+  species: SpeciesId,
+  kind: DropKind,
+  at: Vec2,
+  ctx: SimContext,
+): boolean {
   // 上限是「每一區各自 5 份」：解鎖第二區之後，兩區的地板要各自算
   if (state.drops.filter((d) => d.zone === zone).length >= BALANCE.dropCap) return false;
   // 沿澡盆外圍的一圈掉，不掉在盆心——掉進盆裡會被盆身遮住，看起來像沒產出
@@ -71,8 +72,8 @@ export function spawnDrop(state: GameState, zone: string, species: SpeciesId, at
   const r = BALANCE.dropSpawnRadius;
   const x = Math.min(ctx.floor.maxX, Math.max(ctx.floor.minX, at.x + Math.cos(a) * r));
   const z = Math.min(ctx.floor.maxZ, Math.max(ctx.floor.minZ, at.z + Math.sin(a) * r * 0.7));
-  state.drops.push({ id: `d${state.nextId++}`, zone, species, pos: { x, z }, bornAt: state.time });
-  ctx.emit({ type: 'drop', species, x, z });
+  state.drops.push({ id: `d${state.nextId++}`, zone, kind, species, pos: { x, z }, bornAt: state.time });
+  ctx.emit({ type: 'drop', kind, species, x, z });
   return true;
 }
 
@@ -86,8 +87,6 @@ function land(state: GameState, p: Pudding, ctx: SimContext): void {
     // 突變寫的是**基因型**不是 species（D28）：只改 species 的話，一隻泡成鮮奶酪的布丁
     // 還是會把焦糖等位基因傳給每一個子代。突變一律換成該物種的純合，表面行為不變。
     applySpeciesAsPure(p, p.pendingMutation);
-    p.tint = 0;
-    p.bathHistory = [];
     p.flavorExposure = {};
     state.stats.mutations++;
     ctx.emit({ type: 'mutate', puddingId: p.id, from, to: p.species, x: p.pos.x, z: p.pos.z });
@@ -117,22 +116,18 @@ function land(state: GameState, p: Pudding, ctx: SimContext): void {
   ctx.emit({ type: 'splat', puddingId: p.id, x: p.pos.x, z: p.pos.z });
 }
 
-/** 泡完澡：補 caramel、推進牛奶窗與風味曝露、產一份原料、讓出澡盆 */
+/**
+ * 泡完澡（D32／D34 改版）：
+ * - 補 caramel（焦糖澡補滿、牛奶澡補一半…數值見 `LIQUIDS[*].caramelAfterBath`）
+ * - 風味澡盆累積曝露，滿門檻就排定母體自己的突變（既有規則，沒有動）
+ * - **牛奶澡＝生一隻小布丁**（D34）
+ * - **不再產出原料**：原料改成固定間隔自然掉落（D32，見 `tickDrops`）
+ */
 function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
   const liquid = p.bathLiquid ?? 'caramel';
   const info = LIQUIDS[liquid];
 
   p.caramel = info.caramelAfterBath;
-  p.bathHistory.push(liquid);
-  if (p.bathHistory.length > BALANCE.milkWindow) p.bathHistory = p.bathHistory.slice(-BALANCE.milkWindow);
-
-  // 變白：窗內牛奶占比夠高就累積，不夠就退回去（灌一次焦糖救得回來）
-  if (p.bathHistory.length >= 2 && milkRatio(p) >= BALANCE.milkRatioThreshold) {
-    p.tint = Math.min(1, p.tint + BALANCE.tintPerBath);
-  } else {
-    p.tint = Math.max(0, p.tint - BALANCE.tintPerBath);
-  }
-  if (p.tint >= 1 && p.species !== 'panna') p.pendingMutation = 'panna';
 
   // 風味曝露：泡特殊澡盆才累積，滿門檻就排定突變
   if (info.flavorFor) {
@@ -145,24 +140,42 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
   state.stats.baths++;
   ctx.emit({ type: 'bathDone', puddingId: p.id, liquid });
 
-  // 原料：裝了收集手就直接入庫，否則掉在盆邊等玩家點
-  const bi = p.basinIndex;
-  const basin = bi === null ? undefined : state.basins[bi];
-  const at = basin ? basin.pos : p.pos;
-  if (state.equipment.collector) {
-    state.ingredients[p.species]++;
-    state.stats.picked++;
-    ctx.emit({ type: 'pick', species: p.species, x: at.x, z: at.z, auto: true });
-  } else {
-    spawnDrop(state, p.zone, p.species, at, ctx);
+  // 牛奶澡就是繁殖。生不出來（全場住滿）要講出來，否則玩家會以為規則壞了
+  if (liquid === 'milk') {
+    const child = breedFromBath(state, p, ctx);
+    if (child === null) ctx.emit({ type: 'error', message: '櫥窗住滿了，生不出新的小布丁' });
   }
 
+  const bi = p.basinIndex;
+  const basin = bi === null ? undefined : state.basins[bi];
   if (basin && basin.occupantId === p.id) basin.occupantId = null;
   p.basinIndex = null;
   p.bathLiquid = null;
   p.bathT = 0;
   p.mode = 'resting';
   p.restT = range(ctx.rng, 0.4, 1.0);
+}
+
+/**
+ * 固定間隔自然掉落（D32）。時間到就掉一份，`eggChance` 的機率是蛋、否則是自己物種的原料。
+ * 泡澡中不掉——布丁人在盆子裡，掉出來的東西會被盆身蓋住看不見。
+ * **焦糖見底時也不掉（D35）**：這是「布丁保持愉快才生產」的最小判定，
+ * 也讓「液體用完」重新有後果——否則 D32 之後焦糖澡與補貨完全沒有作用。
+ */
+function tickDrops(state: GameState, p: Pudding, ctx: SimContext): void {
+  if (p.mode === 'bathing') return;
+  // 焦糖見底的布丁不生產。計時器一起往後推，補好液體之後才不會一次倒出一堆積欠的原料
+  if (p.caramel < BALANCE.dropCaramelMin) {
+    p.nextDropAt = Math.max(p.nextDropAt, state.time);
+    return;
+  }
+  if (state.time < p.nextDropAt) return;
+
+  const kind: DropKind = ctx.rng.next() < BALANCE.eggChance ? 'egg' : 'ingredient';
+  spawnDrop(state, p.zone, p.species, kind, p.pos, ctx);
+
+  const jitter = 1 + range(ctx.rng, -BALANCE.dropJitter, BALANCE.dropJitter);
+  p.nextDropAt = state.time + BALANCE.dropIntervalSec * jitter;
 }
 
 /** 決定下一跳要去哪：缺焦糖且有盆可用就去泡澡，否則在地板上隨機挑一點 */
@@ -183,6 +196,8 @@ function chooseNextHop(state: GameState, p: Pudding, ctx: SimContext): void {
 
 /** 單隻布丁的一步 */
 export function tickPudding(state: GameState, p: Pudding, dt: number, ctx: SimContext): void {
+  tickDrops(state, p, ctx);
+
   if (p.mode === 'bathing') {
     p.bathT -= dt;
     if (p.bathT <= 0) finishBath(state, p, ctx);
@@ -219,6 +234,5 @@ export function describePudding(p: Pudding, time?: number): string {
   if (time !== undefined && time - p.bornAt < BALANCE.matureAgeSec) return `${name}・幼布丁`;
   if (p.mode === 'bathing') return `${name}・泡澡中`;
   if (wantsBath(p)) return `${name}・想泡澡了`;
-  if (p.tint > 0) return `${name}・有點發白`;
   return `${name}・悠閒彈跳`;
 }

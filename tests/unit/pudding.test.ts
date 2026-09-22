@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/game/balance';
 import { advance } from '../../src/game/sim';
-import { advanceUntil, fillBasinDirect, makeWorld, only, runOneBath } from './helpers';
+import { advanceUntil, fillBasinDirect, keepFed, makeWorld, only, runOneBath } from './helpers';
 
 describe('AC2-1 缺焦糖會去泡澡', () => {
   it('澡盆有焦糖時，下一次跳躍目標是澡盆並落盆進入 bathing', () => {
@@ -45,18 +45,18 @@ describe('AC2-1 缺焦糖會去泡澡', () => {
   });
 });
 
-describe('AC2-2 泡澡產原料並消耗液體', () => {
-  it('焦糖澡：掉一份原料、澡盆少一份、caramel 回滿', () => {
+describe('AC2-2 泡澡消耗液體、補焦糖（D32 之後不再產原料）', () => {
+  it('焦糖澡：澡盆少一份、caramel 回滿；原料不是泡澡產的', () => {
     const w = makeWorld({ puddings: 1 });
     const p = only(w.state);
     fillBasinDirect(w.state, 'caramel', 3);
+    // 把掉落計時器推遠，確保這段時間內掉的東西不會混進斷言
+    p.nextDropAt = 99999;
 
     expect(runOneBath(w, 'caramel')).toBe(true);
     expect(w.state.basins[0]!.units).toBe(2);
     expect(p.caramel).toBe(100);
-    expect(w.state.drops.length).toBe(1);
-    expect(w.state.drops[0]!.species).toBe('caramel');
-    expect(w.state.ingredients.caramel).toBe(0); // 沒有收集手就是掉在地上
+    expect(w.state.drops.length).toBe(0); // D32：泡澡不產原料了
   });
 
   it('牛奶澡：caramel 只回到 60', () => {
@@ -81,45 +81,84 @@ describe('AC2-2 泡澡產原料並消耗液體', () => {
   });
 });
 
-describe('AC2-3 極端牛奶突變', () => {
-  it('連續 5 次牛奶澡後 tint 達 1，下一次落地變成鮮奶酪', () => {
+describe('AC2-3 牛奶澡就是繁殖（D34）', () => {
+  it('泡完一次牛奶澡就多一隻布丁', () => {
     const w = makeWorld({ puddings: 1 });
-    const p = only(w.state);
-    for (let i = 0; i < 5; i++) expect(runOneBath(w, 'milk')).toBe(true);
+    expect(w.state.puddings).toHaveLength(1);
 
-    expect(p.tint).toBe(1);
-    expect(p.pendingMutation).toBe('panna');
+    expect(runOneBath(w, 'milk')).toBe(true);
 
-    expect(advanceUntil(w, (x) => only(x.state).species === 'panna', 60)).toBeGreaterThanOrEqual(0);
-    expect(p.species).toBe('panna');
-    expect(p.tint).toBe(0);
-    expect(p.bathHistory).toEqual([]);
-    expect(w.state.stats.mutations).toBe(1);
+    expect(w.state.puddings).toHaveLength(2);
+    expect(w.state.stats.births).toBe(1);
+    expect(w.events.some((e) => e.type === 'birth')).toBe(true);
   });
 
-  it('負向對照：5 次中夾 1 次焦糖，牛奶占比不足，不得突變', () => {
+  it('沒有成年或冷卻限制：剛出生的小布丁泡完牛奶澡照樣生', () => {
     const w = makeWorld({ puddings: 1 });
-    const p = only(w.state);
-    const order = ['milk', 'milk', 'caramel', 'milk', 'milk'] as const;
-    for (const l of order) expect(runOneBath(w, l)).toBe(true);
+    runOneBath(w, 'milk');
+    const child = w.state.puddings[1]!;
+    expect(child.bornAt).toBeGreaterThan(0);
 
-    expect(p.tint).toBeLessThan(1);
-    expect(p.pendingMutation).toBeNull();
-    advance(w, 60);
-    expect(p.species).toBe('caramel');
-    expect(w.state.stats.mutations).toBe(0);
+    // 只留新生兒，讓牠自己去泡
+    w.state.puddings = [child];
+    expect(runOneBath(w, 'milk')).toBe(true);
+    expect(w.state.puddings.length).toBe(2);
   });
 
-  it('突變後的鮮奶酪產出自己的原料（物種決定原料，D19）', () => {
+  it('負向對照：泡焦糖澡不會生', () => {
     const w = makeWorld({ puddings: 1 });
-    const p = only(w.state);
-    for (let i = 0; i < 5; i++) runOneBath(w, 'milk');
-    advanceUntil(w, (x) => only(x.state).species === 'panna', 60);
-    w.state.drops = [];
-
     expect(runOneBath(w, 'caramel')).toBe(true);
-    expect(w.state.drops.some((d) => d.species === 'panna')).toBe(true);
-    expect(p.species).toBe('panna');
+    expect(w.state.puddings).toHaveLength(1);
+    expect(w.state.stats.births).toBe(0);
+  });
+
+  it('全場住滿時泡牛奶澡不生，並且會講出來（不能靜靜沒反應）', () => {
+    const w = makeWorld({ puddings: 1 });
+    const p = only(w.state);
+    // 把起始區塞到上限
+    while (w.state.puddings.filter((x) => x.zone === p.zone).length < BALANCE.zoneCapacity) {
+      w.state.puddings.push({ ...p, id: `filler${w.state.puddings.length}` });
+    }
+    const n = w.state.puddings.length;
+
+    expect(runOneBath(w, 'milk')).toBe(true);
+
+    expect(w.state.puddings).toHaveLength(n);
+    expect(w.events.some((e) => e.type === 'error' && e.message.includes('住滿'))).toBe(true);
+  });
+});
+
+describe('D35 焦糖見底就停止生產（「保持愉快才生產」的最小判定）', () => {
+  it('焦糖歸零就不再掉東西', () => {
+    const w = makeWorld({ puddings: 1 });
+    keepFed(w);
+    // 先確認餵飽的時候真的會掉（否則下面的「不掉」證明不了什麼）
+    expect(advanceUntil(w, (x) => x.state.drops.length > 0, BALANCE.dropIntervalSec * 4)).toBeGreaterThanOrEqual(0);
+
+    // 斷糧：庫存與盆子都清空，讓焦糖自然耗盡
+    w.state.equipment.autoFill = false;
+    w.state.stock.caramel = 0;
+    for (const b of w.state.basins) { b.units = 0; b.liquid = null; }
+    advanceUntil(w, (x) => only(x.state).caramel <= 0, 200);
+    expect(only(w.state).caramel).toBeLessThan(BALANCE.dropCaramelMin);
+
+    w.state.drops = [];
+    advance(w, BALANCE.dropIntervalSec * 6);
+    expect(w.state.drops).toHaveLength(0);
+  });
+
+  it('補回焦糖就恢復生產（而且不會一次倒出積欠的份數）', () => {
+    const w = makeWorld({ puddings: 1 });
+    const p = only(w.state);
+    p.caramel = 0;
+    advance(w, BALANCE.dropIntervalSec * 6);
+    expect(w.state.drops).toHaveLength(0);
+
+    keepFed(w);
+    p.caramel = 100;
+    advance(w, BALANCE.dropIntervalSec * 0.5);
+    expect(w.state.drops.length).toBeLessThanOrEqual(1); // 沒有補償性爆量
+    expect(advanceUntil(w, (x) => x.state.drops.length > 0, BALANCE.dropIntervalSec * 4)).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -159,16 +198,29 @@ describe('AC2-4 風味突變（48 小時曝露）', () => {
 });
 
 describe('AC2-9 掉落上限', () => {
-  it('地上已經 5 份時再泡完一次也不會變 6 份', () => {
+  it('地上堆到上限就不再掉（D32：掉落改成固定間隔）', () => {
     const w = makeWorld({ puddings: 1 });
-    for (let i = 0; i < BALANCE.dropCap; i++) {
-      fillBasinDirect(w.state, 'caramel');
-      expect(runOneBath(w, 'caramel')).toBe(true);
-    }
+    keepFed(w);
+    // 跑到堆滿為止：一隻布丁每 dropIntervalSec 掉一份
+    const t = advanceUntil(w, (x) => x.state.drops.length >= BALANCE.dropCap, BALANCE.dropIntervalSec * 12);
+    expect(t).toBeGreaterThanOrEqual(0);
     expect(w.state.drops.length).toBe(BALANCE.dropCap);
 
-    fillBasinDirect(w.state, 'caramel');
-    expect(runOneBath(w, 'caramel')).toBe(true);
+    // 再跑好幾個間隔也不會超過上限
+    advance(w, BALANCE.dropIntervalSec * 4);
     expect(w.state.drops.length).toBe(BALANCE.dropCap);
+  });
+
+  it('掉落是固定間隔，而且蛋與物種原料都掉得到', () => {
+    const w = makeWorld({ puddings: 1 });
+    keepFed(w);
+    const kinds = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      advance(w, BALANCE.dropIntervalSec);
+      for (const d of w.state.drops) kinds.add(d.kind);
+      w.state.drops = []; // 清掉免得撞上限
+    }
+    expect(kinds.has('egg')).toBe(true);
+    expect(kinds.has('ingredient')).toBe(true);
   });
 });

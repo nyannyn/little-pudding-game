@@ -1,7 +1,7 @@
 import { BALANCE, EQUIPMENT, type EquipmentId } from './balance';
 import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
-import { LIQUIDS, SPECIES, dessertPrice, type LiquidId, type SpeciesId } from './species';
+import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from './species';
 import type { GameState, Vec2 } from './state';
 import { findZone } from './zones';
 
@@ -21,7 +21,7 @@ function fail(error: string): ActionResult {
 export function fillBasin(state: GameState, basinIndex: number, liquid: LiquidId, emit: EventSink): ActionResult {
   const r = pourIntoBasin(state, basinIndex, liquid, 1);
   if (!r.ok) return fail(r.error ?? '倒不進去');
-  emit({ type: 'pour', basinIndex, liquid, auto: false });
+  emit({ type: 'pour', basinIndex, liquid, units: r.poured, auto: false });
   return OK;
 }
 
@@ -31,9 +31,10 @@ export function pickDrop(state: GameState, dropId: string, emit: EventSink): Act
   const d = state.drops[i];
   if (!d) return fail('這份原料已經不在了');
   state.drops.splice(i, 1);
-  state.ingredients[d.species]++;
+  if (d.kind === 'egg') state.eggs++;
+  else state.ingredients[d.species]++;
   state.stats.picked++;
-  emit({ type: 'pick', species: d.species, x: d.pos.x, z: d.pos.z, auto: false });
+  emit({ type: 'pick', kind: d.kind, species: d.species, x: d.pos.x, z: d.pos.z, auto: false });
   return OK;
 }
 
@@ -44,9 +45,10 @@ export function pickDrop(state: GameState, dropId: string, emit: EventSink): Act
 export function pickAllDrops(state: GameState, emit: EventSink, auto = false, zone?: string): number {
   const take = zone === undefined ? state.drops : state.drops.filter((d) => d.zone === zone);
   for (const d of take) {
-    state.ingredients[d.species]++;
+    if (d.kind === 'egg') state.eggs++;
+    else state.ingredients[d.species]++;
     state.stats.picked++;
-    emit({ type: 'pick', species: d.species, x: d.pos.x, z: d.pos.z, auto });
+    emit({ type: 'pick', kind: d.kind, species: d.species, x: d.pos.x, z: d.pos.z, auto });
   }
   state.drops = zone === undefined ? [] : state.drops.filter((d) => d.zone !== zone);
   return take.length;
@@ -64,10 +66,30 @@ export function sellIngredient(state: GameState, species: SpeciesId, qty: number
   return OK;
 }
 
-/** 加工：ingredientsPerDessert 份同類原料 → 1 份甜點 */
+/** 賣蛋（通用原料，價格比物種原料低） */
+export function sellEggs(state: GameState, qty: number, emit: EventSink): ActionResult {
+  const n = Math.floor(qty);
+  if (n <= 0) return fail('數量要大於 0');
+  if (state.eggs < n) return fail('蛋不夠');
+  const coins = BALANCE.eggPrice * n;
+  state.eggs -= n;
+  state.coins += coins;
+  state.stats.sold += n;
+  emit({ type: 'sell', species: 'caramel', coins, auto: false });
+  return OK;
+}
+
+/**
+ * 加工（D33）：**蛋 ×`eggsPerDessert` ＋ 該物種原料 ×`ingredientsPerDessert` → 1 份甜點**。
+ * 例：焦糖布丁塔＝蛋×2＋焦糖塊×1；抹茶布丁捲＝蛋×2＋抹茶粉罐×1。
+ * 蛋是通用原料，第三樣跟著物種走——不然十個物種的專屬原料全部沒有用途。
+ */
 export function craft(state: GameState, species: SpeciesId, emit: EventSink, auto = false): ActionResult {
+  const needEggs = BALANCE.eggsPerDessert;
   const need = BALANCE.ingredientsPerDessert;
+  if (state.eggs < needEggs) return fail(`要 ${needEggs} 顆蛋才做得出來`);
   if (state.ingredients[species] < need) return fail(`要 ${need} 份${SPECIES[species].ingredient}才做得出來`);
+  state.eggs -= needEggs;
   state.ingredients[species] -= need;
   state.desserts[species]++;
   state.stats.crafted++;
@@ -85,6 +107,44 @@ export function sellDessert(state: GameState, species: SpeciesId, qty: number, e
   state.stats.sold += n;
   emit({ type: 'sell', species, coins, auto });
   return OK;
+}
+
+export interface ShipResult {
+  /** 交掉幾張訂單 */
+  fulfilled: number;
+  /** 直接賣掉幾份甜點 */
+  sold: number;
+}
+
+/**
+ * 出貨：先交掉接得到的訂單（出價 2–3 倍），剩下「**沒被進行中訂單預留**」的甜點才直接賣。
+ *
+ * 預留那一步是整個函式的重點。訂單要 ×2 而手上只有 1 份時，那 1 份不可以被賣掉——
+ * 賣掉就永遠湊不到第二份：玩家按出貨、拿到零錢、訂單卻一直掛在那裡直到過期
+ * （2026-09-22 使用者回報「焦糖布丁塔出貨後沒有解開任務」）。
+ *
+ * 手動與自動**共用這一個函式**：這個 bug 的成因就是 UI 端自己抄了一份少了預留的版本，
+ * 而被測試覆蓋的是 `equipment.autoSell` 那份正確的。規則寫在 `game/` 才測得到。
+ */
+export function shipDesserts(state: GameState, emit: EventSink, auto = false): ShipResult {
+  const out: ShipResult = { fulfilled: 0, sold: 0 };
+
+  for (const o of [...state.orders]) {
+    if (o.expiresAt <= state.time) continue;
+    if (state.desserts[o.species] < o.qty) continue;
+    if (fulfillOrder(state, o.id, emit, auto).ok) out.fulfilled++;
+  }
+
+  for (const s of SPECIES_IDS) {
+    // 過期的訂單不預留：那些甜點已經沒人要了，留著只會佔庫存
+    const reserved = state.orders
+      .filter((o) => o.species === s && o.expiresAt > state.time)
+      .reduce((sum, o) => sum + o.qty, 0);
+    const spare = state.desserts[s] - reserved;
+    if (spare > 0 && sellDessert(state, s, spare, emit, auto).ok) out.sold += spare;
+  }
+
+  return out;
 }
 
 /** 交付訂單卡：出價比直接賣高，但要有對應物種的甜點 */
@@ -170,10 +230,8 @@ export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, e
     genes: ['caramel', 'caramel'],
     species: 'caramel',
     bornAt: state.time - BALANCE.matureAgeSec,
-    breedReadyAt: state.time,
     caramel: 45,
-    bathHistory: [],
-    tint: 0,
+    nextDropAt: state.time + BALANCE.dropIntervalSec,
     flavorExposure: {},
     mode: 'resting',
     pos: { ...spawn.puddingPos },

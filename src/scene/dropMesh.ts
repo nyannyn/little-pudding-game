@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { BALANCE } from '../game/balance';
 import { SPECIES } from '../game/species';
+
+/** 蛋的顏色（通用原料，刻意用象牙白跟各物種的原料分開） */
+const EGG_COLOR = 0xfff3dc;
 import type { GameState } from '../game/state';
 import { toonGradient } from './toon';
 
@@ -45,10 +48,14 @@ export class DropsView {
       const idle = Math.sin(this.t * 2.2 + i) * 0.006;
       this.dummy.position.set(ox + d.pos.x, oy + SIZE * 0.8 + pop + idle, d.pos.z);
       this.dummy.rotation.set(0.5, this.t * 0.8 + i, 0.2);
-      this.dummy.scale.setScalar(age < 0.25 ? 0.4 + (age / 0.25) * 0.6 : 1);
+      const grow = age < 0.25 ? 0.4 + (age / 0.25) * 0.6 : 1;
+      // 蛋拉長一點點：同一個 InstancedMesh 只能換縮放，換不了幾何，但蛋型看得出來
+      if (d.kind === 'egg') this.dummy.scale.set(grow * 0.82, grow * 1.15, grow * 0.82);
+      else this.dummy.scale.setScalar(grow);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(i, this.dummy.matrix);
-      this.mesh.setColorAt(i, new THREE.Color(SPECIES[d.species].bodyColor));
+      // 蛋是通用原料，用象牙白；物種原料沿用該物種的體色（一眼分得出撿到什麼）
+      this.mesh.setColorAt(i, new THREE.Color(d.kind === 'egg' ? EGG_COLOR : SPECIES[d.species].bodyColor));
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;

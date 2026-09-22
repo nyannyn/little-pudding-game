@@ -68,7 +68,7 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).toBe('bathing');
 
     s.puddings[0]!.mode = 'resting';
-    s.drops.push({ id: 'd1', zone: START_ZONE, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
+    s.drops.push({ id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
     expect(nextHint(s)?.id).toBe('pick');
   });
 

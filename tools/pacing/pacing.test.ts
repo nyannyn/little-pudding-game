@@ -40,6 +40,7 @@ const BUY_ORDER: EquipmentId[] = ['collector', 'autoFill', 'crafter', 'seller', 
 function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
   const state = createNewSave({ seed, now: 0 });
   if (profile === 'hybrid') applyGenes(state.puddings[0]!, 'caramel', 'panna');
+  state.stock.milk = 6; // 牛乳是繁殖的入口，開局要有一點才玩得起來
   const w = createWorld(state, FLOOR);
   const noop = () => {};
   const milestones: Record<string, number> = {};
@@ -52,14 +53,26 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
   const total = HOURS * 3600;
   for (let t = 0; t < total; t += REACT_SEC) {
     advance(w, REACT_SEC);
+    // D34：牛奶澡＝繁殖。還有空位就優先倒牛乳（玩家想把櫥窗養滿），滿了才倒焦糖。
+    // 不模擬這一步的話量表只會跑舊路徑，住客永遠是「解鎖送的那幾隻」
+    const capacity = state.zones.filter((z) => z.unlocked).length * BALANCE.zoneCapacity;
+    const wantMore = state.puddings.length < capacity;
     state.basins.forEach((b, i) => {
-      if (b.units === 0 && state.stock.caramel > 0) fillBasin(state, i, 'caramel', noop);
+      if (b.units > 0) return;
+      if (wantMore && state.stock.milk > 0) fillBasin(state, i, 'milk', noop);
+      else if (state.stock.caramel > 0) fillBasin(state, i, 'caramel', noop);
     });
     if (state.drops.length) {
       pickAllDrops(state, noop, false);
       mark('first pick');
     }
-    for (const s of SPECIES_IDS) while (state.ingredients[s] >= BALANCE.ingredientsPerDessert) craft(state, s, noop);
+    // D33：一份甜點＝蛋×2＋原料×1。條件要跟 craft() 的前提一致，
+    // 少看蛋的話 craft 會一直失敗而迴圈條件永遠成立＝無窮迴圈（2026-09-22 踩過）
+    for (const s of SPECIES_IDS) {
+      while (state.eggs >= BALANCE.eggsPerDessert && state.ingredients[s] >= BALANCE.ingredientsPerDessert) {
+        if (!craft(state, s, noop).ok) break;
+      }
+    }
     if (state.stats.crafted > 0) mark('first craft');
     for (const o of [...state.orders]) {
       if (state.desserts[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
@@ -69,8 +82,9 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
       const spare = state.desserts[s] - reserved;
       if (spare > 0 && sellDessert(state, s, spare, noop).ok) mark('first sale');
     }
-    const l: LiquidId = 'caramel';
-    if (state.stock[l] < 2) buyStock(state, l, 5, noop);
+    for (const l of ['caramel', 'milk'] as LiquidId[]) {
+      if (state.stock[l] < 2) buyStock(state, l, 5, noop);
+    }
 
     for (const e of w.events) {
       if (e.type === 'orderNew' && isHybrid(e.species)) hybridOrders.new++;

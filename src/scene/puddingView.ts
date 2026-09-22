@@ -13,7 +13,6 @@ const SQUASH = new THREE.Vector3(1.2, 0.7, 1.2);
 const STRETCH = new THREE.Vector3(0.86, 1.3, 0.86);
 const SQUASH_SEC = 0.22;
 
-const WHITE = new THREE.Color(0xffffff);
 
 /**
  * 一隻布丁的演出。只讀 `Pudding` 狀態，不改任何規則——
@@ -35,7 +34,6 @@ export class PuddingView {
   private squashT = 0;
   private wasAirborne = false;
   private shownSpecies: Pudding['species'];
-  private shownTint = -1;
   private bob = 0;
 
   constructor(template: THREE.Group, p: Pudding) {
@@ -71,7 +69,6 @@ export class PuddingView {
     this.bodyMat?.color.setHex(info.bodyColor);
     this.caramelMat?.color.setHex(info.toppingColor);
     this.shownSpecies = id;
-    this.shownTint = -1; // 強迫下一幀重套 tint
   }
 
   /** 突變瞬間的縮放脈衝，由外部在收到 mutate 事件時呼叫 */
@@ -85,13 +82,6 @@ export class PuddingView {
    */
   update(p: Pudding, dt: number, ox: number, floorY: number, basinSink: number) {
     if (p.species !== this.shownSpecies) this.applySpecies(p.species);
-
-    // 變白：往白色 lerp，突變前的預兆就是這條
-    if (p.tint !== this.shownTint) {
-      const base = new THREE.Color(SPECIES[p.species].bodyColor);
-      this.bodyMat?.color.copy(base).lerp(WHITE, p.tint * 0.9);
-      this.shownTint = p.tint;
-    }
 
     const bathing = p.mode === 'bathing';
     const airborne = p.mode === 'hopping';

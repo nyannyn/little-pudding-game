@@ -92,10 +92,11 @@ describe('AC2-6 存檔損壞不崩', () => {
 
   it('負數與 NaN 會被夾回合法範圍', () => {
     const evil = {
-      coins: -500, time: -10, tint: 1,
+      coins: -500, time: -10,
       stock: { caramel: -3, milk: Number.NaN },
-      puddings: [{ id: 'p1', caramel: 9999, tint: 5, species: 'nope' }],
-      drops: new Array(50).fill({ id: 'd', species: 'caramel', pos: { x: 0, z: 0 } }),
+      eggs: -8,
+      puddings: [{ id: 'p1', caramel: 9999, species: 'nope' }],
+      drops: new Array(50).fill({ id: 'd', kind: 'ingredient', species: 'caramel', pos: { x: 0, z: 0 } }),
     };
     const s = migrate(evil, { seed: 1, now: 0 });
     expect(s.coins).toBe(0);
@@ -103,8 +104,8 @@ describe('AC2-6 存檔損壞不崩', () => {
     expect(s.stock.caramel).toBe(0);
     expect(s.stock.milk).toBe(0);
     expect(s.puddings[0]!.caramel).toBe(100);
-    expect(s.puddings[0]!.tint).toBe(1);
     expect(s.puddings[0]!.species).toBe('caramel');
+    expect(s.eggs).toBe(0); // 負數的蛋要夾回 0
     expect(s.drops.length).toBe(BALANCE.dropCap);
   });
 

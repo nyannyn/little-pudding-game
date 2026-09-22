@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../../src/game/balance';
 import { movePudding } from '../../src/game/actions';
-import { breed, placementZone, readyToBreed } from '../../src/game/breeding';
+import { breedFromBath, placementZone } from '../../src/game/breeding';
 import {
   applyGenes,
   applySpeciesAsPure,
+  cloneGenes,
   cross,
   genesOf,
   normalizeGenes,
@@ -22,17 +23,16 @@ import {
   type AlleleId,
   type SpeciesId,
 } from '../../src/game/species';
-import { createNewSave, migrate, type GameState, type Pudding } from '../../src/game/state';
+import { SCHEMA_VERSION, createNewSave, migrate, type GameState, type Pudding } from '../../src/game/state';
 import { START_ZONE } from '../../src/game/zones';
-import { FLOOR, advanceUntil, makeWorld } from './helpers';
+import { FLOOR, advanceUntil, makeWorld, runOneBath } from './helpers';
 
-/** 讓一隻布丁「馬上可以當親代」：成年、焦糖夠、沒在泡澡、冷卻結束 */
+/** 讓一隻布丁站著別動，斷言才不會被隨機跳躍干擾（D34 之後繁殖沒有成年／冷卻條件） */
 function makeBreedable(state: GameState, p: Pudding): Pudding {
   p.bornAt = state.time - BALANCE.matureAgeSec;
-  p.breedReadyAt = state.time;
   p.caramel = 100;
   p.mode = 'resting';
-  p.restT = 99; // 讓牠站著別亂跳，斷言才不會被隨機跳躍干擾
+  p.restT = 99;
   return p;
 }
 
@@ -145,96 +145,84 @@ describe('D30 澡盆（環境）影響配子', () => {
     for (let i = 0; i < 2000; i++) expect(cross(a, b, rng).includes('matcha')).toBe(false);
   });
 
-  it('變白（牛奶過載）會把配子推向鮮奶酪', () => {
+  it('牛奶澡本身就是鮮奶酪的風味來源：純焦糖也複製得出帶鮮奶酪的子代（D34）', () => {
     const w = makeWorld();
-    const [a, b] = bothBreedable(w);
-    a.tint = BALANCE.gameteShiftTintRatio;
+    const [a] = bothBreedable(w);
     const rng = createRng(5);
     let withPanna = 0;
-    for (let i = 0; i < 2000; i++) if (cross(a, b, rng).includes('panna')) withPanna++;
+    const n = 2000;
+    for (let i = 0; i < n; i++) if (cloneGenes(a, rng).includes('panna')) withPanna++;
     expect(withPanna).toBeGreaterThan(0);
+    // 沒有這條，單親複製＋拿掉變白之後鮮奶酪就永遠養不出來
+    expect(withPanna / n).toBeGreaterThan(BALANCE.milkPannaShiftChance * 0.5);
+  });
+
+  it('母體有抹茶曝露時，抹茶優先於牛奶的鮮奶酪偏向', () => {
+    const w = makeWorld();
+    const [a] = bothBreedable(w);
+    a.flavorExposure.matcha = BALANCE.flavorThresholdSec * BALANCE.gameteShiftExposureRatio;
+    const rng = createRng(6);
+    let matcha = 0, panna = 0;
+    for (let i = 0; i < 2000; i++) {
+      const g = cloneGenes(a, rng);
+      if (g.includes('matcha')) matcha++;
+      if (g.includes('panna')) panna++;
+    }
+    expect(matcha).toBeGreaterThan(0);
+    expect(panna).toBe(0); // 玩家刻意養的方向優先
+  });
+
+  it('負向對照：沒有任何偏向時，複製出來的就是一模一樣的基因型', () => {
+    const w = makeWorld();
+    const [a] = bothBreedable(w);
+    const rng = createRng(7);
+    let same = 0;
+    for (let i = 0; i < 500; i++) {
+      const g = cloneGenes(a, rng);
+      if (g[0] === a.genes[0] && g[1] === a.genes[1]) same++;
+    }
+    // 牛奶偏向仍在，所以不會 100% 相同，但多數應該是複製
+    expect(same).toBeGreaterThan(150);
   });
 });
 
-describe('D29 自動繁殖的觸發條件', () => {
-  it('兩隻成年、焦糖足夠、該區有空位 → 自動生出第三隻', () => {
-    const w = makeWorld();
-    const [a, b] = bothBreedable(w);
-    expect(w.state.puddings.length).toBe(2);
+describe('D34 牛奶澡＝繁殖', () => {
+  it('泡完牛奶澡就生一隻，子代是母體的複製（可能被牛奶推向鮮奶酪）', () => {
+    const w = makeWorld({ puddings: 1 });
+    const parent = w.state.puddings[0] as Pudding;
+    expect(runOneBath(w, 'milk')).toBe(true);
 
-    advance(w, 1);
-
-    expect(w.state.puddings.length).toBe(3);
-    const child = w.state.puddings[2] as Pudding;
-    expect(child.zone).toBe(START_ZONE);
-    expect(child.species).toBe('caramel');
-    expect(child.bornAt).toBeCloseTo(w.state.time, 6);
+    expect(w.state.puddings).toHaveLength(2);
+    const child = w.state.puddings[1] as Pudding;
+    expect(child.zone).toBe(parent.zone);
+    expect(child.bornAt).toBeCloseTo(w.state.time, 4);
     expect(w.state.stats.births).toBe(1);
-    // 親代付出代價並進入冷卻（100 − 成本，再扣這一秒的自然衰減）
-    const expected = 100 - BALANCE.breedCaramelCost - BALANCE.caramelDecayPerSec;
-    expect(a.caramel).toBeCloseTo(expected, 5);
-    expect(b.caramel).toBeCloseTo(expected, 5);
-    expect(a.breedReadyAt).toBeGreaterThan(w.state.time);
-    expect(w.events.some((e) => e.type === 'birth')).toBe(true);
+    // 單親複製：子代的等位基因只會是母體的、或被推成 panna
+    for (const allele of child.genes) expect(['caramel', 'panna']).toContain(allele);
   });
 
   it('新生兒的 id 走 nextId，不與既有布丁撞號', () => {
-    const w = makeWorld();
-    bothBreedable(w);
-    advance(w, 1);
+    const w = makeWorld({ puddings: 1 });
+    runOneBath(w, 'milk');
     const ids = w.state.puddings.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('負向對照：焦糖不足就不生', () => {
-    const w = makeWorld();
-    const [a, b] = bothBreedable(w);
-    a.caramel = BALANCE.breedCaramelMin - 1;
-    b.caramel = 100;
-    advance(w, 30);
-    expect(w.state.puddings.length).toBe(2);
+  it('負向對照：焦糖澡不生', () => {
+    const w = makeWorld({ puddings: 1 });
+    expect(runOneBath(w, 'caramel')).toBe(true);
+    expect(w.state.puddings).toHaveLength(1);
     expect(w.state.stats.births).toBe(0);
   });
 
-  it('負向對照：還沒成年就不生', () => {
-    const w = makeWorld();
-    const [a] = bothBreedable(w);
-    a.bornAt = w.state.time; // 剛出生
-    expect(readyToBreed(w.state, a)).toBe(false);
-    advance(w, 30);
-    expect(w.state.puddings.length).toBe(2);
-  });
-
-  it('負向對照：同一區滿員（zoneCapacity）就停止繁殖', () => {
-    const w = makeWorld();
-    bothBreedable(w);
-    // 先把這一區塞到上限
-    while (w.state.puddings.length < BALANCE.zoneCapacity) {
-      const [a, b] = w.state.puddings as [Pudding, Pudding];
-      breed(w.state, makeBreedable(w.state, a), makeBreedable(w.state, b), {
-        rng: w.rng,
-        floor: FLOOR,
-        emit: w.emit,
-      });
-    }
-    expect(w.state.puddings.length).toBe(BALANCE.zoneCapacity);
-
-    for (const p of w.state.puddings) makeBreedable(w.state, p);
-    advance(w, 120);
-    expect(w.state.puddings.length).toBe(BALANCE.zoneCapacity);
-  });
-
-  it('冷卻期間不會連生：一次冷卻內最多一隻', () => {
-    const w = makeWorld();
-    bothBreedable(w);
-    advance(w, 1);
+  it('沒有冷卻與成年限制：連泡兩次就生兩隻（直到住滿）', () => {
+    const w = makeWorld({ puddings: 1 });
+    expect(runOneBath(w, 'milk')).toBe(true);
+    const parent = w.state.puddings[0] as Pudding;
+    // 只讓母體去泡第二次
+    w.state.puddings = [parent, ...w.state.puddings.slice(1)];
+    expect(runOneBath(w, 'milk')).toBe(true);
     expect(w.state.puddings.length).toBe(3);
-    const t0 = w.state.time;
-    // 冷卻還沒過就算焦糖被灌滿也不能再生（此時也已滿員，兩道閘都在）
-    for (const p of w.state.puddings) p.caramel = 100;
-    advance(w, BALANCE.breedCooldownSec - 2);
-    expect(w.state.puddings.length).toBe(3);
-    expect(w.state.time - t0).toBeLessThan(BALANCE.breedCooldownSec);
   });
 });
 
@@ -247,12 +235,13 @@ describe('D29 溢出與搬家', () => {
     // 起始區塞到上限
     while (w.state.puddings.filter((p) => p.zone === START_ZONE).length < BALANCE.zoneCapacity) {
       const [a, b] = w.state.puddings as [Pudding, Pudding];
-      breed(w.state, makeBreedable(w.state, a), makeBreedable(w.state, b), { rng: w.rng, floor: FLOOR, emit: w.emit }, START_ZONE);
+      breedFromBath(w.state, makeBreedable(w.state, a), { rng: w.rng, floor: FLOOR, emit: w.emit }, START_ZONE);
     }
     expect(placementZone(w.state, START_ZONE)).toBe(other.id);
 
-    for (const p of w.state.puddings) makeBreedable(w.state, p);
-    advance(w, 1);
+    // 起始區滿了，再泡一次牛奶澡，小孩要落到另一區
+    const parent = makeBreedable(w.state, w.state.puddings[0] as Pudding);
+    breedFromBath(w.state, parent, { rng: w.rng, floor: FLOOR, emit: w.emit });
     const moved = w.state.puddings.filter((p) => p.zone === other.id);
     expect(moved.length).toBe(1);
   });
@@ -261,11 +250,11 @@ describe('D29 溢出與搬家', () => {
     const w = makeWorld();
     while (w.state.puddings.length < BALANCE.zoneCapacity) {
       const [a, b] = w.state.puddings as [Pudding, Pudding];
-      breed(w.state, makeBreedable(w.state, a), makeBreedable(w.state, b), { rng: w.rng, floor: FLOOR, emit: w.emit }, START_ZONE);
+      breedFromBath(w.state, makeBreedable(w.state, a), { rng: w.rng, floor: FLOOR, emit: w.emit }, START_ZONE);
     }
     expect(placementZone(w.state, START_ZONE)).toBe(null);
-    for (const p of w.state.puddings) makeBreedable(w.state, p);
-    advance(w, 300);
+    const parent = makeBreedable(w.state, w.state.puddings[0] as Pudding);
+    expect(breedFromBath(w.state, parent, { rng: w.rng, floor: FLOOR, emit: w.emit })).toBe(null);
     expect(w.state.puddings.length).toBe(BALANCE.zoneCapacity);
   });
 
@@ -295,11 +284,11 @@ describe('D29 溢出與搬家', () => {
     for (const p of w.state.puddings) p.zone = other.id;
     while (w.state.puddings.filter((x) => x.zone === other.id).length < BALANCE.zoneCapacity) {
       const [a, b] = w.state.puddings as [Pudding, Pudding];
-      breed(w.state, makeBreedable(w.state, a), makeBreedable(w.state, b), { rng: w.rng, floor: FLOOR, emit: w.emit }, other.id);
+      breedFromBath(w.state, makeBreedable(w.state, a), { rng: w.rng, floor: FLOOR, emit: w.emit }, other.id);
     }
     // 另外生一隻放在起始區當「想搬過去的那一隻」（不可以從 other 裡挑，那會先騰出空位）
     const [a, b] = w.state.puddings as [Pudding, Pudding];
-    const stray = breed(w.state, makeBreedable(w.state, a), makeBreedable(w.state, b), { rng: w.rng, floor: FLOOR, emit: w.emit }, START_ZONE) as Pudding;
+    const stray = breedFromBath(w.state, makeBreedable(w.state, a), { rng: w.rng, floor: FLOOR, emit: w.emit }, START_ZONE) as Pudding;
     expect(w.state.puddings.filter((x) => x.zone === other.id).length).toBe(BALANCE.zoneCapacity);
 
     expect(movePudding(w.state, stray.id, other.id, w.emit).ok).toBe(false);
@@ -407,7 +396,7 @@ describe('存檔相容（schema 3）', () => {
     const s = migrate(JSON.parse(JSON.stringify(old)));
     expect(s.puddings[0]!.species).toBe('matcha');
     expect(s.puddings[0]!.genes).toEqual(['matcha', 'matcha']);
-    expect(s.schemaVersion).toBe(3);
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('存檔的 species 與 genes 打架時以 genes 為準（species 只是快取）', () => {
@@ -466,26 +455,27 @@ describe('D25／D28 訂單卡', () => {
 });
 
 describe('繁殖後的布丁仍照既有規則生活', () => {
-  it('新生兒會自己去泡澡並產出自己物種的原料', () => {
-    const w = makeWorld();
-    const [a, b] = bothBreedable(w);
-    applyGenes(a, 'matcha', 'matcha');
-    applyGenes(b, 'matcha', 'matcha');
-    advance(w, 1);
-    const child = w.state.puddings[2] as Pudding;
-    expect(child.species).toBe('matcha');
+  it('抹茶母體泡牛奶澡生下的小孩仍是抹茶系，並掉自己物種的原料', () => {
+    const w = makeWorld({ puddings: 1 });
+    const parent = w.state.puddings[0] as Pudding;
+    applyGenes(parent, 'matcha', 'matcha');
 
-    // 只留新生兒，其他兩隻搬走，斷言才不會被牠們的原料干擾
+    expect(runOneBath(w, 'milk')).toBe(true);
+    const child = w.state.puddings[1] as Pudding;
+    // 沒有抹茶曝露時牛奶會推向鮮奶酪，所以子代是純抹茶或抹茶生乳
+    expect(child.genes).toContain('matcha');
+
+    // 只留新生兒，其他搬走，斷言才不會被別人的掉落物干擾。
+    // 裝上收集手邊掉邊入庫：不然地上很快被蛋塞到 dropCap，之後就再也不掉了
     w.state.puddings = [child];
-    child.bornAt = w.state.time;
-    const basin = w.state.basins[0]!;
-    basin.liquid = 'caramel';
-    basin.preferredLiquid = 'caramel';
-    basin.units = BALANCE.basinCapacity;
-    child.caramel = 5;
-
-    const t = advanceUntil(w, (x) => x.state.stats.baths > 0, 400);
+    w.state.drops = [];
+    w.state.equipment.collector = true;
+    const before = w.state.ingredients[child.species];
+    const t = advanceUntil(
+      w,
+      (x) => x.state.ingredients[child.species] > before,
+      BALANCE.dropIntervalSec * 20,
+    );
     expect(t).toBeGreaterThanOrEqual(0);
-    expect(w.state.drops.some((d) => d.species === 'matcha')).toBe(true);
   });
 });

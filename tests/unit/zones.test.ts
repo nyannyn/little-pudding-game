@@ -107,8 +107,8 @@ describe('分區之間互不干擾', () => {
   it('玩家按「撿原料」只撿看得到的那一區，收集手則是全場', () => {
     const w = twoZones();
     w.state.drops = [
-      { id: 'd1', zone: START_ZONE, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 },
-      { id: 'd2', zone: SECOND_CABINET, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 },
+      { id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 },
+      { id: 'd2', zone: SECOND_CABINET, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 },
     ];
     pickAllDrops(w.state, sink, false, START_ZONE);
     expect(w.state.ingredients.caramel).toBe(1);

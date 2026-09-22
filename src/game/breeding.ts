@@ -1,27 +1,20 @@
 import { BALANCE } from './balance';
-import { cross, phenotype, type Genes } from './genetics';
+import { cloneGenes, phenotype, type Genes } from './genetics';
 import type { SimContext } from './pudding';
 import { range } from './rng';
 import type { GameState, Pudding, Vec2 } from './state';
 
 /**
- * 自動繁殖（D29，2026-09-22 使用者要求「過一段時間自動繁殖」）。
+ * 繁殖（D34，2026-09-22 改版：**牛奶澡就是繁殖**）。
  *
- * 全自動：玩家不按任何按鈕，能控制的是**條件**——誰跟誰住同一區、澡盆裡倒什麼
- * （影響配子，見 `genetics.gamete`）、以及要不要花錢解鎖下一區騰出空位。
+ * 觸發點只有一個：布丁泡完一次牛奶澡（`pudding.finishBath`）。
+ * 不設成年、不設冷卻、不看焦糖——使用者的規則是「泡完澡就會生成布丁」，
+ * 多加任何隱藏條件，玩家泡了沒生就會以為壞掉。實際的節流是牛奶要花錢、
+ * 泡一次要 12 秒、而且該區住滿就生不出來。
  *
- * 判定是**位準觸發**（看當下的數值，不累積計時器）：線上一幀 0.016 秒、
- * 離線一步 1 秒，若改成「每秒累積機率」兩邊的結果會差很多。
- * 位準觸發配上冷卻與住客上限，離線八小時跑完也不會炸出一堆布丁。
+ * 子代是**單親複製**（`genetics.cloneGenes`）：複製母體的兩個等位基因，
+ * 每個都有機率被環境改寫（牛奶→鮮奶酪，或母體累積的抹茶／草莓曝露）。
  */
-
-/** 這隻現在有沒有資格當親代 */
-export function readyToBreed(state: GameState, p: Pudding): boolean {
-  if (p.mode === 'bathing') return false; // 泡澡中的布丁在盆裡，讓牠泡完
-  if (state.time - p.bornAt < BALANCE.matureAgeSec) return false;
-  if (state.time < p.breedReadyAt) return false;
-  return p.caramel >= BALANCE.breedCaramelMin;
-}
 
 /** 這一區還能不能再多一隻 */
 export function zoneHasRoom(state: GameState, zone: string): boolean {
@@ -75,11 +68,9 @@ function newborn(state: GameState, zone: string, genes: Genes, pos: Vec2, ctx: S
     genes,
     species: phenotype(genes),
     bornAt: state.time,
-    // 剛出生的先過一次冷卻才輪到牠當親代（成年期通常更長，這只是保險）
-    breedReadyAt: state.time + BALANCE.breedCooldownSec,
     caramel: BALANCE.newbornCaramel,
-    bathHistory: [],
-    tint: 0,
+    // 新生兒自己的掉落計時器：出生後過一個完整間隔才掉第一份
+    nextDropAt: state.time + BALANCE.dropIntervalSec,
     flavorExposure: {},
     mode: 'resting',
     pos: { ...pos },
@@ -95,45 +86,25 @@ function newborn(state: GameState, zone: string, genes: Genes, pos: Vec2, ctx: S
 }
 
 /**
- * 讓一對親代生一隻。回傳新生兒，全場都滿了就回 null。
- * `zone` 可以指定新生兒落點，不給就照 `placementZone` 決定。
+ * 讓一隻剛泡完牛奶澡的布丁生一隻。全場都滿了就回 null（呼叫端要據此提示玩家）。
+ * `zone` 可以指定落點，不給就照 `placementZone` 決定。
  */
-export function breed(state: GameState, a: Pudding, b: Pudding, ctx: SimContext, zone?: string): Pudding | null {
-  const target = zone ?? placementZone(state, a.zone);
+export function breedFromBath(state: GameState, parent: Pudding, ctx: SimContext, zone?: string): Pudding | null {
+  const target = zone ?? placementZone(state, parent.zone);
   if (target === null) return null;
-  const genes = cross(a, b, ctx.rng);
-  const child = newborn(state, target, genes, birthPos(a, ctx), ctx);
-  state.puddings.push(child);
 
-  for (const parent of [a, b]) {
-    // 扣到低於泡澡門檻：親代會自己跳回澡盆，繁殖因此接回既有的生產迴圈
-    parent.caramel = Math.max(0, parent.caramel - BALANCE.breedCaramelCost);
-    parent.breedReadyAt = state.time + BALANCE.breedCooldownSec;
-  }
+  const genes = cloneGenes(parent, ctx.rng);
+  const child = newborn(state, target, genes, birthPos(parent, ctx), ctx);
+  state.puddings.push(child);
   state.stats.births++;
   ctx.emit({
     type: 'birth',
     puddingId: child.id,
     zone: child.zone,
     species: child.species,
-    parents: [a.id, b.id],
+    parents: [parent.id, parent.id],
     x: child.pos.x,
     z: child.pos.z,
   });
   return child;
-}
-
-/**
- * 每個 tick 跑一次：每一區各自找「前兩隻符合條件的」配成一對。
- * 配對刻意不用亂數（照陣列順序取前兩隻），亂數只花在配子上——
- * 這樣同一個 `?seed=` 重跑才會得到同一群布丁。
- */
-export function tickBreeding(state: GameState, ctx: SimContext): void {
-  const zones = new Set(state.puddings.map((p) => p.zone));
-  for (const zone of zones) {
-    if (placementZone(state, zone) === null) continue; // 全場滿員
-    const ready = state.puddings.filter((p) => p.zone === zone && readyToBreed(state, p));
-    if (ready.length < 2) continue;
-    breed(state, ready[0] as Pudding, ready[1] as Pudding, ctx);
-  }
 }

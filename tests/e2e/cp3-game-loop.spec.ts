@@ -43,20 +43,33 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   await page.waitForFunction(() => (window.__lpg.state as GameState).puddings.some((p) => p.mode === 'bathing'), null, { timeout: 60_000 });
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-bathing.png' });
 
-  // ③ 泡完掉一份原料在地上
+  // ③ 泡完一次澡（泡澡本身不再產原料，D32）
+  await page.waitForFunction(() => (window.__lpg.state as GameState).stats.baths >= 1, null, { timeout: 60_000 });
+
+  // ④ 布丁自然掉東西（固定間隔，與泡澡無關）
   await page.waitForFunction(() => (window.__lpg.state as GameState).drops.length > 0, null, { timeout: 60_000 });
   const dropped = await state(page);
-  expect(dropped.stats.baths).toBeGreaterThanOrEqual(1);
+  expect(dropped.drops.length).toBeGreaterThan(0);
   expect(dropped.ingredients.caramel).toBe(0); // 還沒撿，庫存不該增加
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-drop.png' });
 
-  // ④ 撿起來
-  await page.getByRole('button', { name: '撿原料' }).click();
+  // ⑤ 邊撿邊等，直到拿到一份「焦糖塊」。
+  //    不能只等 kind==='ingredient' 出現在地上：掉落有 eggChance 的機率是蛋，
+  //    地板上限只有 dropCap，連掉幾顆蛋就會把位置佔滿而**完全停止掉落**
+  //    （真的會卡死，不是理論——這一關以前就是這樣逾時的）。
+  //    玩家實際會做的事就是先撿一撿，所以測試也這樣做。
+  for (let i = 0; i < 12; i++) {
+    await page.getByRole('button', { name: '撿原料' }).click();
+    const now = await state(page);
+    if (now.ingredients.caramel >= 1) break;
+    await page.waitForFunction(() => (window.__lpg.state as GameState).drops.length > 0, null, { timeout: 60_000 });
+  }
   const picked = await state(page);
   expect(picked.drops.length).toBe(0);
   expect(picked.ingredients.caramel).toBeGreaterThanOrEqual(1);
+  expect(picked.eggs).toBeGreaterThanOrEqual(0);
 
-  // ⑤ 賣掉，金幣增加
+  // ⑥ 賣掉，金幣增加
   const beforeSell = picked.coins;
   await page.getByRole('button', { name: '商店' }).click();
   await page.getByRole('button', { name: /^\d+$/ }).first().waitFor();
@@ -66,7 +79,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   expect(sold.ingredients.caramel).toBe(0);
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-shop.png' });
 
-  // ⑥ 買「原料收集手」，之後原料直接入庫、地上恆空
+  // ⑦ 買「原料收集手」，之後原料直接入庫、地上恆空
   await grantCoins(page, 3000);
   await page.locator('[data-a="buyEquip"][data-arg="collector"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
@@ -84,7 +97,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-automated.png' });
 });
 
-test('AC3-1b 連灌牛乳會變白並突變成鮮奶酪布丁', async ({ page }) => {
+test('AC3-1b 牛乳澡就是繁殖：泡完多一隻，而且養得出鮮奶酪基因', async ({ page }) => {
   test.setTimeout(240_000);
   await ready(page);
   await grantCoins(page, 5000);
@@ -100,18 +113,25 @@ test('AC3-1b 連灌牛乳會變白並突變成鮮奶酪布丁', async ({ page })
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
 
-  // 變白是突變的預兆，先確認看得到
-  await page.waitForFunction(() => (window.__lpg.state as GameState).puddings.some((p) => p.tint > 0), null, { timeout: 120_000 });
-  await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-tint.png' });
+  // D34：牛奶澡＝繁殖。泡完就要多一隻，而且子代有機率被牛奶推成鮮奶酪系
+  await page.waitForFunction(
+    () => (window.__lpg.state as GameState).stats.births > 0,
+    null,
+    { timeout: 120_000 },
+  );
+  await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-milk-birth.png' });
 
   await page.waitForFunction(
-    () => (window.__lpg.state as GameState).puddings.some((p) => p.species === 'panna'),
+    () => (window.__lpg.state as GameState).puddings.some((p) => p.genes.includes('panna')),
     null,
     { timeout: 180_000 },
   );
   const s = await state(page);
-  expect(s.stats.mutations).toBeGreaterThanOrEqual(1);
-  await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-mutated.png' });
+  // D34：牛乳不再造成母體突變，而是生出帶鮮奶酪基因的下一代
+  expect(s.stats.births).toBeGreaterThanOrEqual(1);
+  expect(s.puddings.some((p) => p.genes.includes('panna'))).toBe(true);
+  expect(s.stats.mutations).toBe(0);
+  await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-milk-panna.png' });
 });
 
 test('AC3-2 效能不退步：整場（含設備與掉落物）draw calls 仍在預算內', async ({ page }) => {
@@ -127,7 +147,7 @@ test('AC3-2 效能不退步：整場（含設備與掉落物）draw calls 仍在
     s.equipment.collector = false; // 收集手會把掉落物收走，這裡要留著它們
     s.drops = [0, 1, 2, 3, 4].map((i) => ({
       id: `d${i}`,
-      zone: s.activeZone,
+      zone: s.activeZone, kind: 'ingredient' as const,
       species: (['caramel', 'panna', 'matcha', 'strawberry'] as const)[i % 4]!,
       pos: { x: -0.3 + i * 0.15, z: 0.2 },
       bornAt: s.time,

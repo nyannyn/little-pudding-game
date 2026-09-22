@@ -24,12 +24,13 @@ const CASES = [
     test: '負向對照：澡盆是空的',
   },
   {
+    // D34（2026-09-22）：變白突變整套拿掉，牛奶澡改成「泡完就生一隻」
     ac: 'AC2-3',
-    why: '拿掉牛奶占比判斷，夾了焦糖的那五次也會一路累積變白到突變',
+    why: '拿掉液體判斷，泡焦糖澡也會生出小布丁',
     file: 'src/game/pudding.ts',
-    from: '  if (p.bathHistory.length >= 2 && milkRatio(p) >= BALANCE.milkRatioThreshold) {',
-    to: '  if (p.bathHistory.length >= 2) {',
-    test: '負向對照：5 次中夾 1 次焦糖',
+    from: "  if (liquid === 'milk') {",
+    to: '  if (true) {',
+    test: '負向對照：泡焦糖澡不會生',
   },
   {
     ac: 'AC2-4',

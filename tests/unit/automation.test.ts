@@ -64,10 +64,12 @@ describe('自動注液閥', () => {
 describe('加工機與販售口', () => {
   it('加工機把原料變甜點，販售口把甜點變錢', () => {
     const w = makeWorld({ puddings: 1 });
-    w.state.ingredients.caramel = 4;
+    w.state.ingredients.caramel = 2 * BALANCE.ingredientsPerDessert;
+    w.state.eggs = 2 * BALANCE.eggsPerDessert;
     w.state.equipment.crafter = true;
     advance(w, 1);
     expect(w.state.ingredients.caramel).toBe(0);
+    expect(w.state.eggs).toBe(0);
     expect(w.state.desserts.caramel).toBe(2);
 
     const coins = w.state.coins;

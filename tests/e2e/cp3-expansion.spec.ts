@@ -114,11 +114,15 @@ test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生�
   await page.evaluate(() => { (window.__lpg.state as GameState).stock.caramel = 60; });
   await page.getByRole('button', { name: '倒焦糖' }).click();
 
-  const bathsBefore = (await state(page)).stats.baths;
+  const before = (await state(page)).stats;
   await page.waitForFunction(
-    (n) => (window.__lpg.state as GameState).puddings.some((p) => p.zone === 'c0t2' && p.bathHistory.length > 0)
-      && (window.__lpg.state as GameState).stats.baths > n,
-    bathsBefore,
+    // D32：產出不再綁泡澡。這一步已經裝了收集手，掉落物會被立刻收走，
+    // 所以不能看 `drops`（幾乎永遠是空的），要看「撿起來的份數」有沒有增加
+    (b: { picked: number; baths: number }) => {
+      const s = window.__lpg.state as GameState;
+      return s.stats.picked > b.picked && s.stats.baths > b.baths;
+    },
+    { picked: before.picked, baths: before.baths },
     { timeout: 120_000 },
   );
 

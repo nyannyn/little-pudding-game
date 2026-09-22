@@ -54,11 +54,11 @@ function stalledHint(state: GameState): Hint | null {
     const wanted = basins.map((b) => b.preferredLiquid).filter((l): l is LiquidId => l !== null);
     if (wanted.length === 0 || wanted.some((l) => state.stock[l] > 0)) return null;
     const names = [...new Set(wanted)].map((l) => LIQUIDS[l].name).join('、');
-    return { id: 'stalled', text: `${names}用完了，注液閥沒東西可補。開右上角的商店補貨。`, warning: true };
+    return { id: 'stalled', text: `${names}用完了，注液閥沒東西可補。布丁照樣會掉原料，但泡不了澡也生不出小布丁。`, warning: true };
   }
   const pourable: LiquidId[] = ['caramel', 'milk', ...state.ownedBasins];
   if (pourable.some((l) => state.stock[l] > 0)) return null;
-  return { id: 'stalled', text: '液體都用完了，布丁泡不了澡。開右上角的商店補貨。', warning: true };
+  return { id: 'stalled', text: '液體都用完了，布丁泡不了澡。倒牛乳才生得出小布丁。', warning: true };
 }
 
 export function nextHint(state: GameState): Hint | null {
@@ -71,11 +71,11 @@ export function nextHint(state: GameState): Hint | null {
   // 「正在發生的事」排在「倒澡盆」前面：手動倒一次只有一份，布丁一跳進盆裡 units 就歸零，
   // 若先檢查盆空不空，泡澡中／撿原料這兩句永遠輪不到，玩家從頭到尾只會看到「倒焦糖」。
   if (puddingsIn(state, zone).some((p) => p.mode === 'bathing')) {
-    return { id: 'bathing', text: '泡澡中。泡完會在盆邊掉一份原料。' };
+    return { id: 'bathing', text: '泡澡中。泡牛乳澡的話，泡完會多一隻小布丁。' };
   }
 
   if (dropsIn(state, zone).length > 0) {
-    return { id: 'pick', text: '地上有原料了，點它或按「撿原料」收進庫存。' };
+    return { id: 'pick', text: '布丁掉東西了。蛋與原料點一下或按「撿原料」收進庫存。' };
   }
 
   const basins = basinsIn(state, zone);
@@ -91,7 +91,7 @@ export function nextHint(state: GameState): Hint | null {
     0,
   );
   if (craftable > 0 && state.stats.crafted === 0) {
-    return { id: 'craft', text: `按「加工」，${BALANCE.ingredientsPerDessert} 份原料做成一份甜點。` };
+    return { id: 'craft', text: `按「加工」，${BALANCE.eggsPerDessert} 顆蛋＋${BALANCE.ingredientsPerDessert} 份原料做成一份甜點。` };
   }
 
   if (SPECIES_IDS.some((id) => state.desserts[id] > 0)) {

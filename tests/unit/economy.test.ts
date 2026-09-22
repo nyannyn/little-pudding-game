@@ -18,7 +18,7 @@ import { advance } from '../../src/game/sim';
 import { SPECIES, dessertPrice } from '../../src/game/species';
 import { createNewSave } from '../../src/game/state';
 import { START_ZONE } from '../../src/game/zones';
-import { advanceUntil, fillBasinDirect, makeWorld, only, runOneBath } from './helpers';
+import { advanceUntil, fillBasinDirect, makeWorld, only, runOneBath, keepFed } from './helpers';
 
 const sink = (_e: SimEvent) => {};
 
@@ -71,38 +71,69 @@ describe('AC2-7 金幣與庫存不會變成負的', () => {
 describe('經濟：撿、加工、賣', () => {
   it('撿起來就入庫，賣掉就加錢', () => {
     const w = makeWorld({ puddings: 1 });
-    fillBasinDirect(w.state, 'caramel');
-    expect(runOneBath(w, 'caramel')).toBe(true);
-    const drop = w.state.drops[0]!;
+    keepFed(w);
+    // D32：原料是固定間隔自然掉的，不是泡澡產的
+    expect(advanceUntil(w, (x) => x.state.drops.length > 0, BALANCE.dropIntervalSec * 3)).toBeGreaterThanOrEqual(0);
+    const drop = w.state.drops.find((d) => d.kind === 'ingredient')
+      ?? (advanceUntil(w, (x) => x.state.drops.some((d) => d.kind === 'ingredient'), BALANCE.dropIntervalSec * 12) >= 0
+        ? w.state.drops.find((d) => d.kind === 'ingredient')!
+        : undefined);
+    expect(drop).toBeDefined();
 
-    expect(pickDrop(w.state, drop.id, sink).ok).toBe(true);
+    expect(pickDrop(w.state, drop!.id, sink).ok).toBe(true);
     expect(w.state.ingredients.caramel).toBe(1);
-    expect(w.state.drops.length).toBe(0);
 
     const coins = w.state.coins;
     expect(sellIngredient(w.state, 'caramel', 1, sink).ok).toBe(true);
     expect(w.state.coins).toBe(coins + SPECIES.caramel.ingredientPrice);
   });
 
-  it('同一份原料不能撿兩次', () => {
+  it('同一份掉落物不能撿兩次', () => {
     const w = makeWorld({ puddings: 1 });
-    expect(runOneBath(w, 'caramel')).toBe(true);
-    const id = w.state.drops[0]!.id;
-    expect(pickDrop(w.state, id, sink).ok).toBe(true);
-    expect(pickDrop(w.state, id, sink).ok).toBe(false);
-    expect(w.state.ingredients.caramel).toBe(1);
+    keepFed(w);
+    expect(advanceUntil(w, (x) => x.state.drops.length > 0, BALANCE.dropIntervalSec * 3)).toBeGreaterThanOrEqual(0);
+    const d = w.state.drops[0]!;
+    const before = d.kind === 'egg' ? w.state.eggs : w.state.ingredients[d.species];
+
+    expect(pickDrop(w.state, d.id, sink).ok).toBe(true);
+    expect(pickDrop(w.state, d.id, sink).ok).toBe(false);
+
+    const after = d.kind === 'egg' ? w.state.eggs : w.state.ingredients[d.species];
+    expect(after).toBe(before + 1);
   });
 
-  it('兩份原料換一份甜點，甜點售價是原料的 3 倍', () => {
+  it('蛋撿起來記到 eggs，物種原料記到 ingredients（D33）', () => {
+    const w = makeWorld({ puddings: 1 });
+    keepFed(w);
+    advanceUntil(w, (x) => x.state.drops.some((d) => d.kind === 'egg'), BALANCE.dropIntervalSec * 15);
+    const egg = w.state.drops.find((d) => d.kind === 'egg');
+    expect(egg).toBeDefined();
+    const eggsBefore = w.state.eggs;
+    expect(pickDrop(w.state, egg!.id, sink).ok).toBe(true);
+    expect(w.state.eggs).toBe(eggsBefore + 1);
+  });
+
+  it('蛋×2＋原料×1 換一份甜點（D33），甜點售價是原料的 dessertPriceMult 倍', () => {
     const s = createNewSave({ seed: 7, now: 0 });
-    s.ingredients.caramel = 2;
+    s.ingredients.caramel = BALANCE.ingredientsPerDessert;
+    s.eggs = BALANCE.eggsPerDessert;
     expect(craft(s, 'caramel', sink).ok).toBe(true);
     expect(s.ingredients.caramel).toBe(0);
+    expect(s.eggs).toBe(0);
     expect(s.desserts.caramel).toBe(1);
 
     const coins = s.coins;
     expect(sellDessert(s, 'caramel', 1, sink).ok).toBe(true);
     expect(s.coins).toBe(coins + SPECIES.caramel.ingredientPrice * BALANCE.dessertPriceMult);
+  });
+
+  it('負向對照：只有原料沒有蛋，做不出甜點', () => {
+    const s = createNewSave({ seed: 7, now: 0 });
+    s.ingredients.caramel = 99;
+    s.eggs = BALANCE.eggsPerDessert - 1;
+    const r = craft(s, 'caramel', sink);
+    expect(r.ok).toBe(false);
+    expect(s.desserts.caramel).toBe(0);
   });
 
   it('買特殊澡盆後盆子數量增加、可以倒抹茶', () => {

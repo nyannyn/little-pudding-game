@@ -37,12 +37,21 @@ test('繁殖出來的第三隻布丁真的出現在畫面上（三角形數與 d
   // 開局的兩隻都是純焦糖：基因型是唯一真相，species 只是它的快取
   for (const p of start.puddings) expect(p.genes).toEqual(['caramel', 'caramel']);
 
-  // 只設定「前置條件」（雙親吃飽），生不生、生出什麼由模擬自己決定
+  // D34：牛奶澡就是繁殖。只設定「前置條件」（有牛乳、布丁想泡澡），
+  // 生不生、生出什麼由模擬自己決定
   await page.evaluate(() => {
-    for (const p of (window.__lpg.state as GameState).puddings) p.caramel = 100;
+    const s = window.__lpg.state as GameState;
+    s.stock.milk = 30;
+    s.equipment.autoFill = true;
+    for (const b of s.basins) {
+      b.liquid = 'milk';
+      b.preferredLiquid = 'milk';
+      b.units = 3;
+    }
+    for (const p of s.puddings) p.caramel = 5; // 馬上想泡澡
   });
 
-  await page.waitForFunction(() => (window.__lpg.state as GameState).stats.births > 0, null, { timeout: 30_000 });
+  await page.waitForFunction(() => (window.__lpg.state as GameState).stats.births > 0, null, { timeout: 60_000 });
   await page.waitForTimeout(1200); // 等 GLB clone 完成並加進場景
 
   const after = await stats(page);
@@ -50,9 +59,9 @@ test('繁殖出來的第三隻布丁真的出現在畫面上（三角形數與 d
   expect(s.puddings).toHaveLength(3);
 
   const child = s.puddings[2]!;
-  expect(child.species).toBe('caramel');
-  expect(child.genes).toEqual(['caramel', 'caramel']);
   expect(child.bornAt).toBeGreaterThan(0);
+  // 單親複製：等位基因只會是母體的焦糖、或被牛奶推成的鮮奶酪
+  for (const allele of child.genes) expect(['caramel', 'panna']).toContain(allele);
 
   // 畫面上真的多了一隻：三角形數多出一隻的量（留 10% 容忍給掉落物等雜項）
   expect(after.triangles - before.triangles).toBeGreaterThan(TRIS_PER_PUDDING * 0.9);
@@ -61,7 +70,7 @@ test('繁殖出來的第三隻布丁真的出現在畫面上（三角形數與 d
   expect(after.drawCalls).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
 });
 
-test('負向對照：雙親沒吃飽就不會生，畫面也不會多東西', async ({ page }) => {
+test('負向對照：只泡焦糖澡不會生，畫面也不會多東西', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto(URL);
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
@@ -69,8 +78,19 @@ test('負向對照：雙親沒吃飽就不會生，畫面也不會多東西', as
   await page.waitForTimeout(500);
 
   const before = await stats(page);
-  // 開局沒倒澡盆 → 焦糖只會一路往下掉，永遠到不了繁殖門檻
-  await page.waitForTimeout(5000);
+  // 只給焦糖澡：泡再多次也不會生（牛奶才是繁殖的入口）
+  await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    s.stock.caramel = 30;
+    s.equipment.autoFill = true;
+    for (const b of s.basins) {
+      b.liquid = 'caramel';
+      b.preferredLiquid = 'caramel';
+      b.units = 3;
+    }
+    for (const p of s.puddings) p.caramel = 5;
+  });
+  await page.waitForFunction(() => (window.__lpg.state as GameState).stats.baths >= 2, null, { timeout: 60_000 });
 
   const s = await state(page);
   expect(s.stats.births).toBe(0);

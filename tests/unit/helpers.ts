@@ -35,6 +35,21 @@ export function fillBasinDirect(state: GameState, liquid: LiquidId, units: numbe
   b.units = units;
 }
 
+/**
+ * 讓布丁一直有焦糖可泡（自動注液閥＋滿庫存＋滿盆）。
+ * D35 之後焦糖見底就停止掉落，所以「要量掉落」的測試一定要先餵飽，
+ * 否則量到的是「停產」而不是掉落節奏。
+ */
+export function keepFed(w: World): void {
+  w.state.equipment.autoFill = true;
+  w.state.stock.caramel = 100000;
+  for (const b of w.state.basins) {
+    b.liquid = 'caramel';
+    b.preferredLiquid = 'caramel';
+    b.units = BALANCE.basinCapacity;
+  }
+}
+
 /** 一直推進直到條件成立或超過 maxSec，回傳實際跑了幾秒（沒成立就回 -1） */
 export function advanceUntil(w: World, predicate: (w: World) => boolean, maxSec = 600, dt = 0.25): number {
   let t = 0;

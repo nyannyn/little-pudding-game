@@ -1,4 +1,4 @@
-import { craft, fulfillOrder, pickAllDrops, sellDessert } from './actions';
+import { craft, pickAllDrops, shipDesserts } from './actions';
 import { BALANCE } from './balance';
 import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
@@ -26,34 +26,26 @@ function autoFill(state: GameState, emit: EventSink): void {
     if (!liquid) return;
     if (state.stock[liquid] <= 0) return;
     const r = pourIntoBasin(state, i, liquid, BALANCE.basinCapacity);
-    if (r.ok) emit({ type: 'pour', basinIndex: i, liquid, auto: true });
+    if (r.ok) emit({ type: 'pour', basinIndex: i, liquid, units: r.poured, auto: true });
   });
 }
 
+/** 甜點加工機：蛋與該物種原料都夠才做得出來（D33） */
 function autoCraft(state: GameState, emit: EventSink): void {
   for (const s of SPECIES_IDS) {
-    while (state.ingredients[s] >= BALANCE.ingredientsPerDessert) {
+    while (state.eggs >= BALANCE.eggsPerDessert && state.ingredients[s] >= BALANCE.ingredientsPerDessert) {
       if (!craft(state, s, emit, true).ok) break;
     }
   }
 }
 
 /**
- * 自動販售口：先交付接得到的訂單卡（出價 2–3 倍），
- * 剩下的甜點才直接賣——不然自動化反而讓玩家錯過高價訂單。
+ * 自動販售口：先交付接得到的訂單卡（出價 2–3 倍），剩下的甜點才直接賣——
+ * 不然自動化反而讓玩家錯過高價訂單。規則本體在 `actions.shipDesserts()`，
+ * 手動的「出貨」按鈕走同一個函式（兩邊各寫一份正是 2026-09-22 那個 bug 的成因）。
  */
 function autoSell(state: GameState, emit: EventSink): void {
-  for (const o of [...state.orders]) {
-    if (o.expiresAt <= state.time) continue;
-    if (state.desserts[o.species] >= o.qty) fulfillOrder(state, o.id, emit, true);
-  }
-  for (const s of SPECIES_IDS) {
-    const reserved = state.orders
-      .filter((o) => o.species === s && o.expiresAt > state.time)
-      .reduce((sum, o) => sum + o.qty, 0);
-    const spare = state.desserts[s] - reserved;
-    if (spare > 0) sellDessert(state, s, spare, emit, true);
-  }
+  shipDesserts(state, emit, true);
 }
 
 /** 補貨合約：焦糖與牛乳見底就自動補到 restockTarget（特殊液體不自動買，太貴） */

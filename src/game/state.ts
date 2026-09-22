@@ -8,8 +8,10 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * migrate 會把所有布丁／澡盆／掉落物補成起始區，不然它們會從所有查詢裡消失。
  * 3（2026-09-22）：加入基因型（D28）。舊存檔沒有 `genes`，一律補成「該物種的純合」——
  * 補錯方向會讓老玩家的布丁突然變成別的物種，所以不可以拿預設值敷衍。
+ * 4（2026-09-22）：生產迴圈改版（D32–D34）。新增「蛋」庫存與掉落物種類、布丁的掉落計時器；
+ * 移除 `tint`／`bathHistory`（變白突變整套拿掉）與 `breedReadyAt`（繁殖改由牛奶澡觸發）。
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** 布丁在地板上的行為狀態 */
 export type PuddingMode = 'hopping' | 'resting' | 'bathing';
@@ -27,16 +29,12 @@ export interface Pudding {
   genes: Genes;
   /** `phenotype(genes)` 的快取。**只能由 `genetics.applyGenes()` 寫入** */
   species: SpeciesId;
-  /** 出生時間（遊戲秒）。可以是負的：開局與解鎖送的住客算成年，`bornAt = time − matureAgeSec` */
+  /** 出生時間（遊戲秒）。只影響狀態列的「幼布丁」顯示；D34 之後繁殖不看成年 */
   bornAt: number;
-  /** 下一次可以繁殖的遊戲時間 */
-  breedReadyAt: number;
-  /** 0–100，會隨時間下降；低於門檻就想泡澡 */
+  /** 0–100，會隨時間下降；低於門檻就想泡澡。D32 之後**不控制產出**，只影響行為與顯示 */
   caramel: number;
-  /** 最近幾次泡澡用的液體（滑動窗，長度上限 BALANCE.milkWindow） */
-  bathHistory: LiquidId[];
-  /** 0–1 變白程度；1 就在下一次落地突變成鮮奶酪 */
-  tint: number;
+  /** 下一次掉原料的遊戲時間（D32：固定間隔掉落，與 caramel 無關） */
+  nextDropAt: number;
   /** 對特殊澡盆的累積曝露（遊戲秒） */
   flavorExposure: Partial<Record<SpeciesId, number>>;
   mode: PuddingMode;
@@ -77,11 +75,15 @@ export interface Basin {
   occupantId: string | null;
 }
 
+/** 掉落物種類（D32）：蛋是通用原料，ingredient 是該物種的專屬原料 */
+export type DropKind = 'egg' | 'ingredient';
+
 export interface Drop {
   id: string;
   /** 掉在哪一區 */
   zone: string;
-  /** 掉的是哪個物種的原料 */
+  kind: DropKind;
+  /** 哪隻布丁掉的（`kind: 'egg'` 時只決定顏色，入庫一律記到 `eggs`） */
   species: SpeciesId;
   pos: Vec2;
   /** 出生時間（遊戲秒），scene 端做彈出動畫用 */
@@ -111,6 +113,8 @@ export interface GameState {
   stock: Record<LiquidId, number>;
   /** 已買下的特殊澡盆液體 */
   ownedBasins: LiquidId[];
+  /** 蛋（通用原料，所有甜點都要，D33） */
+  eggs: number;
   ingredients: Record<SpeciesId, number>;
   desserts: Record<SpeciesId, number>;
   puddings: Pudding[];
@@ -180,10 +184,9 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     species: 'caramel' as SpeciesId,
     // 開局的兩隻是成年住客：出生時間往前推一個成年期，否則玩家要先等一分鐘才可能繁殖
     bornAt: -BALANCE.matureAgeSec,
-    breedReadyAt: 0,
     caramel: i === 0 ? 24 : 58,
-    bathHistory: [],
-    tint: 0,
+    // 開局第一份原料不要讓玩家等滿一個間隔：錯開一點，馬上看得到東西掉下來
+    nextDropAt: BALANCE.dropIntervalSec * (0.3 + i * 0.4),
     flavorExposure: {},
     mode: 'resting' as PuddingMode,
     pos: { ...pos },
@@ -206,6 +209,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     coins: BALANCE.startCoins,
     stock,
     ownedBasins: [],
+    eggs: 0,
     ingredients: zeroBySpecies(),
     desserts: zeroBySpecies(),
     puddings,
@@ -276,6 +280,7 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
 
   const rawStock = r.stock as Record<string, unknown> | undefined;
   for (const id of LIQUID_IDS) out.stock[id] = Math.max(0, num(rawStock?.[id], 0));
+  out.eggs = Math.max(0, num(r.eggs, 0));
   const rawIng = r.ingredients as Record<string, unknown> | undefined;
   const rawDes = r.desserts as Record<string, unknown> | undefined;
   for (const id of SPECIES_IDS) {
@@ -309,14 +314,11 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
       id: typeof src.id === 'string' ? src.id : `p${i + 1}`,
       zone: zoneOf(src.zone),
       ...restoreGenes(src),
-      // 舊檔沒有這兩欄：當成早就成年、且立刻可以繁殖（不倒扣老玩家的進度）
+      // 舊檔沒有這欄：當成早就長大（不要讓老玩家的布丁全部退回幼體）
       bornAt: num(src.bornAt, Math.min(0, -BALANCE.matureAgeSec)),
-      breedReadyAt: num(src.breedReadyAt, 0),
       caramel: Math.min(100, Math.max(0, num(src.caramel, 100))),
-      bathHistory: Array.isArray(src.bathHistory)
-        ? (src.bathHistory.filter((x) => LIQUID_IDS.includes(x as LiquidId)) as LiquidId[]).slice(-BALANCE.milkWindow)
-        : [],
-      tint: Math.min(1, Math.max(0, num(src.tint, 0))),
+      // 舊存檔沒有這欄：從讀檔當下起算一個間隔，不要一載入就噴一堆原料
+      nextDropAt: num(src.nextDropAt, 0) > 0 ? num(src.nextDropAt, 0) : Math.max(0, num(r.time, 0)) + BALANCE.dropIntervalSec,
       flavorExposure:
         typeof src.flavorExposure === 'object' && src.flavorExposure !== null ? { ...src.flavorExposure } : {},
       // 存檔可能正卡在 bathing；還原成 resting 讓模擬重新決策，比還原一半的狀態安全
@@ -356,6 +358,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
         return {
           id: typeof src.id === 'string' ? src.id : `d${i + 1}`,
           zone: zoneOf(src.zone),
+          // 舊存檔的掉落物都是物種原料（那時還沒有蛋）
+          kind: src.kind === 'egg' ? ('egg' as const) : ('ingredient' as const),
           species: SPECIES_IDS.includes(src.species as SpeciesId) ? (src.species as SpeciesId) : 'caramel',
           pos: { x: num(src.pos?.x, 0), z: num(src.pos?.z, 0) },
           bornAt: num(src.bornAt, out.time),

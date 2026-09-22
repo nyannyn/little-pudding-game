@@ -69,14 +69,31 @@ export function environmentBias(p: Pudding): AlleleId | null {
     const exposure = p.flavorExposure[key] ?? 0;
     if (exposure >= BALANCE.flavorThresholdSec * BALANCE.gameteShiftExposureRatio) return key;
   }
-  // 變白＝牛奶過載那條線，對應鮮奶酪
-  if (p.tint >= BALANCE.gameteShiftTintRatio) return 'panna';
   return null;
 }
 
 /**
- * 送出一個配子：隨機取自己的一個等位基因；若正泡著某種風味的澡（環境偏向），
- * 有 `gameteShiftChance` 的機率改送那個風味。
+ * 泡牛奶澡生下的小布丁（D34：單親複製）。
+ *
+ * 子代的兩個等位基因**各自複製母體的對應等位基因**，但每個都有機率被改寫：
+ * - 母體累積了抹茶／草莓曝露 → 改寫成那個風味（玩家刻意養的方向優先）
+ * - 否則 → 牛奶本身就是鮮奶酪的風味來源，以 `milkPannaShiftChance` 改寫成 panna
+ *
+ * 沒有這條改寫，單親複製就只會複製出一模一樣的布丁，十個物種裡有九個永遠見不到。
+ */
+export function cloneGenes(parent: Pudding, rng: Rng): Genes {
+  const flavor = environmentBias(parent);
+  const bias = flavor ?? 'panna';
+  const chance = flavor ? BALANCE.gameteShiftChance : BALANCE.milkPannaShiftChance;
+  const shift = (own: AlleleId): AlleleId =>
+    bias !== own && rng.next() < chance ? bias : own;
+  return normalizeGenes(shift(parent.genes[0]), shift(parent.genes[1]));
+}
+
+/**
+ * 送出一個配子：隨機取自己的一個等位基因，環境偏向有機率改寫它。
+ * D34 之後主線是 `cloneGenes`，這支留給「兩隻布丁配種」那條路（目前沒有觸發點，
+ * 但配種表與測試都還在，之後要加回雙親繁殖不必重寫規則）。
  */
 export function gamete(p: Pudding, rng: Rng): AlleleId {
   const own = pick(rng, p.genes) as AlleleId;

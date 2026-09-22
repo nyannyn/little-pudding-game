@@ -15,6 +15,7 @@ export interface HudActions {
   ship(): void;
   fulfill(orderId: string): void;
   sellIngredients(species: SpeciesId): void;
+  sellEggs(): void;
   buyStock(liquid: LiquidId, qty: number): void;
   buyEquipment(id: EquipmentId): void;
   buyBasin(liquid: LiquidId): void;
@@ -44,9 +45,17 @@ const el = (html: string): HTMLElement => {
   return t.content.firstElementChild as HTMLElement;
 };
 
-/** 能加工的份數（各物種各自湊 2 份） */
+/**
+ * 能加工的份數（D33：一份甜點＝蛋 ×2 ＋ 該物種原料 ×1）。
+ * 蛋是共用的，所以總數受「蛋夠做幾份」與「各物種原料加起來能做幾份」雙重限制。
+ */
 function craftableCount(s: GameState): number {
-  return SPECIES_IDS.reduce((n, id) => n + Math.floor(s.ingredients[id] / BALANCE.ingredientsPerDessert), 0);
+  const byIngredient = SPECIES_IDS.reduce(
+    (n, id) => n + Math.floor(s.ingredients[id] / BALANCE.ingredientsPerDessert),
+    0,
+  );
+  const byEggs = Math.floor(s.eggs / BALANCE.eggsPerDessert);
+  return Math.min(byIngredient, byEggs);
 }
 function totalDesserts(s: GameState): number {
   return SPECIES_IDS.reduce((n, id) => n + s.desserts[id], 0);
@@ -58,6 +67,7 @@ function totalIngredients(s: GameState): number {
 export class Hud {
   readonly root: HTMLElement;
   private readonly chipCoins: HTMLElement;
+  private readonly chipEgg: HTMLElement;
   private readonly chipIng: HTMLElement;
   private readonly chipDes: HTMLElement;
   private readonly zonesBar: HTMLElement;
@@ -91,6 +101,7 @@ export class Hud {
         <div class="topbar">
           <div class="chips">
             <span class="chip" data-k="coins">${icon('coin', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="egg">${icon('egg', 'bubble')}<b>0</b></span>
             <span class="chip" data-k="ing">${icon('ingredient', 'bubble')}<b>0</b></span>
             <span class="chip" data-k="des">${icon('dessert', 'bubble')}<b>0</b></span>
           </div>
@@ -137,6 +148,7 @@ export class Hud {
 
     const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
     this.chipCoins = q('[data-k="coins"] b');
+    this.chipEgg = q('[data-k="egg"] b');
     this.chipIng = q('[data-k="ing"] b');
     this.chipDes = q('[data-k="des"] b');
     this.zonesBar = q('.zones');
@@ -176,6 +188,7 @@ export class Hud {
       case 'ship': this.act.ship(); break;
       case 'fulfill': this.act.fulfill(arg); break;
       case 'sellIng': this.act.sellIngredients(arg as SpeciesId); break;
+      case 'sellEggs': this.act.sellEggs(); break;
       case 'buyStock': this.act.buyStock(arg as LiquidId, BALANCE.stockBuyQty); break;
       case 'buyEquip': this.act.buyEquipment(arg as EquipmentId); break;
       case 'buyBasin': this.act.buyBasin(arg as LiquidId); break;
@@ -251,6 +264,7 @@ export class Hud {
     this.lastRefresh = nowMs;
 
     this.chipCoins.textContent = String(Math.floor(state.coins));
+    this.chipEgg.textContent = String(state.eggs);
     this.chipIng.textContent = String(totalIngredients(state));
     this.chipDes.textContent = String(totalDesserts(state));
 
@@ -392,6 +406,15 @@ export class Hud {
 
     rows.push('<h3>賣原料</h3>');
     let any = false;
+    if (state.eggs > 0) {
+      any = true;
+      rows.push(`<div class="item">
+        ${icon('egg', 'tile')}
+        <div class="grow"><div class="name">蛋 × ${state.eggs}</div>
+        <div class="desc">每份甜點要 ${BALANCE.eggsPerDessert} 顆，留著加工比較划算</div></div>
+        <button data-a="sellEggs">${BALANCE.eggPrice * state.eggs}</button>
+      </div>`);
+    }
     for (const s of SPECIES_IDS) {
       if (state.ingredients[s] <= 0) continue;
       any = true;
@@ -400,7 +423,7 @@ export class Hud {
       rows.push(`<div class="item">
         ${icon('ingredient', 'tile')}
         <div class="grow"><div class="name">${info.ingredient} × ${state.ingredients[s]}</div>
-        <div class="desc">加工成${info.dessert}可賣 ${dessertPrice(s, BALANCE.dessertPriceMult)}／份</div></div>
+        <div class="desc">＋${BALANCE.eggsPerDessert} 顆蛋做成${info.dessert}，可賣 ${dessertPrice(s, BALANCE.dessertPriceMult)}／份</div></div>
         <button data-a="sellIng" data-arg="${s}">${total}</button>
       </div>`);
     }

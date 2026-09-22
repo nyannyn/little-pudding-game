@@ -10,7 +10,9 @@ import {
   pickAllDrops,
   pickDrop,
   sellDessert,
+  sellEggs,
   sellIngredient,
+  shipDesserts,
   switchZone,
   unlockZone,
 } from './game/actions';
@@ -41,6 +43,7 @@ import { BASIN_SINK, BasinsView } from './scene/basinMesh';
 import { DropsView } from './scene/dropMesh';
 import { EquipmentView } from './scene/equipmentMesh';
 import { Particles } from './scene/particles';
+import { ENTER as POUR_ENTER, PourView, THICKNESS, flowSeconds } from './scene/pourView';
 import { PuddingView } from './scene/puddingView';
 import { spawnPudding } from './scene/puddingMesh';
 import { Sfx } from './scene/audio';
@@ -72,7 +75,11 @@ const BASIN_SLOTS: Vec2[] = [
 const TIER_VIEW_W = 1.9;
 
 // ── 場景 ──────────────────────────────────────────────
-const renderer = createRenderer(container);
+// `?dpr=`／`?aa=0`：現場分辨「卡在填充率」還是「卡在沒有硬體加速」用的旋鈕（見 renderer.ts）
+const renderer = createRenderer(container, {
+  maxPixelRatio: Number(params.get('dpr')) > 0 ? Number(params.get('dpr')) : 2,
+  antialias: params.get('aa') !== '0',
+});
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf6e7d2);
 
@@ -105,10 +112,12 @@ const basins = new BasinsView();
 const drops = new DropsView();
 const equipment = new EquipmentView();
 const particles = new Particles();
-scene.add(basins.group, drops.mesh, equipment.group, particles.points);
+const pours = new PourView(basins, particles);
+scene.add(basins.group, drops.mesh, equipment.group, particles.points, pours.group);
 
 const sfx = new Sfx();
-sfx.attachUnlock(renderer.domElement);
+// 掛 window 不掛 canvas：教學的第一個動作是 HUD 上的「倒焦糖」按鈕，事件不會經過 canvas
+sfx.attachUnlock(window);
 
 // ── 世界 ──────────────────────────────────────────────
 const seedParam = Number(params.get('seed'));
@@ -276,19 +285,19 @@ const hud = new Hud(document.body, {
     hud.update(state, performance.now(), true);
   },
   craft: () => {
+    // 挑原料最多的那個物種做（蛋是共用的，不影響選誰）
     const best = [...SPECIES_IDS].sort((a, b) => state.ingredients[b] - state.ingredients[a])[0] as SpeciesId;
     report(craft(state, best, world.emit));
   },
   ship: () => {
-    // 先交掉接得到的訂單（出價 2–3 倍），剩下的才直接賣
-    for (const o of [...state.orders]) {
-      if (state.desserts[o.species] >= o.qty && o.expiresAt > state.time) fulfillOrder(state, o.id, world.emit);
-    }
-    for (const s of SPECIES_IDS) if (state.desserts[s] > 0) sellDessert(state, s, state.desserts[s], world.emit);
+    // 規則在 game/：手動與自動販售口共用同一個函式（含「訂單預留量」），
+    // 這裡再抄一份就是上次「出貨把湊到一半的甜點賣掉、訂單永遠交不出去」的成因
+    shipDesserts(state, world.emit);
     hud.update(state, performance.now(), true);
   },
   fulfill: (id) => report(fulfillOrder(state, id, world.emit)),
   sellIngredients: (s) => report(sellIngredient(state, s, state.ingredients[s], world.emit)),
+  sellEggs: () => report(sellEggs(state, state.eggs, world.emit)),
   buyStock: (liquid, qty) => report(buyStock(state, liquid, qty, world.emit)),
   buyEquipment: (id) => report(buyEquipment(state, id, world.emit)),
   buyBasin: (liquid) => {
@@ -323,6 +332,15 @@ function handle(e: SimEvent) {
     case 'drop':
       particles.burst(ox + e.x, oy + 0.06, e.z, SPECIES.caramel.toppingColor, 8);
       break;
+    case 'pour': {
+      // 非啟用層的盆沒畫出來，ox/oy 也是啟用層的；在那裡播會是一條懸空的水流
+      if (state.basins[e.basinIndex]?.zone !== state.activeZone) break;
+      // 聲音跟著畫面走：同時只畫一組水流，沒畫出來的（被壓掉的並行注液）也不出聲
+      if (!pours.begin(state, e.basinIndex, e.liquid, e.units, e.auto, ox, oy)) break;
+      // 手動倒是玩家手勢觸發的：走同步解鎖路徑，第一次按就要有聲音；自動注液閥小聲、不等壺進場
+      sfx.pour(THICKNESS[e.liquid], flowSeconds(e.units) + 0.1, e.auto ? 0.24 : 0.5, !e.auto, e.auto ? 0 : POUR_ENTER * 0.8);
+      break;
+    }
     case 'mutate': {
       views.get(e.puddingId)?.pulse();
       particles.burst(ox + e.x, oy + 0.12, e.z, SPECIES[e.to].bodyColor, 22);
@@ -498,6 +516,7 @@ async function ensureViews() {
 const stats = createStats(renderer, params.get('debug') === '1');
 window.__lpg.three = { scene, camera, renderer, controls, raycaster };
 window.__lpg.state = state;
+window.__lpg.sfx = sfx;
 
 let last = performance.now();
 let bubbleT = 0;
@@ -530,12 +549,14 @@ if ('ResizeObserver' in window) {
   if (dock) new ResizeObserver(applyHudOffset).observe(dock);
 }
 
-renderer.setAnimationLoop(() => {
-  const now = performance.now();
-  // 分頁切回來時 dt 會很大；那段時間交給離線結算，不要在一幀裡補跑
-  const dt = Math.min(0.1, (now - last) / 1000);
-  last = now;
+/**
+ * `?pause=1`：時間停住，只重繪；由 `window.__lpg.step(dt)` 一幀一幀推。
+ * 給截圖用——無頭 SwiftShader 只有十幾 fps、截一張要幾百毫秒，靠 wall clock 抓不到
+ * 「倒到一半」這種只有零點幾秒的畫面。
+ */
+const paused = params.get('pause') === '1';
 
+function frame(dt: number, now: number) {
   advance(world, dt * fastTime);
   for (const e of drainEvents(world)) handle(e);
 
@@ -553,7 +574,8 @@ renderer.setAnimationLoop(() => {
     }
   }
 
-  basins.sync(state, state.activeZone, ox, oy);
+  basins.sync(state, state.activeZone, ox, oy, dt);
+  pours.update(state, dt, ox, oy); // 要在 basins.sync 之後：水流的落點讀的是這一幀顯示中的液面
   drops.sync(state, state.activeZone, ox, oy, dt);
   equipment.sync(state, state.activeZone, ox, oy, ceilY);
   particles.update(dt);
@@ -585,7 +607,16 @@ renderer.setAnimationLoop(() => {
   controls.update();
   renderer.render(scene, camera);
   stats.tick();
+}
+
+renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  // 分頁切回來時 dt 會很大；那段時間交給離線結算，不要在一幀裡補跑
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  frame(paused ? 0 : dt, now);
 });
+window.__lpg.step = (dt: number) => frame(dt, performance.now());
 
 // ── PWA：註冊 service worker（只在正式版）──────────────
 // dev 不註冊：Vite 的 public/ 在開發時也會被服務到，快取住 dev 資產會讓 HMR 行為變得很難查。

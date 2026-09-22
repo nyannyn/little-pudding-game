@@ -110,7 +110,7 @@ test.describe('320px 寬', () => {
       const b = s.basins[0]!;
       for (let i = 0; i < 5; i++) {
         const a = i * 1.2566;
-        s.drops.push({ id: `dd${i}`, zone: 'c0t1', species: 'caramel', pos: { x: b.pos.x + 0.32 * Math.cos(a), z: b.pos.z + 0.224 * Math.sin(a) }, bornAt: s.time - 5 });
+        s.drops.push({ id: `dd${i}`, zone: 'c0t1', kind: 'ingredient' as const, species: 'caramel', pos: { x: b.pos.x + 0.32 * Math.cos(a), z: b.pos.z + 0.224 * Math.sin(a) }, bornAt: s.time - 5 });
       }
     });
     await page.waitForTimeout(700);

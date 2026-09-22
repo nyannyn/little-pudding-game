@@ -1,4 +1,5 @@
 import type { LiquidId, SpeciesId } from './species';
+import type { DropKind } from './state';
 
 /**
  * 模擬層丟出的事件，由 scene／ui／audio 層消費（播啪嘰、冒泡泡、閃光、跳數字）。
@@ -8,8 +9,8 @@ export type SimEvent =
   | { type: 'splat'; puddingId: string; x: number; z: number }
   | { type: 'bathStart'; puddingId: string; liquid: LiquidId }
   | { type: 'bathDone'; puddingId: string; liquid: LiquidId }
-  | { type: 'drop'; species: SpeciesId; x: number; z: number }
-  | { type: 'pick'; species: SpeciesId; x: number; z: number; auto: boolean }
+  | { type: 'drop'; kind: DropKind; species: SpeciesId; x: number; z: number }
+  | { type: 'pick'; kind: DropKind; species: SpeciesId; x: number; z: number; auto: boolean }
   | { type: 'mutate'; puddingId: string; from: SpeciesId; to: SpeciesId; x: number; z: number }
   | { type: 'birth'; puddingId: string; zone: string; species: SpeciesId; parents: [string, string]; x: number; z: number }
   | { type: 'move'; puddingId: string; zone: string }
@@ -18,7 +19,7 @@ export type SimEvent =
   | { type: 'orderNew'; orderId: string; species: SpeciesId; qty: number; price: number }
   | { type: 'orderDone'; orderId: string; species: SpeciesId; coins: number; auto: boolean }
   | { type: 'orderExpired'; orderId: string; species: SpeciesId }
-  | { type: 'pour'; basinIndex: number; liquid: LiquidId; auto: boolean }
+  | { type: 'pour'; basinIndex: number; liquid: LiquidId; units: number; auto: boolean }
   | { type: 'buy'; what: string; cost: number; auto: boolean }
   | { type: 'error'; message: string };
 

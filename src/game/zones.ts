@@ -31,14 +31,18 @@ export const START_ZONE = zoneKey(0, 1);
 
 /**
  * v1 的四個分區。價格級距刻意拉開：
- * 上層是「第一次擴張」（約 20 次泡澡的淨收入，勤勞玩家 20 分鐘內；D24），鄰櫃是長期目標。
+ * 上層是「第一次擴張」（勤勞玩家 20 分鐘內；D24），鄰櫃是長期目標。
+ *
+ * 2026-09-22：下層 500→700、二號 1200→1800。生產迴圈改版（D32–D34）之後產量
+ * 與住客數同時變多，後兩區一度在 13／19 分就解鎖，長期目標變得不長期。
+ * 這兩個數字調完實測回到 24／37 分（D24 目標 ≤45／≤90）。
  */
 export function defaultZones(): Zone[] {
   return [
     { id: zoneKey(0, 1), cabinet: 0, tier: 1, name: '一號櫥窗・中層', shortName: '中層', unlocked: true, price: 0 },
     { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', shortName: '上層', unlocked: false, price: 200 },
-    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', shortName: '下層', unlocked: false, price: 500 },
-    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', shortName: '二號・中層', unlocked: false, price: 1200 },
+    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', shortName: '下層', unlocked: false, price: 700 },
+    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', shortName: '二號・中層', unlocked: false, price: 1800 },
   ];
 }
 
