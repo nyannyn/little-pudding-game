@@ -58,11 +58,23 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   //    地板上限只有 dropCap，連掉幾顆蛋就會把位置佔滿而**完全停止掉落**
   //    （真的會卡死，不是理論——這一關以前就是這樣逾時的）。
   //    玩家實際會做的事就是先撿一撿，所以測試也這樣做。
-  for (let i = 0; i < 12; i++) {
-    await page.getByRole('button', { name: '撿原料' }).click();
-    const now = await state(page);
-    if (now.ingredients.caramel >= 1) break;
-    await page.waitForFunction(() => (window.__lpg.state as GameState).drops.length > 0, null, { timeout: 60_000 });
+  //
+  //    **同時要一直補焦糖**（2026-09-22 加，這條以前會隨機逾時）：D35 之後焦糖見底就完全停產，
+  //    而 `fastTime=20` 下泡完澡的 100 焦糖只撐 3.5 真實秒＝最多再掉 2 份；
+  //    兩份都是蛋的機率是 0.65²＝**42%**，中了就永遠等不到焦糖塊。
+  //    固定 `?seed=` 救不了：`advance` 的步數跟著真實幀時間走，整套跑（機器忙）
+  //    和單獨跑的抽籤序列不一樣，所以症狀是「全跑紅、單跑綠」。
+  //    農場停產時玩家會去倒澡盆，測試也照做。
+  //    **餵食要跟等待交錯**：用 `waitForFunction(drops>0, 60_000)` 等的話，那 60 秒之內
+  //    沒有人去倒澡盆，農場已經停產就一路等到逾時。改成短輪詢：每一圈都倒、都撿、都檢查。
+  for (let i = 0; i < 300; i++) {
+    const s = await state(page);
+    if (s.ingredients.caramel >= 1) break;
+    if (s.basins[0]!.units === 0 && s.stock.caramel > 0) {
+      await page.getByRole('button', { name: '倒焦糖' }).click();
+    }
+    if (s.drops.length > 0) await page.getByRole('button', { name: '撿原料' }).click();
+    await page.waitForTimeout(200);
   }
   const picked = await state(page);
   expect(picked.drops.length).toBe(0);
