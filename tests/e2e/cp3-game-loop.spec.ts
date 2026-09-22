@@ -72,6 +72,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   // ⑥ 賣掉，金幣增加
   const beforeSell = picked.coins;
   await page.getByRole('button', { name: '商店' }).click();
+  await page.locator('[data-a="shopTab"][data-arg="sell"]').click(); // D25：商店分頁，賣原料在「賣出」
   await page.getByRole('button', { name: /^\d+$/ }).first().waitFor();
   await page.locator('[data-a="sellIng"]').first().click();
   const sold = await state(page);
@@ -81,6 +82,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
 
   // ⑦ 買「原料收集手」，之後原料直接入庫、地上恆空
   await grantCoins(page, 3000);
+  await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="collector"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
@@ -110,6 +112,7 @@ test('AC3-1b 牛乳澡就是繁殖：泡完多一隻，而且養得出鮮奶酪�
   });
   await page.getByRole('button', { name: '倒牛乳' }).click();
   await page.getByRole('button', { name: '商店' }).click();
+  await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
 

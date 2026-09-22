@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="honey" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f6b83a"/>
+      <stop offset=".55" stop-color="#e89a1e"/>
+      <stop offset="1" stop-color="#c97a12"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".55"/>
+      <stop offset=".35" stop-color="#ffffff" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".25"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f9d97a"/>
+      <stop offset="1" stop-color="#d4a53a"/>
+    </linearGradient>
+    <linearGradient id="label" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff9ec"/>
+      <stop offset="1" stop-color="#f3e4c4"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="80" cy="146" rx="44" ry="8" fill="#5a3d28" opacity=".14"/>
+  <!-- 罐身 -->
+  <path d="M40 58 Q40 46 52 46 L108 46 Q120 46 120 58 L120 126 Q120 140 106 140 L54 140 Q40 140 40 126 Z" fill="url(#honey)"/>
+  <!-- 蜂蜜液面 -->
+  <path d="M40 62 Q80 74 120 62 L120 58 Q120 46 108 46 L52 46 Q40 46 40 58 Z" fill="#f8cf62"/>
+  <!-- 玻璃反光 -->
+  <path d="M40 58 Q40 46 52 46 L108 46 Q120 46 120 58 L120 126 Q120 140 106 140 L54 140 Q40 140 40 126 Z" fill="url(#glass)"/>
+  <path d="M50 66 Q48 100 52 128" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity=".55"/>
+  <!-- 標籤 -->
+  <rect x="54" y="84" width="52" height="30" rx="7" fill="url(#label)"/>
+  <path d="M66 99 L74 91 L82 99 L90 91 L98 99" fill="none" stroke="#d9a02f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 蓋子 -->
+  <rect x="44" y="30" width="72" height="22" rx="8" fill="url(#lid)"/>
+  <rect x="44" y="30" width="72" height="8" rx="4" fill="#fff0b8" opacity=".8"/>
+  <!-- 滴下來的蜂蜜 -->
+  <path d="M112 52 Q118 60 114 70 Q110 76 108 68 Q106 60 112 52 Z" fill="#e89a1e"/>
+  <ellipse cx="111" cy="58" rx="2" ry="3" fill="#ffd57a" opacity=".8"/>
+</svg>

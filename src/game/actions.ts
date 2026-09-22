@@ -1,6 +1,8 @@
 import { BALANCE, EQUIPMENT, type EquipmentId } from './balance';
 import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
+import { grantXp, levelFor } from './level';
+import { basinLevel, stockCost, stockLevel } from './shop';
 import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from './species';
 import type { GameState, Vec2 } from './state';
 import { findZone } from './zones';
@@ -10,6 +12,11 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 const OK: ActionResult = { ok: true };
 function fail(error: string): ActionResult {
   return { ok: false, error };
+}
+
+/** 店長等級不到就擋下（商店目錄 `shop.ts` 用同一組門檻，UI 鎖著的東西這裡也一樣買不到） */
+function levelGate(state: GameState, need: number): ActionResult | null {
+  return levelFor(state.xp) >= need ? null : fail(`店長 Lv.${need} 才能買`);
 }
 
 /**
@@ -35,6 +42,7 @@ export function pickDrop(state: GameState, dropId: string, emit: EventSink): Act
   else state.ingredients[d.species]++;
   state.stats.picked++;
   emit({ type: 'pick', kind: d.kind, species: d.species, x: d.pos.x, z: d.pos.z, auto: false });
+  grantXp(state, BALANCE.xp.pick, emit);
   return OK;
 }
 
@@ -51,6 +59,7 @@ export function pickAllDrops(state: GameState, emit: EventSink, auto = false, zo
     emit({ type: 'pick', kind: d.kind, species: d.species, x: d.pos.x, z: d.pos.z, auto });
   }
   state.drops = zone === undefined ? [] : state.drops.filter((d) => d.zone !== zone);
+  grantXp(state, BALANCE.xp.pick * take.length, emit);
   return take.length;
 }
 
@@ -63,6 +72,7 @@ export function sellIngredient(state: GameState, species: SpeciesId, qty: number
   state.coins += coins;
   state.stats.sold += n;
   emit({ type: 'sell', species, coins, auto: false });
+  grantXp(state, BALANCE.xp.sellIngredient * n, emit);
   return OK;
 }
 
@@ -94,6 +104,7 @@ export function craft(state: GameState, species: SpeciesId, emit: EventSink, aut
   state.desserts[species]++;
   state.stats.crafted++;
   emit({ type: 'craft', species, auto });
+  grantXp(state, BALANCE.xp.craft, emit);
   return OK;
 }
 
@@ -106,6 +117,7 @@ export function sellDessert(state: GameState, species: SpeciesId, qty: number, e
   state.coins += coins;
   state.stats.sold += n;
   emit({ type: 'sell', species, coins, auto });
+  grantXp(state, BALANCE.xp.sellDessert * n, emit);
   return OK;
 }
 
@@ -159,6 +171,7 @@ export function fulfillOrder(state: GameState, orderId: string, emit: EventSink,
   state.stats.sold += o.qty;
   state.orders.splice(i, 1);
   emit({ type: 'orderDone', orderId: o.id, species: o.species, coins: o.price, auto });
+  grantXp(state, BALANCE.xp.order + BALANCE.xp.sellDessert * o.qty, emit);
   return OK;
 }
 
@@ -167,7 +180,9 @@ export function buyStock(state: GameState, liquid: LiquidId, qty: number, emit: 
   if (n <= 0) return fail('數量要大於 0');
   const info = LIQUIDS[liquid];
   if (info.needsBasin && !state.ownedBasins.includes(liquid)) return fail(`還沒買下${info.name}澡盆`);
-  const cost = info.unitPrice * n;
+  const gate = levelGate(state, stockLevel(n));
+  if (gate) return gate;
+  const cost = stockCost(liquid, n);
   if (state.coins < cost) return fail('焦糖幣不夠');
   state.coins -= cost;
   state.stock[liquid] += n;
@@ -186,6 +201,8 @@ export function buySpecialBasin(
   const info = LIQUIDS[liquid];
   if (!info.needsBasin) return fail('這不是特殊澡盆');
   if (state.ownedBasins.includes(liquid)) return fail('已經有這個澡盆了');
+  const gate = levelGate(state, basinLevel(liquid));
+  if (gate) return gate;
   if (state.coins < BALANCE.specialBasinPrice) return fail('焦糖幣不夠');
   state.coins -= BALANCE.specialBasinPrice;
   state.ownedBasins.push(liquid);
@@ -197,6 +214,8 @@ export function buySpecialBasin(
 export function buyEquipment(state: GameState, id: EquipmentId, emit: EventSink): ActionResult {
   const info = EQUIPMENT[id];
   if (state.equipment[id]) return fail('已經買過了');
+  const gate = levelGate(state, info.level);
+  if (gate) return gate;
   if (state.coins < info.price) return fail('焦糖幣不夠');
   state.coins -= info.price;
   state.equipment[id] = true;
@@ -219,6 +238,8 @@ export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, e
   const z = findZone(state, zoneId);
   if (!z) return fail('沒有這個櫥窗');
   if (z.unlocked) return fail('這一區已經解鎖了');
+  const gate = levelGate(state, z.level);
+  if (gate) return gate;
   if (state.coins < z.price) return fail('焦糖幣不夠');
 
   state.coins -= z.price;

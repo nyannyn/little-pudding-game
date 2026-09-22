@@ -3,6 +3,7 @@ import { basinAvailable, consumeBathUnit, findBasinFor } from './basin';
 import type { EventSink } from './events';
 import { breedFromBath } from './breeding';
 import { applySpeciesAsPure } from './genetics';
+import { grantXp } from './level';
 import { range, type Rng } from './rng';
 import { LIQUIDS, SPECIES, type SpeciesId } from './species';
 import type { DropKind, GameState, Pudding, Vec2 } from './state';
@@ -90,6 +91,7 @@ function land(state: GameState, p: Pudding, ctx: SimContext): void {
     p.flavorExposure = {};
     state.stats.mutations++;
     ctx.emit({ type: 'mutate', puddingId: p.id, from, to: p.species, x: p.pos.x, z: p.pos.z });
+    grantXp(state, BALANCE.xp.mutate, ctx.emit);
   }
   p.pendingMutation = null;
 
@@ -139,8 +141,10 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
 
   state.stats.baths++;
   ctx.emit({ type: 'bathDone', puddingId: p.id, liquid });
+  grantXp(state, BALANCE.xp.bath, ctx.emit);
 
   // 牛奶澡就是繁殖。生不出來（全場住滿）要講出來，否則玩家會以為規則壞了
+  // （D32 之後泡澡不再產原料；對方那條「泡完入庫／掉在盆邊」已經被自然掉落取代）
   if (liquid === 'milk') {
     const child = breedFromBath(state, p, ctx);
     if (child === null) ctx.emit({ type: 'error', message: '櫥窗住滿了，生不出新的小布丁' });

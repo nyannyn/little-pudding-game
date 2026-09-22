@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 甜點加工機：箱體＋漏斗＋煙囪（對應 equipmentMesh.ts 的 crafter） -->
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#eef2f6"/>
+      <stop offset=".5" stop-color="#cfd6dd"/>
+      <stop offset="1" stop-color="#a9b4c0"/>
+    </linearGradient>
+    <linearGradient id="metalH" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef2f6"/>
+      <stop offset="1" stop-color="#b3bec9"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4a898"/>
+      <stop offset="1" stop-color="#d9705f"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="80" cy="146" rx="50" ry="8" fill="#5a3d28" opacity=".14"/>
+  <!-- 煙囪＋煙 -->
+  <rect x="104" y="30" width="16" height="44" rx="5" fill="url(#metal)"/>
+  <circle cx="112" cy="24" r="7" fill="#ffffff" opacity=".75"/>
+  <circle cx="121" cy="14" r="5" fill="#ffffff" opacity=".55"/>
+  <!-- 漏斗（配色） -->
+  <path d="M40 46 L96 46 L84 68 L52 68 Z" fill="url(#accent)"/>
+  <rect x="40" y="40" width="56" height="10" rx="5" fill="#f7bfb3"/>
+  <!-- 箱體 -->
+  <rect x="30" y="66" width="100" height="66" rx="12" fill="url(#metal)"/>
+  <rect x="34" y="70" width="92" height="10" rx="5" fill="#ffffff" opacity=".45"/>
+  <!-- 面板：兩顆燈＋出料口 -->
+  <circle cx="50" cy="96" r="6" fill="#7cb85c"/>
+  <circle cx="66" cy="96" r="6" fill="#f7c95a"/>
+  <rect x="82" y="88" width="38" height="18" rx="6" fill="#8a97a6"/>
+  <!-- 出料口的甜點 -->
+  <path d="M86 122 h26 l-3 12 h-20 Z" fill="#f4a7b0"/>
+  <path d="M90 122 c0-6 3-9 9-9 s9 3 9 9" fill="#ffd27a"/>
+</svg>

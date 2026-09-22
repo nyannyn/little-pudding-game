@@ -51,12 +51,16 @@ test('點鎖牌開商店；解鎖後點另一層就切區', async ({ page }) => 
   await page.mouse.click(plate.x, plate.y);
   await page.waitForTimeout(300);
   await expect(page.locator('.sheet')).toBeVisible();
+  // 點鎖牌進來的要直接落在「擴建」頁，玩家不必再自己找
+  await expect(page.locator('[data-a="shopTab"][data-arg="zone"]')).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: '關閉' }).click();
 
   // ② 解鎖上層（鏡頭移上去），再點中層地板前緣 → 切回中層
-  await page.evaluate(() => { window.__lpg.state!.coins = 999; });
+  // D25：分區有上架等級，這裡測的是點櫃子切區，等級直接給滿
+  await page.evaluate(() => { window.__lpg.state!.coins = 999; window.__lpg.state!.xp = 99999; });
   await page.getByRole('button', { name: '商店' }).click();
-  await page.locator('[data-a="unlockZone"]').click();
+  await page.locator('[data-a="shopTab"][data-arg="zone"]').click();
+  await page.locator('[data-a="unlockZone"][data-arg="c0t2"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
   await page.waitForTimeout(1500);
   expect(await page.evaluate(() => window.__lpg.state!.activeZone)).toBe('c0t2');

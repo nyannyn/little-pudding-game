@@ -108,12 +108,32 @@ export const BALANCE = {
    * 玩家會一直被叫回商店；10 份（20 元）約撐五分鐘。
    */
   stockBuyQty: 10,
+  /**
+   * 大桶裝：一次買 stockBulkQty 份、打 stockBulkDiscount 折扣，店長 Lv.stockBulkLevel 起才上架。
+   * 只有焦糖與牛乳有大桶裝（跟補貨合約的範圍一致）；折扣是「等級到了的獎勵」，不是必需品。
+   */
+  stockBulkQty: 30,
+  stockBulkDiscount: 0.1,
+  stockBulkLevel: 4,
   /** 補貨合約：庫存低於 restockFloor 就補到 restockTarget */
   restockFloor: 4,
   restockTarget: 20,
 
   /** 特殊澡盆一次性價格 */
   specialBasinPrice: 300,
+  /** 特殊澡盆的上架等級：抹茶先、草莓後，兩條風味線不要同時開 */
+  specialBasinLevel: { matcha: 3, strawberry: 5 } as Record<string, number>,
+
+  /**
+   * 店長等級（D25，2026-09-22）。經驗值是真的存檔欄位（`GameState.xp`），
+   * 由生產動作累積；商店商品各自有上架等級，門檻由 `levelFor()` 查這張表。
+   * `levelXp[i]` ＝ 升到 Lv.(i+1) 所需的累積 xp；Lv.1 從 0 起，表長＝等級上限。
+   * 數字用 `npm run pacing` 對過：目標是每件商品「上架」略早於「買得起」，
+   * 等級是進度感不是第二道錢關。
+   */
+  levelXp: [0, 30, 80, 150, 260, 420, 650, 950, 1350, 1900],
+  /** 各動作給多少 xp（自動化做的也算——生產就是生產，不然裝了設備等級就停了） */
+  xp: { bath: 2, pick: 1, craft: 3, sellDessert: 2, sellIngredient: 1, order: 10, mutate: 40, birth: 30 },
 
   // ── 繁殖與配種（D28–D30，2026-09-22）───────────────
   /**
@@ -160,17 +180,19 @@ export interface EquipmentInfo {
   price: number;
   /** 進程分層 T1–T3 */
   tier: 1 | 2 | 3;
+  /** 店長幾級才上架（`BALANCE.levelXp`） */
+  level: number;
 }
 
 /** 定價單位＝一次焦糖泡澡做成甜點的淨收入（12 − 2 液體 ＝ 10 元），對齊計畫「約 N 次泡澡的收入」 */
 const BATH_INCOME = 10;
 
 export const EQUIPMENT: Record<EquipmentId, EquipmentInfo> = {
-  autoFill: { id: 'autoFill', name: '自動注液閥', replaces: '倒澡盆', desc: '澡盆低於一份就自動從庫存補滿', price: 8 * BATH_INCOME, tier: 1 },
-  collector: { id: 'collector', name: '原料收集手', replaces: '撿原料', desc: '掉落的原料直接進庫存', price: 6 * BATH_INCOME, tier: 1 },
-  crafter: { id: 'crafter', name: '甜點加工機', replaces: '按加工', desc: '原料夠就自動加工成甜點', price: 12 * BATH_INCOME, tier: 2 },
-  seller: { id: 'seller', name: '自動販售口', replaces: '按賣', desc: '甜點自動販售，並自動交付訂單卡', price: 18 * BATH_INCOME, tier: 2 },
-  restock: { id: 'restock', name: '補貨合約', replaces: '去商店補貨', desc: '焦糖與牛乳庫存見底就自動補貨', price: 40 * BATH_INCOME, tier: 3 },
+  autoFill: { id: 'autoFill', name: '自動注液閥', replaces: '倒澡盆', desc: '澡盆低於一份就自動從庫存補滿', price: 8 * BATH_INCOME, tier: 1, level: 1 },
+  collector: { id: 'collector', name: '原料收集手', replaces: '撿原料', desc: '掉落的原料直接進庫存', price: 6 * BATH_INCOME, tier: 1, level: 1 },
+  crafter: { id: 'crafter', name: '甜點加工機', replaces: '按加工', desc: '原料夠就自動加工成甜點', price: 12 * BATH_INCOME, tier: 2, level: 2 },
+  seller: { id: 'seller', name: '自動販售口', replaces: '按賣', desc: '自動賣甜點、自動交訂單', price: 18 * BATH_INCOME, tier: 2, level: 3 },
+  restock: { id: 'restock', name: '補貨合約', replaces: '去商店補貨', desc: '焦糖與牛乳庫存見底就自動補貨', price: 40 * BATH_INCOME, tier: 3, level: 6 },
 };
 
 export const EQUIPMENT_IDS = Object.keys(EQUIPMENT) as EquipmentId[];

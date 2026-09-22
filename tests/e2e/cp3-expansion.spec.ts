@@ -22,9 +22,14 @@ async function ready(page: Page, query: string) {
   await page.waitForFunction(() => window.__lpg.stats.triangles > 0, null, { timeout: 10_000 });
 }
 
-async function openShop(page: Page) {
+async function openShop(page: Page, tab: 'stock' | 'equipment' | 'basin' | 'zone' | 'sell') {
   await page.getByRole('button', { name: '商店' }).click();
   await page.locator('.sheet .body').waitFor();
+  await page.locator(`[data-a="shopTab"][data-arg="${tab}"]`).click();
+}
+/** D25：商品有上架等級；這兩條測的是解鎖後的行為，等級直接給滿 */
+async function maxLevel(page: Page) {
+  await page.evaluate(() => { (window.__lpg.state as GameState).xp = 99999; });
 }
 async function closeShop(page: Page) {
   await page.getByRole('button', { name: '關閉' }).click();
@@ -34,15 +39,17 @@ test('抹茶澡盆：第二個盆出現在櫥窗裡，泡到突變成抹茶布�
   test.setTimeout(240_000);
   await ready(page, '/?debug=1&fresh=1&seed=606&fastTime=40');
   await page.evaluate(() => { (window.__lpg.state as GameState).coins = 5000; });
+  await maxLevel(page);
 
   // ① 買澡盆 → 櫥窗裡真的多一個盆
-  await openShop(page);
+  await openShop(page, 'basin');
   await page.locator('[data-a="buyBasin"][data-arg="matcha"]').click();
   const bought = await state(page);
   expect(bought.ownedBasins).toContain('matcha');
   expect(bought.basins.filter((b) => b.zone === bought.activeZone)).toHaveLength(2);
 
-  // ② 買抹茶湯（沒有澡盆時商店根本不會列這一項）
+  // ② 買抹茶湯（沒有澡盆時這一項只顯示「先買抹茶澡盆」、沒有購買鈕）
+  await page.locator('[data-a="shopTab"][data-arg="stock"]').click();
   await page.locator('[data-a="buyStock"][data-arg="matcha"]').click();
   await closeShop(page);
   expect((await state(page)).stock.matcha).toBe(BALANCE.stockBuyQty);
@@ -55,7 +62,7 @@ test('抹茶澡盆：第二個盆出現在櫥窗裡，泡到突變成抹茶布�
   expect(matchaBasin?.liquid).toBe('matcha');
 
   // ④ 讓它一直有抹茶可泡（自動注液閥），泡滿 48 小時曝露就突變
-  await openShop(page);
+  await openShop(page, 'equipment');
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="collector"]').click();
   await closeShop(page);
@@ -78,6 +85,7 @@ test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生�
   test.setTimeout(240_000);
   await ready(page, '/?debug=1&fresh=1&seed=909&fastTime=30');
   await page.evaluate(() => { (window.__lpg.state as GameState).coins = 99999; });
+  await maxLevel(page);
 
   const start = await state(page);
   expect(start.zones.filter((z) => z.unlocked)).toHaveLength(1);
@@ -87,8 +95,8 @@ test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生�
   const camBefore = await page.evaluate(() => window.__lpg.three!.controls.target.y);
 
   // ① 解鎖上層
-  await openShop(page);
-  await page.locator('[data-a="unlockZone"]').click();
+  await openShop(page, 'zone');
+  await page.locator('[data-a="unlockZone"][data-arg="c0t2"]').click();
   await closeShop(page);
 
   const afterUnlock = await state(page);
@@ -107,7 +115,7 @@ test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生�
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-upper.png' });
 
   // ② 新住客在自己那一區生產（倒澡盆→泡澡→入庫）
-  await openShop(page);
+  await openShop(page, 'equipment');
   await page.locator('[data-a="buyEquip"][data-arg="collector"]').click();
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
   await closeShop(page);
@@ -127,11 +135,11 @@ test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生�
   );
 
   // ③ 解鎖到二號櫥窗，鏡頭橫向移過去
-  await openShop(page);
-  await page.locator('[data-a="unlockZone"]').click(); // 下層
+  await openShop(page, 'zone');
+  await page.locator('[data-a="unlockZone"][data-arg="c0t0"]').click(); // 下層
   await closeShop(page);
-  await openShop(page);
-  await page.locator('[data-a="unlockZone"]').click(); // 二號櫥窗
+  await openShop(page, 'zone');
+  await page.locator('[data-a="unlockZone"][data-arg="c1t1"]').click(); // 二號櫥窗
   await closeShop(page);
 
   const four = await state(page);

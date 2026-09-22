@@ -21,6 +21,7 @@ export type SimEvent =
   | { type: 'orderExpired'; orderId: string; species: SpeciesId }
   | { type: 'pour'; basinIndex: number; liquid: LiquidId; units: number; auto: boolean }
   | { type: 'buy'; what: string; cost: number; auto: boolean }
+  | { type: 'levelUp'; level: number; from: number }
   | { type: 'error'; message: string };
 
 export type EventSink = (e: SimEvent) => void;

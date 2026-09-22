@@ -115,6 +115,8 @@ export const GENOTYPE_TO_SPECIES: Record<string, SpeciesId> = (() => {
 export interface LiquidInfo {
   id: LiquidId;
   name: string;
+  /** 短名（商店卡片一行塞得下；全名留給 toast） */
+  shortName: string;
   /** 液面顏色 */
   color: number;
   /** 泡完後 caramel 回到多少 */
@@ -128,10 +130,10 @@ export interface LiquidInfo {
 }
 
 export const LIQUIDS: Record<LiquidId, LiquidInfo> = {
-  caramel: { id: 'caramel', name: '香醇濃郁的熱焦糖', color: 0xc07a2c, caramelAfterBath: 100, unitPrice: 2, needsBasin: false, flavorFor: null },
-  milk: { id: 'milk', name: '冰鮮牛乳', color: 0xfdfaf2, caramelAfterBath: 60, unitPrice: 2, needsBasin: false, flavorFor: null },
-  matcha: { id: 'matcha', name: '宇治抹茶湯', color: 0x7fa762, caramelAfterBath: 80, unitPrice: 6, needsBasin: true, flavorFor: 'matcha' },
-  strawberry: { id: 'strawberry', name: '大湖草莓醬', color: 0xe2708c, caramelAfterBath: 80, unitPrice: 6, needsBasin: true, flavorFor: 'strawberry' },
+  caramel: { id: 'caramel', name: '香醇濃郁的熱焦糖', shortName: '熱焦糖', color: 0xc07a2c, caramelAfterBath: 100, unitPrice: 2, needsBasin: false, flavorFor: null },
+  milk: { id: 'milk', name: '冰鮮牛乳', shortName: '鮮牛乳', color: 0xfdfaf2, caramelAfterBath: 60, unitPrice: 2, needsBasin: false, flavorFor: null },
+  matcha: { id: 'matcha', name: '宇治抹茶湯', shortName: '抹茶湯', color: 0x7fa762, caramelAfterBath: 80, unitPrice: 6, needsBasin: true, flavorFor: 'matcha' },
+  strawberry: { id: 'strawberry', name: '大湖草莓醬', shortName: '草莓醬', color: 0xe2708c, caramelAfterBath: 80, unitPrice: 6, needsBasin: true, flavorFor: 'strawberry' },
 };
 
 export const LIQUID_IDS = Object.keys(LIQUIDS) as LiquidId[];

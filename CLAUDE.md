@@ -12,7 +12,8 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `npm run playtest`：從頭試玩找 bug 的整套腳本（`tools/playtest/`）；流程與判讀見 `.claude/skills/playtest/SKILL.md`
 - `npm run smoke:live`：對正式建置或線上網址跑整頁煙霧測（`LPG_BASE` 指定網址）
 - `npm run models:optimize`：壓縮 `public/models/*.glb` 並檢查資產預算（超標 exit 1）
-- 網址參數：`?debug=1` 顯示 fps／draw calls／三角形數、`?fresh=1` 開新檔（**測試模式**）、`?seed=N` 固定亂數、`?fastTime=N` 倍速、`?pop=N` 指定布丁隻數、`?noPudding=1` 不載布丁
+- `npm run art:shop`：重抓商店商品圖（Microsoft Fluent Emoji 3D，MIT，釘 commit）縮成 160px WebP 到 `src/assets/shop/`；授權全文在同目錄 `LICENSE.txt`。只在改 `tools/fetch-shop-art.mjs` 的 ART 表時才需要重跑，輸出已進版控
+- 網址參數：`?debug=1` 顯示 fps／draw calls／三角形數與顯示卡、`?fresh=1` 開新檔（**測試模式**）、`?seed=N` 固定亂數、`?fastTime=N` 倍速、`?pop=N` 指定布丁隻數、`?noPudding=1` 不載布丁、`?dpr=N`／`?aa=0` 降解析度與關 MSAA（查效能）
 - 手機實測走 GitHub Pages：push `master` 自動部署到 `https://nyannyn.github.io/little-pudding-game/`（`.github/workflows/pages.yml`）；PC 沒有 Wi-Fi 卡且防火牆擋 5173 入站，區網直連不可行
 
 ## 分層鐵則
@@ -47,6 +48,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 
 ## 美術管線
 Blender MCP（`.mcp.json`；Blender 端側欄分頁「MCP for Blender」按連線鈕，**按鈕名稱隨 addon 版本變**，本機 4.5 是「Connect to Claude」）→ `tools/blender/render_preview.py` 出 4 角度預覽 → 使用者簽核 → `export_scene` 出 GLB 到 `public/models/` → `npm run models:optimize`。
+商店商品圖（2D）走 `npm run art:shop`，不在 `models:optimize` 的預算檢查範圍內（目前 17 張共約 62 KB）。
 
 ## 提交
 繁體中文一行 commit；不加 Co-Authored-By 標記。

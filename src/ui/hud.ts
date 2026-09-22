@@ -1,12 +1,14 @@
 import './hud.css';
-import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../game/balance';
+import { BALANCE, type EquipmentId } from '../game/balance';
+import { levelFor } from '../game/level';
 import { describePudding } from '../game/pudding';
-import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from '../game/species';
+import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
-import { nextLockedZone, puddingsIn, unlockedZones } from '../game/zones';
+import { puddingsIn, unlockedZones } from '../game/zones';
 import { dismissHints, hintsDismissed, nextHint } from './hints';
 import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
+import { ShopView, type ShopPage } from './shop';
 
 export interface HudActions {
   pour(liquid: LiquidId): void;
@@ -77,8 +79,8 @@ export class Hud {
   private readonly btnPick: HTMLButtonElement;
   private readonly btnCraft: HTMLButtonElement;
   private readonly btnShip: HTMLButtonElement;
-  private readonly sheet: HTMLElement;
-  private readonly sheetBody: HTMLElement;
+  private readonly shop = new ShopView();
+  private readonly shopLvl: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly toasts: HTMLElement;
   private readonly welcome: HTMLElement;
@@ -91,8 +93,6 @@ export class Hud {
   private activeZone = '';
   private pourKeys = '';
   private orderKeys = '';
-  private sheetOpen = false;
-  private shopHtml = '';
   private lastRefresh = -1;
 
   constructor(parent: HTMLElement, private readonly act: HudActions) {
@@ -106,7 +106,7 @@ export class Hud {
             <span class="chip" data-k="des">${icon('dessert', 'bubble')}<b>0</b></span>
           </div>
           <button class="iconbtn" data-a="mute" aria-label="音效">${icon('sound')}</button>
-          <button class="iconbtn shopbtn" data-a="shop" aria-label="商店">${cuteIcon('shop')}</button>
+          <button class="iconbtn shopbtn" data-a="shop" aria-label="商店">${cuteIcon('shop')}<span class="lvl">Lv.1</span></button>
         </div>
         <div class="zones" hidden>
           <button data-a="zoneStep" data-arg="-1" aria-label="上一個櫥窗">&#8249;</button>
@@ -125,10 +125,6 @@ export class Hud {
         </div>
         <div class="hint" hidden><span class="who">小布丁</span><span class="t"></span><button data-a="hintOff" aria-label="不再顯示">${icon('close')}</button></div>
         <div class="toasts"></div>
-        <div class="sheet" hidden>
-          <header><h2>布丁商店</h2><button class="iconbtn" data-a="closeShop" aria-label="關閉">${icon('close')}</button></header>
-          <div class="body"></div>
-        </div>
         <div class="welcome" hidden>
           <div class="card">
             <h2>歡迎回來</h2>
@@ -144,6 +140,8 @@ export class Hud {
           </div>
         </div>
       </div>`);
+    // 商店抽屜疊在歡迎卡下面、其他 HUD 上面
+    this.root.insertBefore(this.shop.root, this.root.querySelector('.welcome'));
     parent.appendChild(this.root);
 
     const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
@@ -158,8 +156,7 @@ export class Hud {
     this.btnPick = q('[data-a="pick"]');
     this.btnCraft = q('[data-a="craft"]');
     this.btnShip = q('[data-a="ship"]');
-    this.sheet = q('.sheet');
-    this.sheetBody = q('.sheet .body');
+    this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
     this.welcome = q('.welcome:not(.a2hs)');
@@ -189,13 +186,18 @@ export class Hud {
       case 'fulfill': this.act.fulfill(arg); break;
       case 'sellIng': this.act.sellIngredients(arg as SpeciesId); break;
       case 'sellEggs': this.act.sellEggs(); break;
-      case 'buyStock': this.act.buyStock(arg as LiquidId, BALANCE.stockBuyQty); break;
+      case 'buyStock': this.act.buyStock(arg as LiquidId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
       case 'buyEquip': this.act.buyEquipment(arg as EquipmentId); break;
       case 'buyBasin': this.act.buyBasin(arg as LiquidId); break;
       case 'unlockZone': this.act.unlockZone(arg); break;
       case 'zoneStep': this.stepZone(Number(arg)); break;
-      case 'shop': this.toggleShop(true); break;
+      // 引導正說「去商店買原料收集手」時，直接開在設備頁——開在補貨頁玩家找不到
+      case 'shop': this.toggleShop(true, !this.hintOff && this.hintId === 'buy' ? 'equipment' : undefined); break;
       case 'closeShop': this.toggleShop(false); break;
+      case 'shopTab':
+        this.shop.setPage(arg as ShopPage);
+        this.lastRefresh = -1;
+        break;
       case 'closeWelcome': this.welcome.hidden = true; break;
       case 'closeA2hs':
         dismissHomeScreenTip();
@@ -223,15 +225,15 @@ export class Hud {
     if (next) this.act.switchZone(next);
   }
 
-  private toggleShop(open: boolean) {
-    this.sheetOpen = open;
-    this.sheet.hidden = !open;
+  private toggleShop(open: boolean, page?: ShopPage) {
+    if (open) this.shop.show(page);
+    else this.shop.hide();
     this.lastRefresh = -1; // 下一次 update 一定要重畫商店內容
   }
 
-  /** 場景端也會叫（點櫃子上的鎖牌＝去商店解鎖） */
-  openShop() {
-    this.toggleShop(true);
+  /** 場景端也會叫（點櫃子上的鎖牌＝去商店的「擴建」頁解鎖） */
+  openShop(page?: ShopPage) {
+    this.toggleShop(true, page);
   }
 
   /** 歡迎卡正開著（「加到主畫面」那張要讓路，不然兩張疊在一起） */
@@ -285,8 +287,9 @@ export class Hud {
     this.btnShip.disabled = desserts === 0;
     (this.btnShip.querySelector('.n') as HTMLElement).textContent = desserts ? String(desserts) : '';
 
+    this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
     this.syncHint(state);
-    if (this.sheetOpen) this.renderShop(state);
+    if (this.shop.open) this.shop.render(state);
   }
 
   private syncHint(state: GameState) {
@@ -387,90 +390,5 @@ export class Hud {
       const left = Math.max(0, (o.expiresAt - state.time) / BALANCE.orderTtlSec);
       (card.querySelector('.clock > i') as HTMLElement).style.width = `${Math.round(left * 100)}%`;
     }
-  }
-
-  private renderShop(state: GameState) {
-    const rows: string[] = [];
-
-    rows.push('<h3>補貨</h3>');
-    const buyable: LiquidId[] = ['caramel', 'milk', ...state.ownedBasins];
-    for (const l of buyable) {
-      const info = LIQUIDS[l];
-      const cost = info.unitPrice * BALANCE.stockBuyQty;
-      rows.push(`<div class="item">
-        ${cuteIcon(LIQUID_ICON[l], 'tile')}
-        <div class="grow"><div class="name">${info.name} × ${BALANCE.stockBuyQty}</div><div class="desc">庫存 ${state.stock[l]} 份</div></div>
-        <button data-a="buyStock" data-arg="${l}" ${state.coins < cost ? 'disabled' : ''}>${cost}</button>
-      </div>`);
-    }
-
-    rows.push('<h3>賣原料</h3>');
-    let any = false;
-    if (state.eggs > 0) {
-      any = true;
-      rows.push(`<div class="item">
-        ${icon('egg', 'tile')}
-        <div class="grow"><div class="name">蛋 × ${state.eggs}</div>
-        <div class="desc">每份甜點要 ${BALANCE.eggsPerDessert} 顆，留著加工比較划算</div></div>
-        <button data-a="sellEggs">${BALANCE.eggPrice * state.eggs}</button>
-      </div>`);
-    }
-    for (const s of SPECIES_IDS) {
-      if (state.ingredients[s] <= 0) continue;
-      any = true;
-      const info = SPECIES[s];
-      const total = info.ingredientPrice * state.ingredients[s];
-      rows.push(`<div class="item">
-        ${icon('ingredient', 'tile')}
-        <div class="grow"><div class="name">${info.ingredient} × ${state.ingredients[s]}</div>
-        <div class="desc">＋${BALANCE.eggsPerDessert} 顆蛋做成${info.dessert}，可賣 ${dessertPrice(s, BALANCE.dessertPriceMult)}／份</div></div>
-        <button data-a="sellIng" data-arg="${s}">${total}</button>
-      </div>`);
-    }
-    if (!any) rows.push('<div class="item"><div class="grow desc">還沒有原料，先讓布丁泡個澡。</div></div>');
-
-    rows.push('<h3>自動化設備</h3>');
-    for (const id of EQUIPMENT_IDS) {
-      const info = EQUIPMENT[id];
-      const owned = state.equipment[id];
-      rows.push(`<div class="item">
-        ${icon('gear', 'tile')}
-        <div class="grow"><div class="name">T${info.tier}　${info.name}</div><div class="desc">${info.desc}</div></div>
-        ${owned ? '<span class="owned">已安裝</span>' : `<button data-a="buyEquip" data-arg="${id}" ${state.coins < info.price ? 'disabled' : ''}>${info.price}</button>`}
-      </div>`);
-    }
-
-    rows.push('<h3>擴建櫥窗</h3>');
-    const nz = nextLockedZone(state);
-    if (nz) {
-      rows.push(`<div class="item">
-        ${cuteIcon('box', 'tile')}
-        <div class="grow"><div class="name">${nz.name}</div>
-        <div class="desc">解鎖後多一隻住客與一個澡盆，產量翻倍</div></div>
-        <button data-a="unlockZone" data-arg="${nz.id}" ${state.coins < nz.price ? 'disabled' : ''}>${nz.price}</button>
-      </div>`);
-    } else {
-      rows.push('<div class="item"><div class="grow desc">所有櫥窗都開了。</div></div>');
-    }
-
-    rows.push('<h3>風味澡盆</h3>');
-    for (const l of ['matcha', 'strawberry'] as LiquidId[]) {
-      const info = LIQUIDS[l];
-      const owned = state.ownedBasins.includes(l);
-      rows.push(`<div class="item">
-        ${cuteIcon(LIQUID_ICON[l], 'tile')}
-        <div class="grow"><div class="name">${info.name}澡盆</div>
-        <div class="desc">泡 ${Math.ceil(BALANCE.flavorThresholdSec / BALANCE.flavorExposurePerBath)} 次澡會變成${SPECIES[info.flavorFor as SpeciesId].name}</div></div>
-        ${owned ? '<span class="owned">已擁有</span>' : `<button data-a="buyBasin" data-arg="${l}" ${state.coins < BALANCE.specialBasinPrice ? 'disabled' : ''}>${BALANCE.specialBasinPrice}</button>`}
-      </div>`);
-    }
-
-    // 內容沒變就不重寫 DOM：商店開著時 update 每 160ms 進來一次，
-    // 每次都換掉 innerHTML 會把玩家手指正按著的按鈕換成新節點——pointerdown 與 pointerup
-    // 落在不同節點，click 不會發生，體感就是「商店按鈕偶爾按不動」（e2e 也因此逾時）。
-    const html = rows.join('');
-    if (html === this.shopHtml) return;
-    this.shopHtml = html;
-    this.sheetBody.innerHTML = html;
   }
 }

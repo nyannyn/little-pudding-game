@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 蛋（D33 的通用原料）。跟同目錄其他自繪商品圖同一套做法：
+       160×160 畫布、左上打光的漸層、底下一圈淡影子，讀起來像一顆放在檯面上的商品。 -->
+  <defs>
+    <radialGradient id="shell" cx="0.36" cy="0.3" r="0.82">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="0.55" stop-color="#fdf0d8"/>
+      <stop offset="1" stop-color="#e8d2ac"/>
+    </radialGradient>
+    <radialGradient id="shade" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#b79a74" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#b79a74" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <ellipse cx="80" cy="139" rx="36" ry="10" fill="url(#shade)"/>
+
+  <!-- 蛋型：上窄下圓，用兩段三次貝茲把左右接起來 -->
+  <path d="M80 22c19 0 37 27 37 55a37 41 0 0 1-74 0c0-28 18-55 37-55Z"
+        fill="url(#shell)" stroke="#d9c09a" stroke-width="3"/>
+
+  <!-- 左上高光 -->
+  <ellipse cx="64" cy="57" rx="11" ry="16" fill="#ffffff" opacity="0.72" transform="rotate(-18 64 57)"/>
+</svg>

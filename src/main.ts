@@ -17,6 +17,9 @@ import {
   unlockZone,
 } from './game/actions';
 import type { SimEvent } from './game/events';
+import { BALANCE } from './game/balance';
+import { grantXp } from './game/level';
+import { unlockedAtLevel } from './game/shop';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
 import { load, save, useTestSave } from './game/storage';
@@ -50,6 +53,7 @@ import { Sfx } from './scene/audio';
 import { nextHint } from './ui/hints';
 import { shouldSuggestHomeScreen } from './ui/homeScreen';
 import { Hud } from './ui/hud';
+import { SHOP_ART_URLS } from './ui/shopArt';
 import { measureVisibleBand, viewOffsetY } from './ui/viewport';
 import { createStats } from './debug/stats';
 
@@ -142,6 +146,13 @@ const newSaveOptions = {
 
 const loaded = fresh ? { state: createNewSave(newSaveOptions), restored: false } : load(newSaveOptions);
 const state: GameState = loaded.state;
+// `?lv=N&coins=M`：看商店各等級長相用（跟 `?pop=` 一樣是量測／簽核參數，不是遊戲功能）
+{
+  const lv = Number(params.get('lv'));
+  if (lv >= 1) state.xp = Math.max(state.xp, BALANCE.levelXp[Math.min(lv, BALANCE.levelXp.length) - 1] ?? 0);
+  const coins = Number(params.get('coins'));
+  if (coins > 0) state.coins = coins;
+}
 const world = createWorld(state, floor);
 
 // ── 櫃體：主櫃永遠在，解鎖的鄰櫃升級成完整櫃子 ────────
@@ -382,6 +393,12 @@ function handle(e: SimEvent) {
     case 'buy':
       if (!e.auto) hud.toast(`購入${e.what}，−${e.cost}`);
       break;
+    case 'levelUp': {
+      sfx.coin(0.4);
+      const names = unlockedAtLevel(state, e.level).map((x) => x.name);
+      hud.toast(names.length ? `店長升到 Lv.${e.level}！商店上架：${names.join('、')}` : `店長升到 Lv.${e.level}！`);
+      break;
+    }
     default:
       break;
   }
@@ -447,7 +464,7 @@ function tapZone(point: THREE.Vector3) {
     return;
   }
   if (!z.unlocked) {
-    hud.openShop();
+    hud.openShop('zone');
     return;
   }
   if (z.id !== state.activeZone && report(switchZone(state, z.id))) focusActiveZone();
@@ -517,6 +534,7 @@ const stats = createStats(renderer, params.get('debug') === '1');
 window.__lpg.three = { scene, camera, renderer, controls, raycaster };
 window.__lpg.state = state;
 window.__lpg.sfx = sfx;
+window.__lpg.grantXp = (n) => grantXp(state, n, world.emit);
 
 let last = performance.now();
 let bubbleT = 0;
@@ -632,7 +650,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator && params.get('nosw') !
       .getEntriesByType('resource')
       .map((e) => e.name)
       .filter((u) => u.startsWith(location.origin) && !u.includes('/sw.js'));
-    reg.active?.postMessage({ type: 'warm', urls: [location.href.split('?')[0], ...new Set(urls)] });
+    // 商品圖是開商店才會抓的，不在這一輪的資源清單裡；離線第一次開商店也要有圖，所以一併補
+    const art = SHOP_ART_URLS.map((u) => new URL(u, location.href).href);
+    reg.active?.postMessage({ type: 'warm', urls: [location.href.split('?')[0], ...new Set([...urls, ...art])] });
   };
 
   window.addEventListener('load', () => {

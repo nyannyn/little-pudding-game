@@ -1,7 +1,7 @@
 // 點畫布的三種操作：點原料撿起、點澡盆倒液、點鎖著的層開商店／點另一層切區。
 // 做法：把 3D 物件的世界座標投影到螢幕，在那一點 mouse.click，看 state 有沒有變。
 // 曾抓到：InstancedMesh 包圍球在 count=0 時算成空球 → 點原料永遠沒反應（線上 hits=0）。
-import { boot, launch, newPage, projectFn, report, tap } from './lib.mjs';
+import { boot, launch, newPage, projectFn, report, shopTab, tap } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser);
@@ -32,8 +32,8 @@ check('點鎖著的層 → 商店打開', await page.evaluate(() => !document.qu
 await tap(page, '關閉');
 
 // ④ 解鎖上層後點中層 → 切回
-await page.evaluate(() => { window.__lpg.state.coins = 999; });
-await tap(page, '商店'); await page.locator('[data-a="unlockZone"]').click(); await tap(page, '關閉');
+await page.evaluate(() => { window.__lpg.state.coins = 999; window.__lpg.state.xp = 99999; /* D25：上層要 Lv.4 */ });
+await tap(page, '商店'); await shopTab(page, 'zone'); await page.locator('[data-a="unlockZone"][data-arg="c0t2"]').click(); await tap(page, '關閉');
 await page.waitForTimeout(1500);
 const dockTop = await page.evaluate(() => document.querySelector('.hud .dock').getBoundingClientRect().top);
 let mid = null;

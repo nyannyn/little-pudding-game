@@ -26,6 +26,7 @@ describe('AC2-7 金幣與庫存不會變成負的', () => {
   it('錢不夠買設備時 state 完全不動', () => {
     const s = createNewSave({ seed: 7, now: 0 });
     s.coins = 10;
+    s.xp = 99999; // 等級夠、只差錢（等級不夠的情況在 level.test.ts）
     const before = JSON.stringify(s);
     const r = buyEquipment(s, 'restock', sink);
     expect(r.ok).toBe(false);
@@ -139,6 +140,7 @@ describe('經濟：撿、加工、賣', () => {
   it('買特殊澡盆後盆子數量增加、可以倒抹茶', () => {
     const s = createNewSave({ seed: 7, now: 0 });
     s.coins = BALANCE.specialBasinPrice + 100;
+    s.xp = 99999;
     expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, START_ZONE, sink).ok).toBe(true);
     expect(s.basins.length).toBe(2);
     expect(buySpecialBasin(s, 'matcha', { x: -0.6, z: 0.2 }, START_ZONE, sink).ok).toBe(false);

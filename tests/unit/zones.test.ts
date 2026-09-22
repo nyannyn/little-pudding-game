@@ -23,6 +23,7 @@ describe('解鎖分區', () => {
   it('解鎖後多一隻住客與一個空澡盆，而且鏡頭切過去', () => {
     const w = makeWorld();
     w.state.coins = 99999;
+    w.state.xp = 99999; // 分區有上架等級（D25），這裡測的是解鎖本身
     expect(unlockZone(w.state, UPPER, SPAWN, sink).ok).toBe(true);
 
     expect(findZone(w.state, UPPER)!.unlocked).toBe(true);
@@ -37,6 +38,7 @@ describe('解鎖分區', () => {
   it('新住客的 id 不會跟既有的撞號', () => {
     const w = makeWorld();
     w.state.coins = 99999;
+    w.state.xp = 99999; // 分區有上架等級（D25），這裡測的是解鎖本身
     unlockZone(w.state, UPPER, SPAWN, sink);
     unlockZone(w.state, zoneKey(0, 0), SPAWN, sink);
     const ids = w.state.puddings.map((p) => p.id);
@@ -46,6 +48,7 @@ describe('解鎖分區', () => {
   it('同一區不能解鎖兩次', () => {
     const w = makeWorld();
     w.state.coins = 99999;
+    w.state.xp = 99999; // 分區有上架等級（D25），這裡測的是解鎖本身
     expect(unlockZone(w.state, UPPER, SPAWN, sink).ok).toBe(true);
     const coins = w.state.coins;
     expect(unlockZone(w.state, UPPER, SPAWN, sink).ok).toBe(false);
@@ -56,6 +59,7 @@ describe('解鎖分區', () => {
     const w = makeWorld();
     expect(nextLockedZone(w.state)!.id).toBe(UPPER);
     w.state.coins = 99999;
+    w.state.xp = 99999; // 分區有上架等級（D25），這裡測的是解鎖本身
     unlockZone(w.state, UPPER, SPAWN, sink);
     expect(nextLockedZone(w.state)!.id).toBe(zoneKey(0, 0));
   });
@@ -71,6 +75,7 @@ describe('分區之間互不干擾', () => {
   function twoZones() {
     const w = makeWorld({ seed: 555 });
     w.state.coins = 99999;
+    w.state.xp = 99999;
     unlockZone(w.state, SECOND_CABINET, SPAWN, sink);
     w.state.coins = 0;
     return w;

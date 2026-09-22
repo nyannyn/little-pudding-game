@@ -1,5 +1,6 @@
 import { BALANCE, EQUIPMENT_IDS, type EquipmentId } from './balance';
 import { isAllele, normalizeGenes, phenotype, type Genes } from './genetics';
+import { xpFromStats } from './level';
 import { LIQUID_IDS, SPECIES, SPECIES_IDS, type AlleleId, type LiquidId, type SpeciesId } from './species';
 import { START_ZONE, defaultZones, type Zone } from './zones';
 
@@ -8,10 +9,16 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * migrate 會把所有布丁／澡盆／掉落物補成起始區，不然它們會從所有查詢裡消失。
  * 3（2026-09-22）：加入基因型（D28）。舊存檔沒有 `genes`，一律補成「該物種的純合」——
  * 補錯方向會讓老玩家的布丁突然變成別的物種，所以不可以拿預設值敷衍。
- * 4（2026-09-22）：生產迴圈改版（D32–D34）。新增「蛋」庫存與掉落物種類、布丁的掉落計時器；
+ * 4（2026-09-22）：加入店長經驗值 `xp`。沒有這欄的存檔用 `stats` 回推（`level.ts`），
+ * 老玩家不會被降回 Lv.1。
+ * 5（2026-09-22）：生產迴圈改版（D32–D34）。新增「蛋」庫存與掉落物種類、布丁的掉落計時器；
  * 移除 `tint`／`bathHistory`（變白突變整套拿掉）與 `breedReadyAt`（繁殖改由牛奶澡觸發）。
+ *
+ * **4 有兩個版本**：店長等級與生產迴圈改版在兩條並行的線上各自升到 4，合併時把
+ * 生產迴圈那份改成 5。兩邊的欄位補法互不相干（`xp` 回推自 stats、`eggs` 補 0、
+ * `genes` 依 species 補純合），所以任一種 v4 存檔讀進來都會被補成完整的 v5。
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** 布丁在地板上的行為狀態 */
 export type PuddingMode = 'hopping' | 'resting' | 'bathing';
@@ -109,6 +116,8 @@ export interface GameState {
   seed: number;
   rngState: number;
   coins: number;
+  /** 店長經驗值，只增不減；等級由 `level.ts` 推導 */
+  xp: number;
   /** 液體庫存（份） */
   stock: Record<LiquidId, number>;
   /** 已買下的特殊澡盆液體 */
@@ -207,6 +216,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     seed,
     rngState: seed >>> 0,
     coins: BALANCE.startCoins,
+    xp: 0,
     stock,
     ownedBasins: [],
     eggs: 0,
@@ -391,6 +401,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     crafted: Math.max(0, num(st.crafted, 0)),
     births: Math.max(0, num(st.births, 0)),
   };
+  // v2 以前沒有 xp：用累計統計回推，不然老玩家開檔會被降回 Lv.1、商店整片鎖住
+  out.xp = Math.max(0, num(r.xp, xpFromStats(out.stats)));
 
   // 舊存檔的 nextId 可能落後於實際用掉的號碼（或根本沒有這欄），
   // 不推到最大值之後，接下來生成的 id 會跟既有的撞號

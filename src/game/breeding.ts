@@ -1,5 +1,6 @@
 import { BALANCE } from './balance';
 import { cloneGenes, phenotype, type Genes } from './genetics';
+import { grantXp } from './level';
 import type { SimContext } from './pudding';
 import { range } from './rng';
 import type { GameState, Pudding, Vec2 } from './state';
@@ -106,5 +107,6 @@ export function breedFromBath(state: GameState, parent: Pudding, ctx: SimContext
     x: child.pos.x,
     z: child.pos.z,
   });
+  grantXp(state, BALANCE.xp.birth, ctx.emit);
   return child;
 }

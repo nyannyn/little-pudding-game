@@ -396,7 +396,7 @@ describe('存檔相容（schema 3）', () => {
     const s = migrate(JSON.parse(JSON.stringify(old)));
     expect(s.puddings[0]!.species).toBe('matcha');
     expect(s.puddings[0]!.genes).toEqual(['matcha', 'matcha']);
-    expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(s.schemaVersion).toBe(SCHEMA_VERSION); // 之後每次升版都會走到這裡，不寫死數字
   });
 
   it('存檔的 species 與 genes 打架時以 genes 為準（species 只是快取）', () => {

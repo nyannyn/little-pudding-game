@@ -36,6 +36,8 @@ declare global {
       step?: (dt: number) => void;
       /** 音效播放計數與解鎖狀態：截圖證不了聲音，e2e 靠這個斷言「按下去真的有排進 AudioContext」 */
       sfx?: { played: { splat: number; coin: number; pour: number }; isUnlocked: boolean; muted: boolean };
+      /** 測試用：走遊戲自己的 grantXp（會丟 levelUp 事件），不是直接改欄位 */
+      grantXp?: (amount: number) => void;
       three?: {
         scene: THREE.Scene;
         camera: THREE.PerspectiveCamera;
