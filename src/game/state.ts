@@ -39,7 +39,7 @@ export interface Pudding {
   genes: Genes;
   /** `phenotype(genes)` 的快取。**只能由 `genetics.applyGenes()` 寫入** */
   species: SpeciesId;
-  /** 出生時間（遊戲秒）。只影響狀態列的「幼布丁」顯示；D34 之後繁殖不看成年 */
+  /** 出生時間（遊戲秒）。只影響頭頂的幼布丁小圖示（D48）；D34 之後繁殖不看成年 */
   bornAt: number;
   /** 0–100，會隨時間下降；低於門檻就想泡澡。D32 之後**不控制產出**，只影響行為與顯示 */
   caramel: number;

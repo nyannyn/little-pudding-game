@@ -213,6 +213,16 @@
 - **rebase 到 `89a632f`（origin 的每區設備 D45＋販賣機 D46）**：只有兩個 docs 檔衝突（merge-tree 先驗過），碼全自動合。**rebase 後重量 pacing**——每區重買設備會動到經濟，價格得重驗：11.1／21.7／35.9 分（rebase 前 11.1／21.1／35.1），價格不必重選。rebase 後單元 181 綠、e2e 53/53 綠、`npm run build` 綠。
 - **決策編號第二次撞號**：本地寫 D46／D47 時 origin 已有 D44（WebGL context lost）／D45（每區設備）／D46（販賣機），rebase 時改成 **D47 物種外觀／D48 狀態卡**。**並行 session 多的時候，決策編號等 rebase 完再定**。
 
+## WP7-2b 狀態卡 → 頭頂小圖示＋垂眼（2026-09-23，分支 `feat/pudding-mood`，worktree `../lpg-wt-mood`，D48）
+
+- 左側 `.living` 狀態卡整個拿掉（`hud.ts`／`hud.css`，`describePudding` 刪除）；新 `src/scene/moodIcons.ts`：一個 InstancedMesh、canvas 畫兩格圖集（澡盆＝想泡澡、嫩芽＝幼布丁），`aCell` 選格、鏡頭 quaternion 做 billboard、`depthTest:false`＋`renderOrder 13`。想泡澡的布丁另外垂眼（眼睛 0.55）＋微塌（`PuddingView` 的 `slump`）。
+- 判定集中在 `game/pudding.ts` 的 `puddingMood()`（泡澡中＞想泡澡＞幼布丁＞悠閒），`hints.ts` 停擺警告也改用它。**陷阱**：`wantsBath()` 只看焦糖，進盆當下焦糖仍低——直接拿它當圖示條件，泡澡中的布丁頭上也會冒澡盆。
+- 幼布丁的表示方式由使用者選「頭頂小圖示」（另兩案：長大前身體小一號／不表示），已記進 D48。
+- **新檔第一隻焦糖 24＝一開局就在想泡澡、垂眼**，這是刻意的（教學第一步就是倒焦糖）；`cp3-pudding-look` 的「正常眼睛」量法因此改成先餵飽再量。
+- 證據：單元 183 綠（新 2 條；拿掉泡澡中判定 → 紅過）、e2e 新 `cp7-mood-icons.spec.ts` 2 條（拿掉泡澡中判定 → 3 變 4 紅過；`EYE_TIRED=1` → 比值 1.0 紅過），全套 55 條中 54 綠＋`cp3-pudding-look` 修測試後單跑綠、`npm run build` 綠、`tools/playtest/layout.mjs` 兩個視口無疊（住客列那三項判準已隨 `.living` 移除）。15 隻 draw calls 16→**17**。
+- **已知、非本次造成**：iPhone SE（320 寬）上「小提示」泡泡（`.hint` top 206px）會蓋住整個中層的布丁；以前被狀態卡擋在下面，現在左欄空了，可以考慮把泡泡往上移，但要避開右欄訂單卡，未做。
+- 待使用者視覺簽核（圖示大小／樣式、垂眼幅度）。
+
 ## 風味與焦糖離開澡盆 → 手動保養＋三台自動機（2026-09-22 第十二場，使用者要求「抹茶澡盆要改成撒抹茶粉的機器」）
 
 **狀態：設計問完、計畫寫好、`src/` 一個字都沒動。使用者說「紀錄進 STATE.md，我之後做」。**

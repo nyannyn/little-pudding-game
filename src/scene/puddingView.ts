@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BALANCE } from '../game/balance';
+import type { PuddingMood } from '../game/pudding';
 import type { Pudding } from '../game/state';
 import { SPECIES } from '../game/species';
 import type { PuddingPart, PuddingParts } from './puddingPool';
@@ -12,6 +13,11 @@ export const PUDDING_WIDTH = 0.2; // 使用者定案
 const SQUASH = new THREE.Vector3(1.2, 0.7, 1.2);
 const STRETCH = new THREE.Vector3(0.86, 1.3, 0.86);
 const SQUASH_SEC = 0.22;
+// 想泡澡的「沒精神」姿態（D48）：身體微塌、眼睛半垂。幅度刻意小——這是風味，
+// 讀狀態靠的是頭頂小圖示；塌太多會跟落地壓扁（SQUASH）混在一起。
+const SLUMP = new THREE.Vector3(1.06, 0.9, 1.06);
+const EYE_BATH = 0.22; // 泡澡：閉眼
+const EYE_TIRED = 0.55; // 想泡澡：半垂
 
 /** GLB 節點的局部變換照抄到一個空節點上（沒有 mesh，不吃 draw call） */
 function skeletonNode(name: string, part: PuddingPart): THREE.Object3D {
@@ -51,6 +57,8 @@ export class PuddingView {
   private wasAirborne = false;
   private shownSpecies: Pudding['species'];
   private bob = 0;
+  /** 0＝正常、1＝整個塌下去；朝目標慢慢靠，才不會一跳一跳地切換 */
+  private slump = 0;
 
   constructor(parts: PuddingParts, p: Pudding) {
     this.root = new THREE.Group();
@@ -82,8 +90,9 @@ export class PuddingView {
   /**
    * @param floorY  啟用層地板的世界高度
    * @param basinY  泡澡時身體要沉到多低（相對地板）
+   * @param mood    `puddingMood()` 的結果；規則在 game/，這裡只負責演
    */
-  update(p: Pudding, dt: number, ox: number, floorY: number, basinSink: number) {
+  update(p: Pudding, dt: number, ox: number, floorY: number, basinSink: number, mood: PuddingMood) {
     if (p.species !== this.shownSpecies) this.applySpecies(p.species);
 
     const bathing = p.mode === 'bathing';
@@ -124,10 +133,21 @@ export class PuddingView {
     } else {
       s.setScalar(this.baseScale);
     }
+    // 沒精神的塌陷只疊在地上休息時；空中與落地形變自己有一套，疊上去會變形得很怪
+    const slumpTarget = mood === 'wantsBath' && !airborne ? 1 : 0;
+    this.slump += (slumpTarget - this.slump) * Math.min(1, dt * 4);
+    if (k === 0 && !airborne && this.slump > 1e-3) {
+      s.set(
+        s.x * (1 + (SLUMP.x - 1) * this.slump),
+        s.y * (1 + (SLUMP.y - 1) * this.slump),
+        s.z * (1 + (SLUMP.z - 1) * this.slump),
+      );
+    }
 
-    // 閉眼：泡澡時把眼睛壓扁成一條線（只動眼睛那顆 instance 的矩陣，不必換 mesh）。
+    // 閉眼：泡澡時把眼睛壓扁成一條線、想泡澡時半垂（只動眼睛那顆 instance 的矩陣，不必換 mesh）。
     // 係數乘在原始縮放上，不可以直接指定絕對值。
-    const target = this.eyeBaseY * (bathing ? 0.22 : 1);
+    const eye = bathing ? EYE_BATH : mood === 'wantsBath' ? EYE_TIRED : 1;
+    const target = this.eyeBaseY * eye;
     this.eyesNode.scale.y += (target - this.eyesNode.scale.y) * Math.min(1, dt * 10);
 
     // 面向移動方向，跳躍時才轉（泡澡時面向鏡頭）

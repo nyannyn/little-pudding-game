@@ -229,14 +229,16 @@ export function tickPudding(state: GameState, p: Pudding, dt: number, ctx: SimCo
 }
 
 /**
- * UI 用：這隻布丁現在在做什麼（一行中文）。用短名：狀態列在右邊還要留位置給訂單卡。
- * 給了 `time` 才判斷得出「還沒長大」——新生兒要看得出來是新生兒，
- * 否則畫面上突然多一隻布丁，玩家不知道那是繁殖出來的（D29）。
+ * 這隻布丁現在要把什麼狀態演給玩家看（D48：狀態卡拿掉之後，靠頭頂小圖示＋表情）。
+ * 優先序是「玩家要不要做事」：想泡澡（要倒液體）壓過幼布丁（只是告知）；
+ * 泡澡中不算想泡澡——進盆時焦糖還是低的，只看 `wantsBath()` 會讓泡澡中的布丁頭上也冒澡盆。
+ * 幼布丁只影響顯示：D29 要新生兒看得出來是新生兒，否則畫面上突然多一隻，玩家不知道那是繁殖出來的。
  */
-export function describePudding(p: Pudding, time?: number): string {
-  const name = SPECIES[p.species].shortName;
-  if (time !== undefined && time - p.bornAt < BALANCE.matureAgeSec) return `${name}・幼布丁`;
-  if (p.mode === 'bathing') return `${name}・泡澡中`;
-  if (wantsBath(p)) return `${name}・想泡澡了`;
-  return `${name}・悠閒彈跳`;
+export type PuddingMood = 'bathing' | 'wantsBath' | 'baby' | 'idle';
+
+export function puddingMood(p: Pudding, time: number): PuddingMood {
+  if (p.mode === 'bathing') return 'bathing';
+  if (wantsBath(p)) return 'wantsBath';
+  if (time - p.bornAt < BALANCE.matureAgeSec) return 'baby';
+  return 'idle';
 }
