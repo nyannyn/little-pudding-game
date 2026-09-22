@@ -22,7 +22,8 @@ import { grantXp } from './game/level';
 import { unlockedAtLevel } from './game/shop';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
-import { load, save, useTestSave } from './game/storage';
+import { exportCode, importCode } from './game/savecode';
+import { load, overwrite, save, useTestSave } from './game/storage';
 import { createNewSave, type GameState, type Vec2 } from './game/state';
 import { basinsIn, findZone, puddingsIn, unlockedZones, zoneKey } from './game/zones';
 import { createRenderer } from './scene/renderer';
@@ -144,7 +145,7 @@ const newSaveOptions = {
   puddingCount: Math.max(1, Number(params.get('pop')) || 2),
 };
 
-const loaded = fresh ? { state: createNewSave(newSaveOptions), restored: false } : load(newSaveOptions);
+const loaded = fresh ? { state: createNewSave(newSaveOptions), restored: false, source: 'new' as const } : load(newSaveOptions);
 const state: GameState = loaded.state;
 // `?lv=N&coins=M`：看商店各等級長相用（跟 `?pop=` 一樣是量測／簽核參數，不是遊戲功能）
 {
@@ -260,6 +261,20 @@ if (loaded.restored) {
 
 // 加到主畫面：Safari 分頁裡的存檔七天沒互動就會被清掉，加到主畫面的 web app 不吃那條規則。
 // 測試模式不提示；歡迎卡開著的話讓路，等下一次再說（兩張卡疊在一起沒人看得懂）。
+// 主存檔不見了、備份撈得回來。這個要用卡片不能用 toast：
+// toast 2.6 秒就自己消失，玩家很可能整段沒看到，然後以為進度是憑空少了一截。
+// 排在離線結算後面＝兩者都要講時，這則蓋過離線摘要（少賺幾分鐘的帳沒有這件事重要）。
+if (loaded.source === 'backup') {
+  setTimeout(
+    () =>
+      hud.showWelcome(
+        '主存檔不見了，已經從備份幫你還原進度（可能少掉最後那一小段）。' +
+          '建議點右上角的齒輪，複製一份存檔碼收到備忘錄裡。',
+      ),
+    0,
+  );
+}
+
 if (!fresh && shouldSuggestHomeScreen()) {
   setTimeout(() => {
     if (!hud.welcomeVisible) hud.showHomeScreenTip();
@@ -324,6 +339,18 @@ const hud = new Hud(document.body, {
   },
   switchZone: (id) => {
     if (report(switchZone(state, id))) focusActiveZone();
+  },
+  exportSave: () => exportCode(syncForSave(world, Date.now())),
+  importSave: (code) => {
+    // 匯入之後這個分頁的世界就是過期的了。不先關掉自動存檔的話，
+    // reload 觸發的 pagehide 會把匯入前那份狀態原封不動蓋回去（實測踩過）。
+    const incoming = importCode(code);
+    if (!incoming) return false;
+    imported = true;
+    overwrite(incoming);
+    // 重新載入＝走一次正常的讀檔路徑。在活著的世界裡逐欄位替換才是真的危險
+    location.reload();
+    return true;
   },
   toggleMute: () => {
     sfx.muted = !sfx.muted;
@@ -484,10 +511,22 @@ function nearestBasinIndex(point: THREE.Vector3): number {
 // ── 存檔 ──────────────────────────────────────────────
 let lastSaveAt = performance.now();
 let saveWarned = false;
+let saveBlocked = false;
+let imported = false;
 function persist() {
-  // save() 回傳 false＝這次的進度留不到下次（無痕／配額滿／storage 被擋）。
+  if (imported) return; // 剛匯入存檔碼、正要重新載入：這份世界已經作廢
+  const outcome = save(syncForSave(world, Date.now()));
+  if (outcome === 'saved') return;
+  if (outcome === 'outdated') {
+    // 另一個分頁的進度比這份新。繼續寫下去就是拿舊狀態蓋掉它——
+    // 「開著沒關的舊分頁把進度洗掉」就是走這條路徑，所以這裡一個位元組都不寫。
+    if (saveBlocked) return;
+    saveBlocked = true;
+    hud.toast('另一個分頁有更新的進度，這個分頁已停止存檔（重新整理就好）', true);
+    return;
+  }
   // 靜默失敗最糟：玩家會一路玩下去，然後整份消失。
-  if (save(syncForSave(world, Date.now())) || saveWarned) return;
+  if (saveWarned) return;
   saveWarned = true;
   hud.toast('這個瀏覽器存不了進度，關掉分頁就會歸零（無痕模式？）', true);
 }

@@ -31,6 +31,9 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - **`GameState` 加欄位一定要同步改 `migrate()` 並升 `SCHEMA_VERSION`**，而且舊檔補值要補對方向——補錯不會有測試紅，只會讓老玩家的存檔靜默走樣。
 - 離線結算靠 `lastSeenAt`，上限 8 小時（`BALANCE.offlineCapSec`）。
 - 存不進去（無痕／被擋）時退回記憶體、遊戲照玩，但要提示玩家；**不可以靜默失敗**。
+- **`save()` 是有守衛的寫入，不是無條件覆蓋**（D37）：每份存檔帶 `rev`，發現別的分頁寫過就比 `progressScore()`，進度少的那一份寫不進去而且從此停寫。判分**只能用單調遞增的欄位**（`xp` 與 `stats` 累計次數）——用 `coins` 會被花掉、用 `time` 會被 `settleOffline` 推高，拿它們判新舊會讓過期的舊分頁贏。
+- **備份格 `<key>.bak` 走同一條分數規則**，只在進度變高時更新；主格讀不到時 `load()` 自動從備份還原（`source: 'backup'`）。備份要是也用無條件寫入器去寫，它會跟主格一起被寫空，等於沒有備份。
+- **存檔碼（`savecode.ts`）是玩家唯一帶得走的備份**：`LPG1.<base64url>.<檢查碼>`，匯入一律過 `migrate()`，壞碼回 `null`。**匯入後要先停掉這一頁的自動存檔再 `location.reload()`**——不然 `pagehide` 會把匯入前那份狀態原封不動蓋回去。
 
 ## PWA／Service Worker
 - HTML 一律 **network-first**（cache-first 會讓玩家永遠停在舊版，而且看起來完全正常）；其他同源資產 stale-while-revalidate。

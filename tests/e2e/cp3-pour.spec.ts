@@ -204,8 +204,8 @@ test('倒到一半切區：壺與水流不能跟到新的那一層', async ({ pa
 test('自動注液閥補液也有水流與（小聲的）聲音', async ({ page }) => {
   await open(page);
   // 先按一次任何按鈕解鎖 AudioContext：自動事件不在手勢裡，不會自己建 context
-  await page.locator('[data-a="mute"]').click();
-  await page.locator('[data-a="mute"]').click();
+  await page.locator('[data-a="settings"]').click();
+  await page.locator('[data-a="closeSettings"]').click();
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.equipment.autoFill = true;

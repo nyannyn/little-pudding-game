@@ -24,6 +24,10 @@ export interface HudActions {
   unlockZone(zoneId: string): void;
   switchZone(zoneId: string): void;
   toggleMute(): boolean;
+  /** 目前進度的存檔碼（玩家複製帶走的那一串） */
+  exportSave(): string;
+  /** 用存檔碼還原；false＝這串碼不完整或根本不是存檔碼 */
+  importSave(code: string): boolean;
 }
 
 const LIQUID_ICON: Record<LiquidId, CuteIconName> = {
@@ -85,7 +89,10 @@ export class Hud {
   private readonly toasts: HTMLElement;
   private readonly welcome: HTMLElement;
   private readonly a2hs: HTMLElement;
-  private readonly muteBtn: HTMLElement;
+  private readonly saveCard: HTMLElement;
+  private readonly saveText: HTMLTextAreaElement;
+  private readonly muteIcon: HTMLElement;
+  private readonly muteVal: HTMLElement;
 
   private hintOff = hintsDismissed();
   private hintId = '';
@@ -105,7 +112,7 @@ export class Hud {
             <span class="chip" data-k="ing">${icon('ingredient', 'bubble')}<b>0</b></span>
             <span class="chip" data-k="des">${icon('dessert', 'bubble')}<b>0</b></span>
           </div>
-          <button class="iconbtn" data-a="mute" aria-label="音效">${icon('sound')}</button>
+          <button class="iconbtn" data-a="settings" aria-label="設定">${icon('gear')}</button>
           <button class="iconbtn shopbtn" data-a="shop" aria-label="商店">${cuteIcon('shop')}<span class="lvl">Lv.1</span></button>
         </div>
         <div class="zones" hidden>
@@ -139,6 +146,22 @@ export class Hud {
             <button data-a="closeA2hs">知道了</button>
           </div>
         </div>
+        <div class="welcome savecard" hidden>
+          <div class="card">
+            <h2>設定</h2>
+            <button data-a="mute" class="optrow">
+              <span class="ic">${icon('sound')}</span><span class="label">音效</span><span class="val">開</span>
+            </button>
+            <h3>存檔碼</h3>
+            <p>這串碼就是你的進度。複製起來貼到備忘錄，換手機或進度不見時貼回來按還原。</p>
+            <textarea class="code" spellcheck="false" autocapitalize="off" autocorrect="off" rows="3"></textarea>
+            <div class="row">
+              <button data-a="copySave">複製</button>
+              <button data-a="restoreSave">還原</button>
+            </div>
+            <button data-a="closeSettings" class="ghost">關閉</button>
+          </div>
+        </div>
       </div>`);
     // 商店抽屜疊在歡迎卡下面、其他 HUD 上面
     this.root.insertBefore(this.shop.root, this.root.querySelector('.welcome'));
@@ -161,7 +184,10 @@ export class Hud {
     this.toasts = q('.toasts');
     this.welcome = q('.welcome:not(.a2hs)');
     this.a2hs = q('.a2hs');
-    this.muteBtn = q('[data-a="mute"]');
+    this.saveCard = q('.savecard');
+    this.saveText = q('.savecard .code');
+    this.muteIcon = q('.savecard [data-a="mute"] .ic');
+    this.muteVal = q('.savecard [data-a="mute"] .val');
 
     this.root.addEventListener('click', (e) => this.onClick(e));
 
@@ -203,6 +229,17 @@ export class Hud {
         dismissHomeScreenTip();
         this.a2hs.hidden = true;
         break;
+      case 'settings':
+        this.saveText.value = this.act.exportSave();
+        this.saveCard.hidden = false;
+        break;
+      case 'closeSettings': this.saveCard.hidden = true; break;
+      case 'copySave': void this.copyCode(); break;
+      case 'restoreSave':
+        // 還原成功之後由 main.ts 重新載入整頁：把讀檔那條路徑跑一次，
+        // 比在活著的世界裡逐欄位換掉安全得多
+        if (!this.act.importSave(this.saveText.value)) this.toast('這串碼看起來不完整，請整串重貼一次', true);
+        break;
       case 'hintOff':
         dismissHints();
         this.hintOff = true;
@@ -210,7 +247,8 @@ export class Hud {
         break;
       case 'mute': {
         const muted = this.act.toggleMute();
-        this.muteBtn.innerHTML = icon(muted ? 'mute' : 'sound');
+        this.muteIcon.innerHTML = icon(muted ? 'mute' : 'sound');
+        this.muteVal.textContent = muted ? '關' : '開';
         break;
       }
     }
@@ -249,6 +287,18 @@ export class Hud {
     const p = this.welcome.querySelector('p');
     if (p) p.textContent = text;
     this.welcome.hidden = false;
+  }
+
+  /** 複製存檔碼。clipboard API 被擋（非 https／權限）時退回「幫玩家選起來，請他長按複製」 */
+  private async copyCode(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.saveText.value);
+      this.toast('存檔碼複製好了，貼到備忘錄存著');
+    } catch {
+      this.saveText.focus();
+      this.saveText.setSelectionRange(0, this.saveText.value.length);
+      this.toast('複製不了，請長按選取後自己複製', true);
+    }
   }
 
   toast(message: string, bad = false) {
