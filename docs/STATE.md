@@ -127,7 +127,9 @@
 - **使用者存檔碼是最有力的證據，記得要**。齒輪 → 設定 → 複製，貼回來用 `savecode.ts` 的格式在本機解（純 base64url＋FNV-1a，四行 node 就解得開）。這次解出來直接定案，不必靠推論：`baths 21 / births 1`、3 隻布丁 `caramel` 全 0、`drops 0`、盆空、`preferredLiquid: 'milk'`、`stock {caramel:2, milk:0}`、只解鎖一區、`equipment` 四台全有（`restock` 沒有）。
 - **根因鏈（三個坑都是靜默，不是規則錯）**：倒過一次牛乳 → 注液閥的 `preferredLiquid` 從此黏在牛乳（`autoFill` 讀 `b.liquid ?? b.preferredLiquid`，**永遠不會換回焦糖**）→ 剩下的牛乳全燒在「住滿了生不出來」的澡上 → 牛乳歸零 → 注液閥停擺 → 布丁焦糖歸零 → `dropCaramelMin` 判停產 → **整座農場死掉，而畫面上那句提示還寫著「布丁照樣會掉原料」**。
 - **已修（D39，分支 `fix/stall-and-ship-feedback`，commit `d962f99`）**：①停擺提示改成指名亮著的那顆按鈕；②新增 `zoneFullHint` 常駐警告（`pudding.ts:150` emit 的 `{type:'error'}` 從來沒有人接，但**不可以接成 toast**——離線八小時會丟上百次）；③`ShipResult` 加 `reserved`＋`nearestPendingOrder()`，出貨沒動靜時講得出「『焦糖布丁塔 ×3』還差 1 份」。證據：單元 168 綠、三組突變各自紅過、無頭 iPhone 四情境實跑、頁面零 error。
-- **使用者當下的解卡動作**：手動按一次「倒焦糖」（庫存還有 2 份），注液閥從此改補焦糖。
+- **使用者當下的解卡動作**：手動按一次「倒焦糖」（庫存還有 2 份），注液閥從此改補焦糖。**注液閥黏在牛乳這個陷阱本身還在**——D39 只是把它講出來，真正拆掉它的是 WP7-3（焦糖離開澡盆）。
+- **用使用者的存檔碼重現，走產品自己的「還原」流程（2026-09-22 實跑）**：貼進設定卡按還原，狀態完全重現（67 幣／xp 199／3 隻 caramel 全 0／盆 `null/0/milk`／`births 1`／`baths 21`／`drops 0`），新的停擺提示確實跳出來、出貨鈕是灰的（`seller` 讓甜點恆 0）。**但不可以帶 `?fresh=1`**：測試模式每次載入都強制 `createNewSave()`，reload 之後剛匯入的東西會被新檔直接蓋掉（第一次驗就踩到，量到的是一份空農場）。
+- **`?pop=N` 被夾在 5 隻**（`main.ts` 的 `puddingPositions` 只列 5 個落點，`createNewSave` 再 clamp）。所以「15 隻＝88 draw calls」是**外推**，不是實測；實測只到 1–5 隻（18／23／28／33／38，線性 +5）。WP7-1 開工前要先補落點再存基準。
 - **待辦（已寫進計畫 D40／D41／D42 與 CP7 工作包）**：焦糖離開澡盆改手動刷＋新設備「焦糖刷」、`zoneCapacity` 3→15（**前置 WP7-1 布丁 InstancedMesh**，15 隻現況 88 draw calls／預算 35）、自動販售口販售動畫。**D40 與 D42 都有「動手前要先問使用者」的未定項**，別直接開工。
 
 ## General rules
