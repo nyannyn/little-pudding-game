@@ -136,7 +136,7 @@ describe('D35 焦糖見底就停止生產（「保持愉快才生產」的最小
     expect(advanceUntil(w, (x) => x.state.drops.length > 0, BALANCE.dropIntervalSec * 4)).toBeGreaterThanOrEqual(0);
 
     // 斷糧：庫存與盆子都清空，讓焦糖自然耗盡
-    w.state.equipment.autoFill = false;
+    w.state.equipment[w.state.activeZone]!.autoFill = false;
     w.state.stock.caramel = 0;
     for (const b of w.state.basins) { b.units = 0; b.liquid = null; }
     advanceUntil(w, (x) => only(x.state).caramel <= 0, 200);

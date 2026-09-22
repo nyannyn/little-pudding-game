@@ -238,15 +238,24 @@ export function buySpecialBasin(
   return OK;
 }
 
-export function buyEquipment(state: GameState, id: EquipmentId, emit: EventSink): ActionResult {
+/**
+ * 買設備，裝在 `zone`（預設＝玩家正在看的那一區）。設備是每一區各買各的（D45）：
+ * 解鎖新區不會附帶舊區的設備，要再花一次原價。
+ */
+export function buyEquipment(state: GameState, id: EquipmentId, emit: EventSink, zone = state.activeZone): ActionResult {
   const info = EQUIPMENT[id];
-  if (state.equipment[id]) return fail('已經買過了');
+  const z = findZone(state, zone);
+  if (!z) return fail('沒有這個櫥窗');
+  if (!z.unlocked) return fail('這一區還沒解鎖');
+  const eq = state.equipment[zone];
+  if (!eq) return fail('沒有這個櫥窗');
+  if (eq[id]) return fail('這一區已經裝了');
   const gate = levelGate(state, info.level);
   if (gate) return gate;
   if (state.coins < info.price) return fail('焦糖幣不夠');
   state.coins -= info.price;
-  state.equipment[id] = true;
-  emit({ type: 'buy', what: info.name, cost: info.price, auto: false });
+  eq[id] = true;
+  emit({ type: 'buy', what: `${z.shortName}的${info.name}`, cost: info.price, auto: false });
   return OK;
 }
 

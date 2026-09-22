@@ -9,8 +9,8 @@ import { FLOOR, fillBasinDirect, makeWorld } from './helpers';
 /** 讓兩個世界從完全一樣的起點出發（同種子、同澡盆狀態） */
 function primed(seed = 424242) {
   const w = makeWorld({ seed });
-  w.state.equipment.autoFill = true;
-  w.state.equipment.collector = true;
+  w.state.equipment[w.state.activeZone]!.autoFill = true;
+  w.state.equipment[w.state.activeZone]!.collector = true;
   w.state.stock.caramel = 5000;
   fillBasinDirect(w.state, 'caramel');
   return w;

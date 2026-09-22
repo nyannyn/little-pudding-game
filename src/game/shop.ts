@@ -1,7 +1,7 @@
 import { BALANCE, EQUIPMENT, EQUIPMENT_IDS } from './balance';
 import { levelFor } from './level';
 import { LIQUIDS, SPECIAL_LIQUIDS, SPECIES, type LiquidId, type SpeciesId } from './species';
-import type { GameState } from './state';
+import { equipmentIn, type GameState } from './state';
 
 /**
  * 商店目錄（D25）。UI 只負責把這份清單畫出來；「什麼時候上架、多少錢、買過沒」全在這裡決定，
@@ -116,7 +116,7 @@ export function shopCatalog(state: GameState): ShopEntry[] {
       desc: info.desc,
       price: info.price,
       level: info.level,
-      status: state.equipment[id] ? 'owned' : gate(info.level),
+      status: equipmentIn(state, state.activeZone)[id] ? 'owned' : gate(info.level),
       affordable: state.coins >= info.price,
     });
   }

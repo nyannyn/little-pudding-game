@@ -3,6 +3,7 @@ import { levelProgress } from '../game/level';
 import { shopCatalog, type ShopEntry, type ShopTab } from '../game/shop';
 import { SPECIES, SPECIES_IDS, dessertPrice, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
+import { findZone } from '../game/zones';
 import { icon } from './icons';
 import { ART, EGG_ART, INGREDIENT_ART, artFor, type ArtSpec } from './shopArt';
 
@@ -170,10 +171,17 @@ export class ShopView {
     }
 
     const entries = catalog.filter((e) => e.tab === this.page);
+    // 設備是每一區各買各的（D45）：設備頁要講清楚現在買的裝在哪一區，不然玩家切到新區
+    // 看到整頁「可買」會以為剛才的錢白花了
+    const zoneName = findZone(state, state.activeZone)?.shortName ?? '';
+    const zoneNote =
+      this.page === 'equipment'
+        ? `<div class="note">設備裝在目前這一區（${zoneName}）。每一區各買各的，別區要另外買。</div>`
+        : '';
     const key =
       this.page === 'sell'
         ? `sell:${sellable.join(',')}:egg${hasEggs ? 1 : 0}`
-        : `${this.page}:${entries.map((e) => `${e.id}=${e.status}`).join(',')}:lv${lp.level}`;
+        : `${this.page}:${zoneName}:${entries.map((e) => `${e.id}=${e.status}`).join(',')}:lv${lp.level}`;
     if (key !== this.structureKey) {
       this.structureKey = key;
       // 買了一件（owned）也會走到這裡重建：捲動位置要留住，不然買完清單跳回最上面
@@ -183,7 +191,7 @@ export class ShopView {
           ? sellable.length || hasEggs
             ? `<div class="grid">${hasEggs ? eggCardHtml() : ''}${sellable.map(sellCardHtml).join('')}</div>`
             : '<div class="empty">還沒有東西可賣。布丁待著就會掉蛋與原料，撿起來就進庫存。</div>'
-          : `<div class="grid">${entries.map(cardHtml).join('')}</div>`;
+          : `${zoneNote}<div class="grid">${entries.map(cardHtml).join('')}</div>`;
       // 這一級剛上架的商品貼 NEW：不存「看過沒」，升下一級自然消失
       for (const e of entries) {
         if (e.level === lp.level && e.level > 1 && e.status === 'available') {

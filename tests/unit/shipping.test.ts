@@ -126,7 +126,7 @@ describe('出貨：訂單預留量', () => {
       s.ingredients.caramel = BALANCE.ingredientsPerDessert * 3;
       for (let i = 0; i < 3; i++) craft(s, 'caramel', noop);
     }
-    auto.state.equipment.seller = true;
+    auto.state.equipment[auto.state.activeZone]!.seller = true;
 
     shipDesserts(manual.state, noop);
     runAutomation(auto.state, noop);

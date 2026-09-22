@@ -20,7 +20,7 @@ await summary(page, 'A 全自動 5 分鐘後');
 await shot(page, 'mid-A2-automated');
 
 // B. 三區全開，鏡頭跟著走；拉遠到上限
-await page.evaluate(() => { const s = window.__lpg.state; s.coins = 5000; s.equipment.restock = true; });
+await page.evaluate(() => { const s = window.__lpg.state; s.coins = 5000; s.equipment[s.activeZone].restock = true; });
 for (const [i, zone] of ['c0t2', 'c0t0', 'c1t1'].entries()) {
   await tap(page, '商店'); await shopTab(page, 'zone'); await page.locator(`[data-a="unlockZone"][data-arg="${zone}"]`).click(); await tap(page, '關閉');
   await page.waitForTimeout(1800);
@@ -34,7 +34,7 @@ await summary(page, 'B 切回'); await shot(page, 'mid-B5-back');
 
 // C. 牛奶突變：注液閥設成牛奶，等變白→突變
 await boot(page, '?fresh=1&seed=778&fastTime=30');
-await page.evaluate(() => { const s = window.__lpg.state; s.coins = 500; s.stock.milk = 30; s.stock.caramel = 0; s.equipment.autoFill = true; s.equipment.collector = true; });
+await page.evaluate(() => { const s = window.__lpg.state; s.coins = 500; s.stock.milk = 30; s.stock.caramel = 0; s.equipment[s.activeZone].autoFill = true; s.equipment[s.activeZone].collector = true; });
 await tap(page, '倒牛乳');
 await page.waitForFunction(() => window.__lpg.state.puddings.some((p) => p.tint >= 0.5), null, { timeout: 120_000 });
 await shot(page, 'mid-C1-tint');
@@ -43,7 +43,7 @@ await page.waitForTimeout(800);
 await summary(page, 'C 突變'); await shot(page, 'mid-C2-panna');
 
 // D. 晚期商店：全買完後還剩什麼可買
-await page.evaluate(() => { const s = window.__lpg.state; s.coins = 99999; for (const k of Object.keys(s.equipment)) s.equipment[k] = true; });
+await page.evaluate(() => { const s = window.__lpg.state; s.coins = 99999; const eq = s.equipment[s.activeZone]; for (const k of Object.keys(eq)) eq[k] = true; });
 await tap(page, '商店'); await page.waitForTimeout(300);
 await shot(page, 'mid-D1-shop-late');
 console.log('## 晚期商店\n' + (await page.evaluate(() => document.querySelector('.sheet').innerText)));

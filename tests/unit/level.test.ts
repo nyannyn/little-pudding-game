@@ -75,7 +75,7 @@ describe('D25 xp 來源', () => {
 
   it('自動化做的也算 xp（裝了設備等級不會停）', () => {
     const w = makeWorld({ puddings: 1 });
-    w.state.equipment.collector = true;
+    w.state.equipment[w.state.activeZone]!.collector = true;
     keepFed(w);
 
     // 泡澡給 bath xp

@@ -128,7 +128,7 @@ describe('分區之間互不干擾', () => {
     const w = twoZones();
     const bIdx = w.state.basins.findIndex((b) => b.zone === SECOND_CABINET);
     fillBasinDirect(w.state, 'caramel', BALANCE.basinCapacity, bIdx);
-    w.state.equipment.collector = true;
+    w.state.equipment[w.state.activeZone]!.collector = true;
     for (const p of puddingsIn(w.state, SECOND_CABINET)) p.caramel = 5;
 
     advance(w, 200);

@@ -41,7 +41,7 @@ export function fillBasinDirect(state: GameState, liquid: LiquidId, units: numbe
  * 否則量到的是「停產」而不是掉落節奏。
  */
 export function keepFed(w: World): void {
-  w.state.equipment.autoFill = true;
+  w.state.equipment[w.state.activeZone]!.autoFill = true;
   w.state.stock.caramel = 100000;
   for (const b of w.state.basins) {
     b.liquid = 'caramel';

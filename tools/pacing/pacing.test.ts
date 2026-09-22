@@ -14,8 +14,8 @@ import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
 import { applyGenes } from '../../src/game/genetics';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../../src/game/species';
-import { createNewSave } from '../../src/game/state';
-import { nextLockedZone } from '../../src/game/zones';
+import { createNewSave, equipmentIn, hasEquipmentAnywhere } from '../../src/game/state';
+import { START_ZONE, nextLockedZone, unlockedZones } from '../../src/game/zones';
 
 /**
  * 節奏量表（D24）：不是驗收測試，是「幾分鐘達到哪個里程碑」的儀表。
@@ -31,6 +31,8 @@ const REACT_SEC = Number(process.env.REACT_SEC ?? 3);
 const HOURS = Number(process.env.SIM_HOURS ?? 3);
 const SPAWN = { puddingPos: { x: 0.1, z: 0.05 }, basinPos: { x: 0.62, z: 0.28 } };
 const BUY_ORDER: EquipmentId[] = ['collector', 'autoFill', 'crafter', 'seller', 'restock'];
+/** 設備每一區各買各的（D45）；只有這兩台的效果是分區的，理性玩家會在每一區重買，另外三台全場一台就夠 */
+const ZONE_SCOPED = new Set<EquipmentId>(['collector', 'autoFill']);
 
 /**
  * `hybrid` 情境（2026-09-22，D28）：開局其中一隻是卡士達（焦糖＋鮮奶酪的異合）。
@@ -97,9 +99,13 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
     const nz = nextLockedZone(state);
     const zoneFirst = profile === 'zone-first' && state.zones.filter((z) => z.unlocked).length < 2;
     if (!zoneFirst) {
-      for (const id of BUY_ORDER) {
-        if (!state.equipment[id] && state.coins >= EQUIPMENT[id].price && buyEquipment(state, id, noop).ok) {
-          mark(`buy ${id}`);
+      for (const z of unlockedZones(state)) {
+        for (const id of BUY_ORDER) {
+          if (equipmentIn(state, z.id)[id]) continue;
+          if (!ZONE_SCOPED.has(id) && hasEquipmentAnywhere(state, id)) continue;
+          if (state.coins >= EQUIPMENT[id].price && buyEquipment(state, id, noop, z.id).ok) {
+            mark(z.id === START_ZONE ? `buy ${id}` : `buy ${id} (${z.shortName})`);
+          }
         }
       }
     }
@@ -115,7 +121,7 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
   console.log(
     `\n=== ${profile} (seed ${seed}, react every ${REACT_SEC}s, ${HOURS}h) ===\n${lines.join('\n')}\n` +
       `end: coins=${Math.floor(state.coins)} xp=${state.xp} baths=${state.stats.baths} orders=${state.stats.sold} puddings=${state.puddings.length} ` +
-      `equip=${EQUIPMENT_IDS.filter((e) => state.equipment[e]).join(',')}\n` +
+      `equip=${unlockedZones(state).map((z) => `${z.shortName}:${EQUIPMENT_IDS.filter((e) => equipmentIn(state, z.id)[e]).join('+')}`).join(' ')}\n` +
       `species=${SPECIES_IDS.filter((id) => state.puddings.some((p) => p.species === id)).join(',')}\n` +
       `hybrid orders: new=${hybridOrders.new} done=${hybridOrders.done} expired=${hybridOrders.expired}\n`,
   );

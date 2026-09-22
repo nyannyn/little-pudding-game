@@ -3,24 +3,33 @@ import { BALANCE } from './balance';
 import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from './species';
-import type { GameState } from './state';
+import { equipmentIn, hasEquipmentAnywhere, type GameState } from './state';
+import { unlockedZones } from './zones';
 
 /**
  * 自動化：每 tick 依已裝設備替玩家做掉對應的手動動作。
  * 「手動 vs 自動」的差別必須整條走設備旗標（AC2-8 的負向對照就是把旗標拿掉，
  * 兩組結果會變一樣而紅），所以這裡不准有「反正也沒差」的捷徑。
+ *
+ * 設備是每一區各買各的（D45）：注液閥／收集手只碰裝了它的那一區的澡盆／掉落物；
+ * 加工機／販售口／補貨合約操作的是全場共用的庫存，任一區裝了就跑一次（不是每區跑一次——
+ * 跑兩次也只是把同一批原料做完，但 emit 會多出重複事件）。
  */
 export function runAutomation(state: GameState, emit: EventSink): void {
-  if (state.equipment.autoFill) autoFill(state, emit);
-  if (state.equipment.collector && state.drops.length > 0) pickAllDrops(state, emit, true);
-  if (state.equipment.crafter) autoCraft(state, emit);
-  if (state.equipment.seller) autoSell(state, emit);
-  if (state.equipment.restock) autoRestock(state, emit);
+  for (const z of unlockedZones(state)) {
+    const eq = equipmentIn(state, z.id);
+    if (eq.autoFill) autoFill(state, z.id, emit);
+    if (eq.collector && state.drops.some((d) => d.zone === z.id)) pickAllDrops(state, emit, true, z.id);
+  }
+  if (hasEquipmentAnywhere(state, 'crafter')) autoCraft(state, emit);
+  if (hasEquipmentAnywhere(state, 'seller')) autoSell(state, emit);
+  if (hasEquipmentAnywhere(state, 'restock')) autoRestock(state, emit);
 }
 
-/** 澡盆低於一份就從庫存補滿（只補「玩家上次倒的那一種」，不會自己改口味） */
-function autoFill(state: GameState, emit: EventSink): void {
+/** 澡盆低於一份就從庫存補滿（只補「玩家上次倒的那一種」，不會自己改口味），只補這一區的盆 */
+function autoFill(state: GameState, zone: string, emit: EventSink): void {
   state.basins.forEach((b, i) => {
+    if (b.zone !== zone) return;
     if (b.units >= 1) return;
     const liquid = b.liquid ?? b.preferredLiquid;
     if (!liquid) return;

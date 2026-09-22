@@ -165,6 +165,17 @@
 - 守門：`tests/e2e/cp5-context-lost.spec.ts`。三條負向對照**都實測紅過**——不掛 `webglcontextlost`（卡片不出現）、不停迴圈（`state.time` 繼續走）、不重建環境貼圖（`scene.environment.uuid` 沒變）。
 - **這一場又是並行 session 同樹**：開工時 `src/main.ts` 已被另一個 session 改（`?pop=` 的 15 個落點）＋新增 `tools/measure-pop.mjs`。處理方式：把自己動到的行用反向 patch 還原（**不可以 `git checkout --`**，會洗掉對方未 commit 的工作）、切回 master、改用 worktree（`node_modules` 用 `mklink /J` 借主樹，清理時要 `cmd /c rmdir` 拆連結）＋`LPG_PORT=5174` 跑自己的 dev server。
 
+## 設備每一區各買各的（2026-09-22 第十三場，使用者要求「新買的櫥窗不該有已購買的自動化設備，要買要再加錢買」，分支 `feat/zone-equipment`）
+
+- **設計定案 D45**（本地 D44 已被 origin 的 WebGL context lost 用掉，本條原寫 D44 已改號）：使用者三題選定——五台**全部**逐區（含加工／販售／補貨這三台功能上全場一台就夠的）、粒度＝**每一層一區**、再買**原價**。
+- 實作：`state.equipment` → `Record<zoneId, Record<EquipmentId, boolean>>`，`SCHEMA_VERSION` 5→**6**；讀取走 `equipmentIn()`／`hasEquipmentAnywhere()`／`hasAnyEquipment()`（`state.ts`）。`buyEquipment(state, id, emit, zone = activeZone)`；`runAutomation` 逐已解鎖區跑注液／收集，加工／販售／補貨任一區有就跑一次。`EquipmentView.sync` 只畫該區自己的；商店設備頁多一行「設備裝在目前這一區（中層）。每一區各買各的，別區要另外買。」（`.sheet .note`）。
+- **舊檔補值方向**：v5 扁平旗標補給**所有已解鎖的區**（不是只補起始區）；分辨新舊形狀看「值是不是布林」不看 schemaVersion。
+- 證據：單元 179 綠（新 `tests/unit/zoneEquipment.test.ts` 11 條；四個突變各紅過：migrate 只補起始區／autoFill 不濾區／collector 撿全場／unlockZone 抄起始區設備）、e2e 51/51 綠＋新 `cp7-zone-equipment.spec.ts` 1 條（解鎖上層→卡片回可買、`Equipment` group 空、再買扣原價、切回起始區仍已安裝）、`npm run build` 綠、`npm run test:negative` 只剩 **AC2-9 一條在 master 上本來就紅**（`dropCap` 5→8 後測試名稱「地上已經 5 份時」對不上，不是本次造成）、截圖四張（上層商店全可買＋提示行、上層畫面無設備 mesh）。
+- **節奏**（`npm run pacing` seed 7 equip-first，harness 改成每區重買注液閥＋收集手）：上層 12.1／下層 22.7／二號櫥窗 33.5 分（改前 12.1／22.1／31.9；D24 目標 ≤20／≤45／≤90），三小時收入 32.6k→34.7k。
+- **待使用者簽核**：商店提示行的文案與位置、上層空櫃畫面。
+- **分支基底注意**：本地 `master` 比 `origin/master` 多 3 個未推的 WP7-1 commit，且並行 session 在本分支上又留了兩個文件 commit（c31193b／020afaf）。開 PR 前要把本次 commit 單獨 cherry-pick 到從 `origin/master` 開的乾淨分支。
+- 教訓：突變測試還原又用了一次 `git checkout --`，把 `actions.ts` 整份未提交改動洗掉重打——`pattern_git_workflow` 早寫了「用反向 sed 或 stash」。
+
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
 - 遊戲設計定稿與決策 D1–D14 在 [plans/game-plan-v1.md](plans/game-plan-v1.md)；改規則先改計畫檔的設計表再改 code。

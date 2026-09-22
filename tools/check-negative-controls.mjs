@@ -51,9 +51,9 @@ const CASES = [
   {
     ac: 'AC2-8',
     why: '拿掉收集手的旗標判斷，有設備與沒設備的結果會一模一樣',
-    file: 'src/game/pudding.ts',
-    from: '  if (state.equipment.collector) {',
-    to: '  if (true) {',
+    file: 'src/game/equipment.ts',
+    from: '    if (eq.collector && state.drops.some((d) => d.zone === z.id)) pickAllDrops(state, emit, true, z.id);',
+    to: '    if (state.drops.some((d) => d.zone === z.id)) pickAllDrops(state, emit, true, z.id);',
     test: '沒有收集手',
   },
   {
@@ -92,12 +92,12 @@ const CASES = [
   if (gate) return gate;
   if (state.coins < info.price) return fail('焦糖幣不夠');
   state.coins -= info.price;
-  state.equipment[id] = true;`,
+  eq[id] = true;`,
     to: `  const gate = null as ActionResult | null;
   if (gate) return gate;
   if (state.coins < info.price) return fail('焦糖幣不夠');
   state.coins -= info.price;
-  state.equipment[id] = true;`,
+  eq[id] = true;`,
     test: '等級不夠買不到設備',
   },
   {

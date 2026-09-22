@@ -12,7 +12,7 @@ for (const device of ['iPhone 14', 'iPhone SE']) {
     const s = window.__lpg.state;
     s.zones[1].unlocked = true;
     for (const p of s.puddings) p.species = 'panna';
-    s.equipment.collector = true; s.basins[0].preferredLiquid = 'caramel';
+    s.equipment[s.activeZone].collector = true; s.basins[0].preferredLiquid = 'caramel';
     s.stock.caramel = 0; s.stock.milk = 0;
     for (let i = 0; i < 3; i++) s.orders.push({ id: 'o' + i, species: 'caramel', qty: 2, price: 100 + i, createdAt: s.time, expiresAt: s.time + 300 });
     const b = s.basins[0];

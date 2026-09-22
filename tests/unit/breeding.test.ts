@@ -319,7 +319,7 @@ describe('D28 不變式：species 永遠等於 phenotype(genes)', () => {
       b.units = BALANCE.basinCapacity;
     }
     w.state.stock.milk = 999;
-    w.state.equipment.autoFill = true;
+    w.state.equipment[w.state.activeZone]!.autoFill = true;
     advance(w, 600);
     expect(w.state.stats.births).toBeGreaterThan(0);
     expect(geneDesyncs(w.state)).toEqual([]);
@@ -358,8 +358,8 @@ describe('D29 離線結算不會失控', () => {
       b.units = BALANCE.basinCapacity;
     }
     state.stock.caramel = 100000;
-    state.equipment.autoFill = true;
-    state.equipment.collector = true;
+    state.equipment[state.activeZone]!.autoFill = true;
+    state.equipment[state.activeZone]!.collector = true;
 
     advance(w, BALANCE.offlineCapSec);
 
@@ -378,7 +378,7 @@ describe('D29 離線結算不會失控', () => {
         b.units = BALANCE.basinCapacity;
       }
       state.stock.caramel = 100000;
-      state.equipment.autoFill = true;
+      state.equipment[state.activeZone]!.autoFill = true;
       advance(w, 1800);
       return state.puddings.map((p) => `${p.id}:${p.genes.join('+')}`).join(',');
     };
@@ -469,7 +469,7 @@ describe('繁殖後的布丁仍照既有規則生活', () => {
     // 裝上收集手邊掉邊入庫：不然地上很快被蛋塞到 dropCap，之後就再也不掉了
     w.state.puddings = [child];
     w.state.drops = [];
-    w.state.equipment.collector = true;
+    w.state.equipment[w.state.activeZone]!.collector = true;
     const before = w.state.ingredients[child.species];
     const t = advanceUntil(
       w,
