@@ -91,6 +91,7 @@ export class Hud {
   private readonly hint: HTMLElement;
   private readonly toasts: HTMLElement;
   private readonly welcome: HTMLElement;
+  private readonly glCard: HTMLElement;
   private readonly a2hs: HTMLElement;
   private readonly saveCard: HTMLElement;
   private readonly saveText: HTMLTextAreaElement;
@@ -154,6 +155,13 @@ export class Hud {
             <button data-a="closeWelcome">看看櫥窗</button>
           </div>
         </div>
+        <div class="welcome glcard" hidden>
+          <div class="card">
+            <h2>畫面被系統收走了</h2>
+            <p>iPhone 切去別的 App 或放太久，會把 3D 繪圖收掉，回來就只剩背景色。進度沒事，已經先幫你存好了——重新整理就回得去。</p>
+            <button data-a="reloadPage">重新整理</button>
+          </div>
+        </div>
         <div class="welcome a2hs" hidden>
           <div class="card">
             <h2>把農場加到主畫面</h2>
@@ -201,7 +209,8 @@ export class Hud {
     this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
-    this.welcome = q('.welcome:not(.a2hs)');
+    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard)');
+    this.glCard = q('.glcard');
     this.a2hs = q('.a2hs');
     this.saveCard = q('.savecard');
     this.saveText = q('.savecard .code');
@@ -245,6 +254,8 @@ export class Hud {
         this.lastRefresh = -1;
         break;
       case 'closeWelcome': this.welcome.hidden = true; break;
+      // 繪圖環境被系統收走之後唯一走得通的出路：整頁重載（進度在 localStorage，不會掉）
+      case 'reloadPage': location.reload(); break;
       case 'closeA2hs':
         dismissHomeScreenTip();
         this.a2hs.hidden = true;
@@ -307,6 +318,15 @@ export class Hud {
 
   showHomeScreenTip() {
     this.a2hs.hidden = false;
+  }
+
+  /** 繪圖環境被系統回收：3D 只剩背景色，要講出來並給一顆重新整理 */
+  showContextLost() {
+    this.glCard.hidden = false;
+  }
+
+  hideContextLost() {
+    this.glCard.hidden = true;
   }
 
   showWelcome(text: string) {

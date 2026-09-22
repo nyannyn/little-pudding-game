@@ -156,6 +156,15 @@
 - **固定 `?seed=` 救不了**：`advance` 的步數跟著真實幀時間走，整套跑（機器忙）與單獨跑的抽籤序列不同 —— 這就是「全跑紅、單跑綠」的來源。
 - 修法：測試改成**邊等邊補焦糖的短輪詢**。原本用 `waitForFunction(drops>0, 60_000)` 等，那 60 秒之內沒有人去倒澡盆，停產之後只能等到逾時。修完連跑 4 次全綠、整套 48 綠。
 
+## 「布丁跟箱子不見」＝繪圖環境被 iOS 收走（2026-09-22 第十一場，D44）
+
+- 使用者回報「這個遊戲存檔的世界視圖壞掉了 布丁跟箱子不見」並附上存檔碼。**那串碼沒有壞**：走真的產品還原流程（齒輪 → 貼碼 → 還原）匯進本機 dev 與線上 Pages，兩邊都畫得出 3 隻布丁、櫃子、澡盆、名牌。
+- **真因是 WebGL context lost**：用 `WEBGL_lose_context` 模擬，畫面與使用者描述完全一致——HUD 還在、訂單照跳、3D 整片只剩背景米色。使用者複選「切去別的 App 再切回來」「放著很久沒動」，正是 iOS 收繪圖環境的兩個典型情境。
+- three 自己會 `preventDefault()` 並在 `webglcontextrestored` 時重建 GL 物件，但**不會重建 PMREM 的環境貼圖**（內容在 GPU render target 上），也不會告訴玩家；而 iOS 常常根本不還原。
+- 修法（`src/main.ts`＋`src/ui/hud.ts`）：`webglcontextlost` → `persist()` → `setAnimationLoop(null)` → 跳說明卡附「重新整理」；`webglcontextrestored` → `buildEnvironment()`＋`settleOffline` 補跑＋恢復迴圈；回到前景時另外自查一次 `getContext().isContextLost()`（iOS 有時候靜靜收掉、連事件都不發）。
+- 守門：`tests/e2e/cp5-context-lost.spec.ts`。三條負向對照**都實測紅過**——不掛 `webglcontextlost`（卡片不出現）、不停迴圈（`state.time` 繼續走）、不重建環境貼圖（`scene.environment.uuid` 沒變）。
+- **這一場又是並行 session 同樹**：開工時 `src/main.ts` 已被另一個 session 改（`?pop=` 的 15 個落點）＋新增 `tools/measure-pop.mjs`。處理方式：把自己動到的行用反向 patch 還原（**不可以 `git checkout --`**，會洗掉對方未 commit 的工作）、切回 master、改用 worktree（`node_modules` 用 `mklink /J` 借主樹，清理時要 `cmd /c rmdir` 拆連結）＋`LPG_PORT=5174` 跑自己的 dev server。
+
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
 - 遊戲設計定稿與決策 D1–D14 在 [plans/game-plan-v1.md](plans/game-plan-v1.md)；改規則先改計畫檔的設計表再改 code。
