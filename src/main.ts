@@ -91,9 +91,17 @@ const renderer = createRenderer(container, {
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf6e7d2);
 
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-pmrem.dispose();
+/**
+ * 環境貼圖是 PMREM 算在 GPU 的 render target 上的，繪圖環境被回收時內容跟著沒。
+ * three 還原 context 時會把幾何與貼圖從 CPU 端重傳一次，這張不在它的清單裡，要自己重做。
+ */
+function buildEnvironment() {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment?.dispose();
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+}
+buildEnvironment();
 
 const camera = createCamera(container.clientWidth / container.clientHeight);
 
@@ -581,6 +589,8 @@ window.addEventListener('visibilitychange', () => {
   drainEvents(world);
   last = performance.now(); // 不重設的話下一幀的 dt 會是離開的總時長
   hud.update(state, performance.now(), true);
+  // iOS 有時候是靜靜地把繪圖環境收掉，連 webglcontextlost 都不發；回到前景自己查一次
+  if (renderer.getContext().isContextLost()) onGlLost();
 });
 window.addEventListener('pagehide', persist);
 
@@ -715,14 +725,51 @@ function frame(dt: number, now: number) {
   stats.tick();
 }
 
-renderer.setAnimationLoop(() => {
+function loop() {
   const now = performance.now();
   // 分頁切回來時 dt 會很大；那段時間交給離線結算，不要在一幀裡補跑
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   frame(paused ? 0 : dt, now);
-});
+}
+renderer.setAnimationLoop(loop);
 window.__lpg.step = (dt: number) => frame(dt, performance.now());
+
+// ── 繪圖環境被系統回收 ────────────────────────────────
+/**
+ * iPhone 切去別的 App、或放著很久，iOS 會把 WebGL 的繪圖環境收走（D44）。
+ * 症狀是 **HUD 照常在動、訂單照常跳，但 3D 整片只剩背景色**——布丁和櫃子都不見，
+ * 看起來完全像存檔壞掉，實際上存檔一個位元組都沒事。
+ *
+ * three 自己會 `preventDefault()` 並在還原時重建 GL 物件，但它不會告訴玩家，
+ * 也不會把環境貼圖做回來；而 iOS 常常根本不還原，那就只能重新整理。
+ * 所以這裡做三件事：停迴圈（畫不出東西還在跑只是耗電）、先存檔、給玩家一條出路。
+ */
+let glLost = false;
+
+function onGlLost() {
+  if (glLost) return;
+  glLost = true;
+  persist(); // 收掉繪圖環境之後常常連分頁一起被丟掉，進度先寫下去
+  renderer.setAnimationLoop(null);
+  hud.showContextLost();
+}
+
+function onGlRestored() {
+  if (!glLost) return;
+  glLost = false;
+  buildEnvironment();
+  // 空白的那段時間照離線結算補回來，跟切到背景再回來走同一條路
+  settleOffline(world, Date.now());
+  drainEvents(world);
+  last = performance.now();
+  hud.hideContextLost();
+  hud.update(state, last, true);
+  renderer.setAnimationLoop(loop);
+}
+
+renderer.domElement.addEventListener('webglcontextlost', onGlLost);
+renderer.domElement.addEventListener('webglcontextrestored', onGlRestored);
 
 // ── PWA：註冊 service worker（只在正式版）──────────────
 // dev 不註冊：Vite 的 public/ 在開發時也會被服務到，快取住 dev 資產會讓 HMR 行為變得很難查。
