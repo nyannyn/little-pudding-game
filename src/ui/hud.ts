@@ -70,6 +70,14 @@ function totalIngredients(s: GameState): number {
   return SPECIES_IDS.reduce((n, id) => n + s.ingredients[id], 0);
 }
 
+/** 點頂列數字時小布丁講的話。用玩家的語言講「這個數字怎麼變多、拿來做什麼」，不是名詞解釋 */
+const CHIP_TIPS: Record<string, string> = {
+  coins: '焦糖幣！賣甜點和原料賺來的，拿去補液體、買設備、解鎖新櫥窗。',
+  egg: '蛋。布丁每隔一陣子就會下一顆，每做一份甜點要用掉兩顆。',
+  ing: '物種原料。哪一種布丁就掉哪一種原料，做那個口味的甜點會用到。',
+  des: '做好的甜點。交訂單或按出貨，就會變成焦糖幣。',
+};
+
 export class Hud {
   readonly root: HTMLElement;
   private readonly chipCoins: HTMLElement;
@@ -91,6 +99,10 @@ export class Hud {
   private readonly a2hs: HTMLElement;
   private readonly saveCard: HTMLElement;
   private readonly saveText: HTMLTextAreaElement;
+  private readonly tipBubble: HTMLElement;
+  private tipTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 最後一次 update 收到的狀態；點訂單卡要用它算氣泡文字 */
+  private last: GameState | null = null;
   private readonly muteIcon: HTMLElement;
   private readonly muteVal: HTMLElement;
 
@@ -107,10 +119,10 @@ export class Hud {
       <div class="hud">
         <div class="topbar">
           <div class="chips">
-            <span class="chip" data-k="coins">${icon('coin', 'bubble')}<b>0</b></span>
-            <span class="chip" data-k="egg">${icon('egg', 'bubble')}<b>0</b></span>
-            <span class="chip" data-k="ing">${icon('ingredient', 'bubble')}<b>0</b></span>
-            <span class="chip" data-k="des">${icon('dessert', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="coins" data-a="tip" data-arg="coins">${icon('coin', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="egg" data-a="tip" data-arg="egg">${icon('egg', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="ing" data-a="tip" data-arg="ing">${icon('ingredient', 'bubble')}<b>0</b></span>
+            <span class="chip" data-k="des" data-a="tip" data-arg="des">${icon('dessert', 'bubble')}<b>0</b></span>
           </div>
           <button class="iconbtn" data-a="settings" aria-label="設定">${icon('gear')}</button>
           <button class="iconbtn shopbtn" data-a="shop" aria-label="商店">${cuteIcon('shop')}<span class="lvl">Lv.1</span></button>
@@ -132,6 +144,7 @@ export class Hud {
         </div>
         <div class="hint" hidden><span class="who">小布丁</span><span class="t"></span><button data-a="hintOff" aria-label="不再顯示">${icon('close')}</button></div>
         <div class="toasts"></div>
+        <div class="tipbubble" hidden><span class="who">小布丁</span><span class="t"></span></div>
         <div class="welcome" hidden>
           <div class="card">
             <h2>歡迎回來</h2>
@@ -158,6 +171,10 @@ export class Hud {
             <div class="row">
               <button data-a="copySave">複製</button>
               <button data-a="restoreSave">還原</button>
+            </div>
+            <div class="debugbox" hidden>
+              <h3>效能與存檔狀態</h3>
+              <pre id="debug"></pre>
             </div>
             <button data-a="closeSettings" class="ghost">關閉</button>
           </div>
@@ -186,6 +203,7 @@ export class Hud {
     this.a2hs = q('.a2hs');
     this.saveCard = q('.savecard');
     this.saveText = q('.savecard .code');
+    this.tipBubble = q('.tipbubble');
     this.muteIcon = q('.savecard [data-a="mute"] .ic');
     this.muteVal = q('.savecard [data-a="mute"] .val');
 
@@ -229,6 +247,7 @@ export class Hud {
         dismissHomeScreenTip();
         this.a2hs.hidden = true;
         break;
+      case 'tip': this.showTip(target, arg); break;
       case 'settings':
         this.saveText.value = this.act.exportSave();
         this.saveCard.hidden = false;
@@ -289,6 +308,44 @@ export class Hud {
     this.welcome.hidden = false;
   }
 
+  /**
+   * 點數字跳一則小布丁的說明。
+   * 氣泡本身 `pointer-events: none`——它會蓋在畫面上，能點穿才不會擋住下一個動作。
+   */
+  private showTip(target: HTMLElement, kind: string) {
+    const text = kind === 'order' ? this.orderTip(target) : CHIP_TIPS[kind];
+    if (!text) return;
+
+    const body = this.tipBubble.querySelector('.t') as HTMLElement;
+    body.textContent = text;
+    this.tipBubble.hidden = false;
+
+    // 先讓它可見再量寬高，不然拿到的是 0
+    const host = this.root.getBoundingClientRect();
+    const r = target.getBoundingClientRect();
+    const w = this.tipBubble.offsetWidth;
+    const h = this.tipBubble.offsetHeight;
+    const left = Math.min(Math.max(8, r.left - host.left + r.width / 2 - w / 2), Math.max(8, host.width - w - 8));
+    // 預設放在被點的東西下面；下面放不下就改放上面（訂單卡在畫面偏下時會用到）
+    const below = r.bottom - host.top + 10;
+    const top = below + h > host.height - 8 ? Math.max(8, r.top - host.top - h - 10) : below;
+    this.tipBubble.style.left = `${Math.round(left)}px`;
+    this.tipBubble.style.top = `${Math.round(top)}px`;
+
+    clearTimeout(this.tipTimer);
+    this.tipTimer = setTimeout(() => { this.tipBubble.hidden = true; }, 4200);
+  }
+
+  private orderTip(target: HTMLElement): string {
+    const id = (target.closest('.order') as HTMLElement | null)?.dataset.id;
+    const o = this.last?.orders.find((x) => x.id === id);
+    if (!o) return '';
+    return (
+      `這張單要 ${o.qty} 份「${SPECIES[o.species].dessert}」，交得出來給 ${o.price} 焦糖幣。` +
+      '下面那條時間條走完就過期，訂單會自己不見喔。'
+    );
+  }
+
   /** 複製存檔碼。clipboard API 被擋（非 https／權限）時退回「幫玩家選起來，請他長按複製」 */
   private async copyCode(): Promise<void> {
     try {
@@ -312,6 +369,7 @@ export class Hud {
 
   /** 每幀呼叫；內部節流成 6 Hz，動作後用 force 立刻反映 */
   update(state: GameState, nowMs: number, force = false) {
+    this.last = state;
     if (!force && nowMs - this.lastRefresh < 160) return;
     this.lastRefresh = nowMs;
 
@@ -425,7 +483,7 @@ export class Hud {
         .map((o) => {
           const info = SPECIES[o.species];
           return `<div class="order" data-id="${o.id}">
-            <div class="t"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
+            <div class="t" data-a="tip" data-arg="order"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
             <button class="buy" data-a="fulfill" data-arg="${o.id}">交貨</button>
             <div class="clock"><i></i></div>
           </div>`;
