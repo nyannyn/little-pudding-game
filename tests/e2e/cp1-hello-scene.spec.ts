@@ -5,8 +5,9 @@ import { readStats, DRAW_CALL_BUDGET } from './helpers';
 // （櫥窗本來就在畫面裡，空白檢查會被遮蔽而永遠綠）。
 //
 // 區間在 CP3 調過（原 500–3000）：住客從 1 隻變 2 隻，而且 castShadow 收斂成
-// 只有 Pudding_Body（省 draw call），所以每隻的計數是 1228 + 468（陰影 pass）＝ 1696，
-// 兩隻約 3392。負向對照仍然有效：GLB 載不到時差值會是 0。
+// 只有 Pudding_Body（省 draw call）。D41 之後本體／焦糖／腮紅併成一顆 mesh 走 InstancedMesh，
+// 陰影 pass 跟著涵蓋整顆（1004 面），所以每隻的計數是 1228 + 1004 ＝ 2232，兩隻 4464。
+// 負向對照仍然有效：GLB 載不到時差值會是 0。
 test('AC1-1 兩隻布丁的 GLB 為場景加上 2000–5000 個三角形', async ({ page }) => {
   const cabinetOnly = await readStats(page, '&noPudding=1');
   const withPudding = await readStats(page);

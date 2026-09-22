@@ -4,20 +4,28 @@
     exec(open(r"<repo>/tools/blender/build_pudding.py", encoding="utf-8").read())
     build_pudding()
 
-產出一個空物件根節點＋四個 mesh（原點一律在底面中心）：
-    Pudding_Root    Empty，四個 mesh 的共同父節點；縮放它＝squash & stretch
-    Pudding_Body    黃色卡士達本體（下寬上窄的旋轉體）
-    Pudding_Caramel 沿本體輪廓法線外推的焦糖糖衣，底緣做 4 瓣淋流
-    Pudding_Eyes    左右眼併成一個 mesh（閉眼切換只要換這一個物件）
-    Pudding_Blush   左右腮紅併成一個 mesh
+產出一個空物件根節點＋兩個 mesh（原點一律在底面中心）：
+    Pudding_Root    Empty，兩個 mesh 的共同父節點；縮放它＝squash & stretch
+    Pudding_Body    本體＋焦糖糖衣＋腮紅**併成一個 mesh、一個材質**（D41：InstancedMesh 一個 draw call 畫全部）。
+                    哪個頂點屬於哪一部分寫在頂點色層 `Mask`：R＝本體、G＝焦糖、B＝腮紅，
+                    真正的顏色由遊戲端每隻布丁的 instance 屬性（物種體色／頂色）在 shader 裡混出來。
+                    Blender 端的材質也照同一條公式從 Mask 混色，預覽圖才會跟遊戲一樣。
+    Pudding_Eyes    左右眼併成一個 mesh；沒併進本體是因為閉眼要單獨壓扁它（instance 矩陣各自算）
 
 根節點刻意做成不帶 mesh 的 Empty：gltf-transform 的 quantize() 碰到「自己有 mesh 又有子節點」
 的節點時，會把 mesh 搬到一個新的無名子節點上，那樣 Pudding_Body 這個名字就會指到群組而不是本體。
 
-面數約 1228（預算 3000）。draw call 一隻布丁 4 個。
+面數約 1228（預算 3000）。draw call：全部布丁合計 2 個（本體＋眼睛）＋ 1 個陰影 pass。
 原點在底面中心＝直接縮放 Pudding_Root 就是 squash & stretch（子物件跟著變形）。
+
+無頭一條龍（不必開 Blender 介面、不必接 MCP）：
+    blender --background --python tools/blender/build_pudding.py -- \
+        --out public/models/pudding_base.glb --preview docs/previews/pudding_base
+之後跑 `npm run models:optimize`。
 """
 import math
+import os
+import sys
 
 import bmesh
 import bpy
@@ -43,6 +51,56 @@ def _mat(name, rgb, rough=0.45):
     if "Roughness" in bsdf.inputs:
         bsdf.inputs["Roughness"].default_value = rough
     return m
+
+
+# 遊戲端 SPECIES.caramel 的體色／頂色與腮紅色；只是 Blender 預覽用，遊戲裡每隻各自帶顏色
+SKIN_BODY = (1.000, 0.760, 0.290)
+SKIN_TOPPING = (0.455, 0.185, 0.058)
+SKIN_BLUSH = (1.000, 0.470, 0.520)
+MASK_LAYER = "Mask"
+
+
+def _skin_mat(name, rough=0.45):
+    """本體／焦糖／腮紅共用的單一材質：Base Color ＝ body·Mask.r ＋ topping·Mask.g ＋ blush·Mask.b。
+
+    跟遊戲端 shader 同一條公式。三個部件必須共用一個材質，glTF 才會匯成一個 primitive；
+    材質一多，匯出器就照材質拆 primitive，InstancedMesh 又變回好幾個 draw call。
+    """
+    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    m.use_nodes = True
+    nodes, links = m.node_tree.nodes, m.node_tree.links
+    bsdf = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
+    if "Roughness" in bsdf.inputs:
+        bsdf.inputs["Roughness"].default_value = rough
+    mask = nodes.new("ShaderNodeVertexColor")
+    mask.layer_name = MASK_LAYER
+    sep = nodes.new("ShaderNodeSeparateColor")
+    links.new(mask.outputs["Color"], sep.inputs["Color"])
+    scaled = []
+    for ch, rgb in (("Red", SKIN_BODY), ("Green", SKIN_TOPPING), ("Blue", SKIN_BLUSH)):
+        n = nodes.new("ShaderNodeVectorMath")
+        n.operation = "SCALE"
+        n.inputs[0].default_value = rgb
+        links.new(sep.outputs[ch], n.inputs["Scale"])
+        scaled.append(n)
+    add1 = nodes.new("ShaderNodeVectorMath"); add1.operation = "ADD"
+    add2 = nodes.new("ShaderNodeVectorMath"); add2.operation = "ADD"
+    links.new(scaled[0].outputs["Vector"], add1.inputs[0])
+    links.new(scaled[1].outputs["Vector"], add1.inputs[1])
+    links.new(add1.outputs["Vector"], add2.inputs[0])
+    links.new(scaled[2].outputs["Vector"], add2.inputs[1])
+    links.new(add2.outputs["Vector"], bsdf.inputs["Base Color"])
+    return m
+
+
+def _mask(obj, rgb):
+    """整個 mesh 的頂點色層 `Mask` 塗成同一個值（哪個部件＝哪個 channel 亮）。"""
+    me = obj.data
+    layer = me.color_attributes.get(MASK_LAYER) or me.color_attributes.new(MASK_LAYER, "FLOAT_COLOR", "POINT")
+    for c in layer.data:
+        c.color = (rgb[0], rgb[1], rgb[2], 1.0)
+    me.color_attributes.active_color = layer
+    me.color_attributes.render_color_index = me.color_attributes.find(MASK_LAYER)
 
 
 def _lathe(name, profile, material, steps=STEPS):
@@ -119,6 +177,25 @@ def _join(target, others, new_name):
     return target
 
 
+def _smooth_by_angle(obj, angle):
+    """面全設平滑、兩面夾角超過 angle 的邊標 sharp（＝4.1+ 的 Smooth by Angle，但不靠 operator）。
+
+    `bpy.ops.object.shade_auto_smooth` 在 `--background` 下回 CANCELLED：它要從內建資產庫載
+    「Smooth by Angle」節點群組，背景模式載不到（log 會印 Asset loading is unfinished）。
+    """
+    me = obj.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sharp = [e.index for e in bm.edges if not e.is_manifold or e.calc_face_angle(0.0) > angle]
+    bm.free()
+    me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
+    if sharp:
+        layer = me.attributes.get("sharp_edge") or me.attributes.new("sharp_edge", "BOOLEAN", "EDGE")
+        for i in sharp:
+            layer.data[i].value = True
+    me.update()
+
+
 def _tris(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
 
@@ -132,12 +209,10 @@ def build_pudding():
         if me.users == 0:
             bpy.data.meshes.remove(me)
 
-    m_custard = _mat("Pudding_Custard", (1.000, 0.760, 0.290), 0.50)
-    m_caramel = _mat("Pudding_CaramelMat", (0.455, 0.185, 0.058), 0.22)
+    m_skin = _skin_mat("Pudding_Skin", 0.45)
     m_eye = _mat("Pudding_EyeMat", (0.090, 0.065, 0.060), 0.35)
-    m_blush = _mat("Pudding_BlushMat", (1.000, 0.470, 0.520), 0.65)
 
-    body = _lathe("Pudding_Body", BODY, m_custard)
+    body = _lathe("Pudding_Body", BODY, m_skin)
 
     src = [(_radius_at(RIM_Z - 0.07), RIM_Z - 0.07),
            (_radius_at(RIM_Z), RIM_Z),
@@ -146,7 +221,7 @@ def build_pudding():
     shell = _offset_profile(src, GLAZE)[1:]
     shell[-1] = (0.0, shell[-1][1])          # 頂端回正中軸，避免極點裂開
     rim_oz, mid_oz = shell[0][1], shell[1][1]
-    caramel = _lathe("Pudding_Caramel", [(0.000, 0.420), (0.300, 0.420)] + shell, m_caramel)
+    caramel = _lathe("Pudding_Caramel", [(0.000, 0.420), (0.300, 0.420)] + shell, m_skin)
 
     # 4 瓣淋流，相位對正正面（θ=-π/2 落在波谷）→ 臉不會被焦糖蓋到。
     # 瓣數不可太多：26 條經線下 5 瓣就取樣不足，邊緣會變鋸齒。
@@ -167,28 +242,67 @@ def build_pudding():
         [_face_part("Pudding_Eye_R", m_eye, 0.436, -13.5, (0.95, 0.46, 1.32), 0.042, out=-0.006, seg=8, ring=8)],
         "Pudding_Eyes")
     blush = _join(
-        _face_part("Pudding_Blush_L", m_blush, 0.332, 38.0, (1.35, 0.20, 0.85), 0.062, out=0.004, seg=8, ring=8),
-        [_face_part("Pudding_Blush_R", m_blush, 0.332, -38.0, (1.35, 0.20, 0.85), 0.062, out=0.004, seg=8, ring=8)],
+        _face_part("Pudding_Blush_L", m_skin, 0.332, 38.0, (1.35, 0.20, 0.85), 0.062, out=0.004, seg=8, ring=8),
+        [_face_part("Pudding_Blush_R", m_skin, 0.332, -38.0, (1.35, 0.20, 0.85), 0.062, out=0.004, seg=8, ring=8)],
         "Pudding_Blush")
+
+    # 併之前先各自塗遮罩：join 之後就分不出哪個頂點原本是誰的了
+    report = {"body": _tris(body), "caramel": _tris(caramel), "blush": _tris(blush), "eyes": _tris(eyes)}
+    _mask(body, (1, 0, 0))
+    _mask(caramel, (0, 1, 0))
+    _mask(blush, (0, 0, 1))
+    body = _join(body, [caramel, blush], "Pudding_Body")
+    # 球體 primitive 帶進來的 UV 沒有貼圖在用，匯出只是白占位元組
+    for o in (body, eyes):
+        while o.data.uv_layers:
+            o.data.uv_layers.remove(o.data.uv_layers[0])
+    # join 會把三個物件的材質槽都收進來（同一顆材質也會留三格），清成一格才是一個 primitive
+    while len(body.data.materials) > 1:
+        body.data.materials.pop(index=len(body.data.materials) - 1)
 
     root = bpy.data.objects.new("Pudding_Root", None)
     root.empty_display_size = 0.2
     bpy.context.scene.collection.objects.link(root)
-    for child in (body, caramel, eyes, blush):
+    for child in (body, eyes):
         child.parent = root
         child.matrix_parent_inverse = root.matrix_world.inverted()
 
-    for o in (body, caramel, eyes, blush):
-        bpy.ops.object.select_all(action="DESELECT")
-        o.select_set(True)
-        bpy.context.view_layer.objects.active = o
-        bpy.ops.object.shade_auto_smooth(angle=math.radians(40))
+    for o in (body, eyes):
+        _smooth_by_angle(o, math.radians(40))
 
-    report = {o.name: _tris(o) for o in (body, caramel, eyes, blush)}
-    report["TOTAL"] = sum(report.values())
+    report["Pudding_Body"] = _tris(body)
+    report["Pudding_Eyes"] = _tris(eyes)
+    report["TOTAL"] = report["Pudding_Body"] + report["Pudding_Eyes"]
     report["bbox"] = [round(v, 3) for v in body.dimensions]
+    report["materials"] = [m.name for m in body.data.materials]
     return report
 
 
+def export_pudding(path):
+    """把 Pudding_Root 整棵匯成 GLB（Y-up）。頂點色只匯 `Mask` 這一層。"""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    bpy.ops.object.select_all(action="DESELECT")
+    root = bpy.data.objects["Pudding_Root"]
+    for o in (root, *root.children_recursive):
+        o.select_set(True)
+    bpy.ops.export_scene.gltf(
+        filepath=os.path.abspath(path), export_format="GLB", use_selection=True,
+        export_apply=True, export_yup=True,
+        export_vertex_color="NAME", export_vertex_color_name=MASK_LAYER, export_all_vertex_colors=False,
+    )
+    return os.path.getsize(path)
+
+
 if __name__ == "__main__":
-    print(build_pudding())
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    # 一律轉絕對路徑：Blender 的 render.filepath 不是對 cwd 解相對路徑（實測寫到 C:\docs\ 去）
+    out = os.path.abspath(argv[argv.index("--out") + 1]) if "--out" in argv else None
+    preview = os.path.abspath(argv[argv.index("--preview") + 1]) if "--preview" in argv else None
+    print("BUILD", build_pudding())
+    if preview:
+        here = os.path.dirname(os.path.abspath(__file__))
+        ns = {}
+        exec(open(os.path.join(here, "render_preview.py"), encoding="utf-8").read(), ns)
+        print("PREVIEW", ns["render_preview"](preview, size=512))
+    if out:
+        print("EXPORT", out, export_pudding(out), "bytes")

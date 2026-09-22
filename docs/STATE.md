@@ -188,6 +188,17 @@
 - **Rebase 到 `24ff373`（並行 session 的「設備每一區各買各的」，schema v6）**：三個檔衝突。`main.ts` 的 `spawnCoins` 取兩邊（`equipmentIn(state, activeZone).seller` ＋ `SELLER_SPOUT`）；`equipmentMesh.ts` 自動合併後實查過 `sync()` 用的是 `equipmentIn(state, zone)` 不是舊的扁平 `state.equipment`。**D45 撞號**（對方先進 master）→ 本條改成 **D46**。rebase 後重跑：build 綠、vitest 181/181 綠、畫面與金幣逐幀重拍一次（draw 仍 24）。
 - **已 merge 上線（2026-09-23 00:59）**：PR #8 squash 成 `d878b5b`。**自己那支 Pages run 被取消**——並行 session 的 `cf01c2a` 疊在上面、它的部署把我這支蓋掉了；`cf01c2a` 含我的 commit，所以線上就是新版。線上驗過：`smoke:live` 15 項全過（draw 25/35、SW、離線、零 console 錯誤），另用 iPhone 視口對線上拍了販賣機（`evidence/vending-live-2026-09-23.png`，draw 24、tris 8934，與本機一致）。
 - **rebase 後第三輪 e2e 50/50 全綠**；前兩輪各紅一條不同的（`cp3-game-loop:114`、`cp5-pwa:82`）且單跑皆綠，屬機器忙的機率型失敗，根因未查明。
+## WP7-1 布丁 InstancedMesh（2026-09-22 第十一場，分支 `feat/pudding-instancing`）
+
+- **基準線先量再動手**：`puddingPositions` 補到 15 個落點後 `?pop=15` 實測 **88** draw calls（2 隻 23／5 隻 38），跟外推一致。改完 1–15 隻**全是 16**（無布丁 13＋本體＋眼睛＋本體陰影）。
+- 使用者在兩案中選「照計畫：Blender 併 mesh＋vertex color」（另一案是部件各一個 InstancedMesh、不動 Blender，只差 2 個 draw call）。頂點色是**遮罩**（R 本體／G 焦糖／B 腮紅），顏色靠 instance 屬性 `aBody`／`aTopping` 在 `onBeforeCompile` 換掉 `color_vertex` chunk 混出來；眼睛獨立一顆 InstancedMesh（閉眼＝那一顆 instance 矩陣的 y 壓扁）。
+- **Blender 不必開介面、不必接 MCP**：`blender --background --python tools/blender/build_pudding.py -- --out … --preview …`。踩到兩個坑：①`bpy.ops.object.shade_auto_smooth` 在背景模式回 `CANCELLED`（要載資產庫的 Smooth by Angle 節點群組，log 印 Asset loading is unfinished），改用資料 API 面設 smooth＋依角度標 `sharp_edge`；②`scene.render.filepath` 給相對路徑不是對 cwd 解，寫到 `C:\docs\previews\` 去，入口一律 `abspath`。
+- **顏色空間會讓「同一個 hex」變色**：GLTFLoader 讀 `baseColorFactor` 是線性值，`new Color(0xff7885)` 走 sRGB→線性，腮紅明顯變濃（截圖並排才看得出來）。抄 GLB 的值要用 `setRGB(r,g,b, LinearSRGBColorSpace)`。
+- `PuddingView` 只剩骨架（`root` Group＋兩個空節點 `Pudding_Body`／`Pudding_Eyes`），照舊掛在 scene 裡，所以 `cp3-hud-band`／`cp3-pudding-look`／`tools/playtest/lib.mjs` 讀 scene graph 的量法不用改。
+- 副作用：陰影 pass 現在蓋整顆 1004 面（原本只有本體 468），每隻三角形 1696→2232；AC1-1 兩隻 4464 仍在 2000–5000 內但貼近上限。
+- 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 2 條（體色寫死成白 → 紅過）、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**使用者視覺簽核待做**。
+- `tools/measure-pop.mjs`：量 `?pop=N` 的 draw calls／三角形並截圖的小工具（`OUT`／`TAG`／`POPS` 環境變數），要不要留待使用者決定。
+- WP7-2 要一起處理：15 隻時左側的布丁狀態卡疊滿整個畫面（截圖看得到）。
 
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。

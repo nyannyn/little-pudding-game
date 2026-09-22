@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BALANCE } from '../game/balance';
 import type { Pudding } from '../game/state';
 import { SPECIES } from '../game/species';
-import { spawnPudding } from './puddingMesh';
+import type { PuddingPart, PuddingParts } from './puddingPool';
 
 const PUDDING_MODEL_WIDTH = 1.0; // build_pudding.py 回報的出廠 bbox 寬
 export const PUDDING_WIDTH = 0.2; // 使用者定案
@@ -13,16 +13,32 @@ const SQUASH = new THREE.Vector3(1.2, 0.7, 1.2);
 const STRETCH = new THREE.Vector3(0.86, 1.3, 0.86);
 const SQUASH_SEC = 0.22;
 
+/** GLB 節點的局部變換照抄到一個空節點上（沒有 mesh，不吃 draw call） */
+function skeletonNode(name: string, part: PuddingPart): THREE.Object3D {
+  const o = new THREE.Object3D();
+  o.name = name;
+  o.position.copy(part.position);
+  o.quaternion.copy(part.quaternion);
+  o.scale.copy(part.scale);
+  return o;
+}
 
 /**
  * 一隻布丁的演出。只讀 `Pudding` 狀態，不改任何規則——
  * 「跳去哪」是 game/ 決定的，這裡只負責把 A→B 演成拋物線＋落地壓扁。
+ *
+ * 這個物件本身**沒有 mesh**（D41）：`root` 底下只有兩個空節點 `Pudding_Body`／`Pudding_Eyes`
+ * 當骨架，位置、縮放、面向、閉眼全都擺在這副骨架上；每幀由 `PuddingPool` 把兩個節點的
+ * world matrix 抄進共用的 InstancedMesh。骨架照舊掛在 scene 裡，所以量測（e2e 的投影位置、
+ * 眼睛比值）還是從 scene graph 讀得到。
  */
 export class PuddingView {
   readonly root: THREE.Group;
-  private readonly bodyMat: THREE.MeshToonMaterial | null;
-  private readonly caramelMat: THREE.MeshToonMaterial | null;
-  private readonly eyes: THREE.Object3D | null;
+  readonly bodyNode: THREE.Object3D;
+  readonly eyesNode: THREE.Object3D;
+  /** 這隻現在畫的物種顏色（instance 屬性的來源） */
+  readonly bodyColor = new THREE.Color();
+  readonly toppingColor = new THREE.Color();
   /**
    * 眼睛節點在 GLB 裡的原始 y 縮放（實測 0.1387，等比縮放的一部分）。
    * 閉眼要「乘上一個係數」，不是「把 scale.y 設成絕對值」——
@@ -36,29 +52,16 @@ export class PuddingView {
   private shownSpecies: Pudding['species'];
   private bob = 0;
 
-  constructor(template: THREE.Group, p: Pudding) {
-    this.root = template;
+  constructor(parts: PuddingParts, p: Pudding) {
+    this.root = new THREE.Group();
+    this.root.name = 'Pudding';
     this.baseScale = PUDDING_WIDTH / PUDDING_MODEL_WIDTH;
     this.root.scale.setScalar(this.baseScale);
 
-    const find = (name: string) => this.root.getObjectByName(name) ?? null;
-    const body = find('Pudding_Body');
-    const caramel = find('Pudding_Caramel');
-    this.eyes = find('Pudding_Eyes');
-
-    // 陰影只留本體：焦糖／眼睛／腮紅的影子在這個尺寸下看不出來，
-    // 但每個 castShadow 的 mesh 都會在陰影 pass 再吃一個 draw call（預算只有 35）。
-    this.root.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.castShadow = o.name === 'Pudding_Body';
-    });
-
-    // `Group.clone()` 出來的 mesh 共用同一份材質；每隻要能各自變色就得自己一份
-    if (body instanceof THREE.Mesh) body.material = (body.material as THREE.MeshToonMaterial).clone();
-    if (caramel instanceof THREE.Mesh) caramel.material = (caramel.material as THREE.MeshToonMaterial).clone();
-    this.bodyMat = body instanceof THREE.Mesh ? (body.material as THREE.MeshToonMaterial) : null;
-    this.caramelMat = caramel instanceof THREE.Mesh ? (caramel.material as THREE.MeshToonMaterial) : null;
-
-    this.eyeBaseY = this.eyes?.scale.y ?? 1;
+    this.bodyNode = skeletonNode('Pudding_Body', parts.body);
+    this.eyesNode = skeletonNode('Pudding_Eyes', parts.eyes);
+    this.root.add(this.bodyNode, this.eyesNode);
+    this.eyeBaseY = this.eyesNode.scale.y;
 
     this.shownSpecies = p.species;
     this.applySpecies(p.species);
@@ -66,8 +69,8 @@ export class PuddingView {
 
   private applySpecies(id: Pudding['species']) {
     const info = SPECIES[id];
-    this.bodyMat?.color.setHex(info.bodyColor);
-    this.caramelMat?.color.setHex(info.toppingColor);
+    this.bodyColor.setHex(info.bodyColor);
+    this.toppingColor.setHex(info.toppingColor);
     this.shownSpecies = id;
   }
 
@@ -122,12 +125,10 @@ export class PuddingView {
       s.setScalar(this.baseScale);
     }
 
-    // 閉眼：泡澡時把眼睛壓扁成一條線（比換 mesh 便宜，也不必多一個 draw call）。
+    // 閉眼：泡澡時把眼睛壓扁成一條線（只動眼睛那顆 instance 的矩陣，不必換 mesh）。
     // 係數乘在原始縮放上，不可以直接指定絕對值。
-    if (this.eyes) {
-      const target = this.eyeBaseY * (bathing ? 0.22 : 1);
-      this.eyes.scale.y += (target - this.eyes.scale.y) * Math.min(1, dt * 10);
-    }
+    const target = this.eyeBaseY * (bathing ? 0.22 : 1);
+    this.eyesNode.scale.y += (target - this.eyesNode.scale.y) * Math.min(1, dt * 10);
 
     // 面向移動方向，跳躍時才轉（泡澡時面向鏡頭）
     if (airborne) {
@@ -142,9 +143,4 @@ export class PuddingView {
       this.root.rotation.y += (0 - this.root.rotation.y) * Math.min(1, dt * 3);
     }
   }
-}
-
-export async function createPuddingView(url: string, p: Pudding): Promise<PuddingView> {
-  const g = await spawnPudding(url);
-  return new PuddingView(g, p);
 }
