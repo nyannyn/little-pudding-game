@@ -1,6 +1,10 @@
 # 小布丁農場（little-pudding-game）
 
-three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebView 包 App。設計與 checkpoint 見記憶庫的計畫檔與 STATE.md（**不在 repo 內**，由本機記憶庫提供）。
+three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebView 包 App。**動手前先讀 `docs/STATE.md`**（五區塊續跑檔＋checkpoint 進度表），離開前先寫回。遊戲設計定稿與決策在 `docs/plans/game-plan-v1.md`，**要改遊戲規則先改那份的設計表再改 code**。機器層資訊（本機路徑、帳號識別碼、內網設定）與手機截圖證據**刻意不放這裡**，在本機私有記憶庫；讀不到就直接問使用者，不要自行猜。
+
+## 語言
+本專案的工作語言是**繁體中文**：與使用者的對話、PR／issue 說明一律用繁體中文（commit 見最後一節）。
+程式碼、識別字、檔名、API 名稱、技術術語依各自慣例，不要硬翻。
 
 ## 指令
 - `npm run dev`：本機開發
@@ -46,9 +50,14 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - **跑 e2e／playtest 期間不要改 `src/`**：Vite HMR 會重新載入頁面，測試看到的是「element was detached／非預期 navigation」，長得跟產品 bug 一樣。
 - 視覺類改動要使用者看畫面簽核；負向對照要真的紅過才算數。
 
+## 完成與回報
+- **沒有實跑或 read-back 證據，不得宣告完成。** `npm run build`（tsc）綠只代表型別沒錯，不代表功能會動；碰到畫面或互動就要真的把頁面開起來跑過。
+- 回報前逐條稽核：每個「已完成」的宣稱都要有本次留下的工具輸出當證據，沒有就明標「未驗」。失敗與跳過的部分如實講，不要只報跑通的那幾條。
+
 ## 美術管線
 Blender MCP（`.mcp.json`；Blender 端側欄分頁「MCP for Blender」按連線鈕，**按鈕名稱隨 addon 版本變**，本機 4.5 是「Connect to Claude」）→ `tools/blender/render_preview.py` 出 4 角度預覽 → 使用者簽核 → `export_scene` 出 GLB 到 `public/models/` → `npm run models:optimize`。
 商店商品圖（2D）走 `npm run art:shop`，不在 `models:optimize` 的預算檢查範圍內（目前 17 張共約 62 KB）。
 
 ## 提交
-繁體中文一行 commit；不加 Co-Authored-By 標記。
+- 繁體中文一行 commit；不加 Co-Authored-By 標記。
+- **開分支走 PR，不要直接推 `master`**：push `master` 會立刻部署到 GitHub Pages 上線。使用者同意後由 Claude 執行 merge。
