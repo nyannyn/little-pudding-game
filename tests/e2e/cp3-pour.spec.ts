@@ -153,8 +153,9 @@ test('最壞情況（全設備＋掉落物＋三隻）倒液體的那幾幀 draw
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.coins = 99999;
-    for (const k of Object.keys(s.equipment)) s.equipment[k as keyof typeof s.equipment] = true;
-    s.equipment.collector = false;
+    const eq = s.equipment[s.activeZone]!;
+    for (const k of Object.keys(eq)) eq[k as keyof typeof eq] = true;
+    s.equipment[s.activeZone]!.collector = false;
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
     s.basins[0]!.preferredLiquid = 'caramel';
@@ -208,7 +209,7 @@ test('自動注液閥補液也有水流與（小聲的）聲音', async ({ page 
   await page.locator('[data-a="closeSettings"]').click();
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.equipment.autoFill = true;
+    s.equipment[s.activeZone]!.autoFill = true;
     s.basins[0]!.preferredLiquid = 'caramel';
     s.stock.caramel = 9;
   });
@@ -226,9 +227,10 @@ test('三個盆同時要倒（手動＋兩個注液閥）：同時只畫一組�
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.coins = 99999;
-    for (const k of Object.keys(s.equipment)) s.equipment[k as keyof typeof s.equipment] = true;
-    s.equipment.collector = false;
-    s.equipment.autoFill = false; // 先關，三個盆就緒再開，讓兩個閥同一步觸發
+    const eq = s.equipment[s.activeZone]!;
+    for (const k of Object.keys(eq)) eq[k as keyof typeof eq] = true;
+    s.equipment[s.activeZone]!.collector = false;
+    s.equipment[s.activeZone]!.autoFill = false; // 先關，三個盆就緒再開，讓兩個閥同一步觸發
     const b0 = s.basins[0]!;
     b0.liquid = 'caramel'; b0.units = 1; b0.preferredLiquid = 'caramel';
     s.basins.push({ ...b0, liquid: null, units: 0, preferredLiquid: 'matcha', pos: { x: 0.52, z: -0.24 }, occupantId: null });
@@ -244,7 +246,7 @@ test('三個盆同時要倒（手動＋兩個注液閥）：同時只畫一組�
     }));
   });
   await step(page, 0.5);
-  await page.evaluate(() => { (window.__lpg.state as GameState).equipment.autoFill = true; });
+  await page.evaluate(() => { const s = window.__lpg.state as GameState; s.equipment[s.activeZone]!.autoFill = true; });
   await page.locator('[data-a="pour"][data-arg="caramel"]').click();
   let worst = 0, maxStreams = 0, maxJugs = 0;
   for (let i = 0; i < 14; i++) {

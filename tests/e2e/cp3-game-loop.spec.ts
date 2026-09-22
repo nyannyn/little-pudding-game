@@ -99,7 +99,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   await page.locator('[data-a="buyEquip"][data-arg="autoFill"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
   const bought = await state(page);
-  expect(bought.equipment.collector).toBe(true);
+  expect(bought.equipment[bought.activeZone]!.collector).toBe(true);
 
   const ingBefore = (await state(page)).ingredients.caramel;
   await page.waitForFunction(
@@ -156,10 +156,11 @@ test('AC3-2 效能不退步：整場（含設備與掉落物）draw calls 仍在
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.coins = 99999;
-    for (const k of Object.keys(s.equipment)) s.equipment[k as keyof typeof s.equipment] = true;
+    const eq = s.equipment[s.activeZone]!;
+    for (const k of Object.keys(eq)) eq[k as keyof typeof eq] = true;
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 3;
-    s.equipment.collector = false; // 收集手會把掉落物收走，這裡要留著它們
+    s.equipment[s.activeZone]!.collector = false; // 收集手會把掉落物收走，這裡要留著它們
     s.drops = [0, 1, 2, 3, 4].map((i) => ({
       id: `d${i}`,
       zone: s.activeZone, kind: 'ingredient' as const,

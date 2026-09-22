@@ -37,8 +37,8 @@ describe('新手引導完全從 state 推導', () => {
 
   it('生產線停擺（液體全空、盆空、有布丁想泡澡）要警告，買了設備之後也要', () => {
     const s = fresh();
-    s.equipment.collector = true;
-    s.equipment.autoFill = true;
+    s.equipment[s.activeZone]!.collector = true;
+    s.equipment[s.activeZone]!.autoFill = true;
     s.stock.caramel = 0;
     s.stock.milk = 0;
     s.puddings[0]!.caramel = 5;
@@ -52,11 +52,11 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).toBe('stalled');
     expect(nextHint(s)?.text).toContain('熱焦糖');
     // 沒有注液閥＝玩家自己倒，還有牛乳可以倒就不算停擺
-    s.equipment.autoFill = false;
+    s.equipment[s.activeZone]!.autoFill = false;
     expect(nextHint(s)?.id).not.toBe('stalled');
     s.stock.milk = 0;
     expect(nextHint(s)?.id).toBe('stalled');
-    s.equipment.restock = true; // 補貨合約會自己補，不用講
+    s.equipment[s.activeZone]!.restock = true; // 補貨合約會自己補，不用講
     expect(nextHint(s)).toBeNull();
   });
 
@@ -101,7 +101,7 @@ describe('新手引導完全從 state 推導', () => {
 
   it('買下任何一台設備之後就完全不再出現', () => {
     const s = fresh();
-    s.equipment.collector = true;
+    s.equipment[s.activeZone]!.collector = true;
     expect(nextHint(s)).toBeNull();
     s.stock.caramel = 0;
     expect(nextHint(s)).toBeNull();
@@ -126,10 +126,10 @@ describe('2026-09-22 回報：注液閥卡在牛乳、農場整個停住', () =>
   /** 重建使用者那份存檔的關鍵欄位 */
   function stalledSave() {
     const s = fresh();
-    s.equipment.autoFill = true;
-    s.equipment.collector = true;
-    s.equipment.crafter = true;
-    s.equipment.seller = true;
+    s.equipment[s.activeZone]!.autoFill = true;
+    s.equipment[s.activeZone]!.collector = true;
+    s.equipment[s.activeZone]!.crafter = true;
+    s.equipment[s.activeZone]!.seller = true;
     s.stock.caramel = 2;
     s.stock.milk = 0;
     s.basins[0]!.liquid = null;
@@ -200,7 +200,7 @@ describe('2026-09-22 回報：住滿了還一直泡牛乳，21 次澡只生 1 �
 
   it('警告排在教學前面：買了設備讓教學停掉，這條仍然要出現', () => {
     const s = fullSave();
-    s.equipment.collector = true;
+    s.equipment[s.activeZone]!.collector = true;
     expect(nextHint(s)?.id).toBe('zonefull');
   });
 });

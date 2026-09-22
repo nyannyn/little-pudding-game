@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { EquipmentId } from '../game/balance';
-import type { GameState } from '../game/state';
+import { equipmentIn, type GameState } from '../game/state';
 import { TANK } from './cabinet';
 import { toonMaterial } from './toon';
 
@@ -87,11 +87,11 @@ export class EquipmentView {
   }
 
   /**
-   * 設備是全場生效的，但只畫在玩家正在看的那一區——
+   * 只畫玩家正在看的那一區、而且只畫這一區自己買的設備（D45：設備每一區各買各的）——
    * 每一區都畫一套的話，解鎖第二區就直接超出 draw call 預算。
    */
   sync(state: GameState, zone: string, ox: number, floorY: number, ceilY: number) {
-    const owned = Object.entries(state.equipment)
+    const owned = Object.entries(equipmentIn(state, zone))
       .filter(([, v]) => v)
       .map(([k]) => k)
       .sort()

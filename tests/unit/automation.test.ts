@@ -9,7 +9,7 @@ describe('AC2-8 手動 vs 自動化', () => {
   /** 同一種子跑同樣長度，只有「有沒有裝收集手」不同 */
   function run(collector: boolean, sec: number) {
     const w = makeWorld({ seed: 99, puddings: 1 });
-    w.state.equipment.collector = collector;
+    w.state.equipment[w.state.activeZone]!.collector = collector;
     fillBasinDirect(w.state, 'caramel', BALANCE.basinCapacity);
     only(w.state).caramel = 5;
     advance(w, sec);
@@ -36,7 +36,7 @@ describe('AC2-8 手動 vs 自動化', () => {
 describe('自動注液閥', () => {
   it('澡盆見底就從庫存補滿，而且只補上次倒的那一種', () => {
     const w = makeWorld({ puddings: 1 });
-    w.state.equipment.autoFill = true;
+    w.state.equipment[w.state.activeZone]!.autoFill = true;
     w.state.stock.caramel = 5;
     w.state.stock.milk = 5;
     fillBasinDirect(w.state, 'caramel', 1);
@@ -66,14 +66,14 @@ describe('加工機與販售口', () => {
     const w = makeWorld({ puddings: 1 });
     w.state.ingredients.caramel = 2 * BALANCE.ingredientsPerDessert;
     w.state.eggs = 2 * BALANCE.eggsPerDessert;
-    w.state.equipment.crafter = true;
+    w.state.equipment[w.state.activeZone]!.crafter = true;
     advance(w, 1);
     expect(w.state.ingredients.caramel).toBe(0);
     expect(w.state.eggs).toBe(0);
     expect(w.state.desserts.caramel).toBe(2);
 
     const coins = w.state.coins;
-    w.state.equipment.seller = true;
+    w.state.equipment[w.state.activeZone]!.seller = true;
     advance(w, 1);
     expect(w.state.desserts.caramel).toBe(0);
     expect(w.state.coins).toBeGreaterThan(coins);
@@ -81,7 +81,7 @@ describe('加工機與販售口', () => {
 
   it('販售口會先留住訂單卡要的甜點，不會賤賣掉', () => {
     const w = makeWorld({ puddings: 1 });
-    w.state.equipment.seller = true;
+    w.state.equipment[w.state.activeZone]!.seller = true;
     w.state.orders.push({
       id: 'o-test', species: 'matcha', qty: 2, price: 500,
       createdAt: w.state.time, expiresAt: w.state.time + 999,
@@ -102,7 +102,7 @@ describe('補貨合約', () => {
   it('庫存見底就自動補到目標值，錢不夠就少買一點但不會透支', () => {
     const s = createNewSave({ seed: 5, now: 0 });
     const w = makeWorld({ puddings: 1 });
-    w.state.equipment.restock = true;
+    w.state.equipment[w.state.activeZone]!.restock = true;
     w.state.stock.caramel = 0;
     w.state.stock.milk = 0;
     w.state.coins = LIQUIDS.caramel.unitPrice * 2; // 只買得起 2 份
@@ -114,7 +114,7 @@ describe('補貨合約', () => {
 
   it('錢夠就補到 restockTarget', () => {
     const w = makeWorld({ puddings: 1 });
-    w.state.equipment.restock = true;
+    w.state.equipment[w.state.activeZone]!.restock = true;
     w.state.stock.caramel = 0;
     w.state.coins = 1000;
     advance(w, 1);
@@ -125,9 +125,8 @@ describe('補貨合約', () => {
 describe('全自動生產線：不碰一下也會賺錢', () => {
   it('五台設備全裝，跑 10 分鐘後金幣淨增加', () => {
     const w = makeWorld({ seed: 2026 });
-    for (const k of Object.keys(w.state.equipment)) {
-      w.state.equipment[k as keyof typeof w.state.equipment] = true;
-    }
+    const eq = w.state.equipment[w.state.activeZone]!;
+    for (const k of Object.keys(eq)) eq[k as keyof typeof eq] = true;
     w.state.coins = 200;
     w.state.stock.caramel = 10;
     fillBasinDirect(w.state, 'caramel');

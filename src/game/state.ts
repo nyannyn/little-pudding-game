@@ -17,8 +17,11 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * **4 有兩個版本**：店長等級與生產迴圈改版在兩條並行的線上各自升到 4，合併時把
  * 生產迴圈那份改成 5。兩邊的欄位補法互不相干（`xp` 回推自 stats、`eggs` 補 0、
  * `genes` 依 species 補純合），所以任一種 v4 存檔讀進來都會被補成完整的 v5。
+ * 6（2026-09-22）：設備改成每一區各買各的（D45）。`equipment` 由「設備 → 布林」變成
+ * 「分區 → 設備 → 布林」；舊檔的旗標補給**當下所有已解鎖的區**（老玩家已經付過錢，
+ * 只補起始區等於默默拔掉他第二區的自動化）。
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** 布丁在地板上的行為狀態 */
 export type PuddingMode = 'hopping' | 'resting' | 'bathing';
@@ -134,7 +137,12 @@ export interface GameState {
   zones: Zone[];
   /** 玩家目前在看哪一區：鏡頭對著它，HUD 的動作也作用在它身上 */
   activeZone: string;
-  equipment: Record<EquipmentId, boolean>;
+  /**
+   * 每一區各自裝了哪些設備（D45）：外層鍵＝`Zone.id`，每一個已知分區都有一筆（未解鎖的全 false）。
+   * 注液閥／收集手只作用在裝了它的那一區；加工機／販售口／補貨合約任一區裝了就全場生效。
+   * 讀取走 `equipmentIn()`，不要直接索引——`noUncheckedIndexedAccess` 會在每個呼叫點逼你補 `?.`。
+   */
+  equipment: Record<string, Record<EquipmentId, boolean>>;
   /** 下一張訂單卡的生成時間（遊戲秒） */
   nextOrderAt: number;
   /** 流水號，產生 id 用（不用亂數，存檔重開才不會撞號） */
@@ -158,6 +166,27 @@ function noEquipment(): Record<EquipmentId, boolean> {
   const out = {} as Record<EquipmentId, boolean>;
   for (const id of EQUIPMENT_IDS) out[id] = false;
   return out;
+}
+
+function noEquipmentByZone(zones: Zone[]): Record<string, Record<EquipmentId, boolean>> {
+  const out: Record<string, Record<EquipmentId, boolean>> = {};
+  for (const z of zones) out[z.id] = noEquipment();
+  return out;
+}
+
+/** 某一區的設備旗標。沒有這一區的紀錄（不該發生）就當作什麼都沒裝，不改 state */
+export function equipmentIn(state: GameState, zone: string): Readonly<Record<EquipmentId, boolean>> {
+  return state.equipment[zone] ?? noEquipment();
+}
+
+/** 任一區裝了這台設備——加工／販售／補貨這三台操作的是全場共用的庫存，看的是這個 */
+export function hasEquipmentAnywhere(state: GameState, id: EquipmentId): boolean {
+  return Object.values(state.equipment).some((eq) => eq[id]);
+}
+
+/** 全場有沒有任何一台設備（教學要不要繼續講的依據） */
+export function hasAnyEquipment(state: GameState): boolean {
+  return Object.values(state.equipment).some((eq) => Object.values(eq).some(Boolean));
 }
 
 export interface NewSaveOptions {
@@ -209,6 +238,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     pendingMutation: null,
   }));
 
+  const zones = defaultZones();
   return {
     schemaVersion: SCHEMA_VERSION,
     time: 0,
@@ -224,11 +254,11 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     desserts: zeroBySpecies(),
     puddings,
     basins: [{ zone: START_ZONE, liquid: null, units: 0, preferredLiquid: null, pos: { ...basinPos }, occupantId: null }],
-    zones: defaultZones(),
+    zones,
     activeZone: START_ZONE,
     drops: [],
     orders: [],
-    equipment: noEquipment(),
+    equipment: noEquipmentByZone(zones),
     nextOrderAt: BALANCE.orderIntervalMin,
     // 開局的住客叫 p1、p2，流水號要從它們之後開始：
     // 從 1 開始的話，解鎖第二區生出來的布丁會叫 p1 撞號，
@@ -297,8 +327,6 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     out.ingredients[id] = Math.max(0, num(rawIng?.[id], 0));
     out.desserts[id] = Math.max(0, num(rawDes?.[id], 0));
   }
-  const rawEq = r.equipment as Record<string, unknown> | undefined;
-  for (const id of EQUIPMENT_IDS) out.equipment[id] = rawEq?.[id] === true;
   out.ownedBasins = Array.isArray(r.ownedBasins)
     ? (r.ownedBasins.filter((x) => LIQUID_IDS.includes(x as LiquidId)) as LiquidId[])
     : [];
@@ -315,6 +343,18 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
   }
   out.activeZone = zoneOf(r.activeZone);
   if (!(findZoneUnlocked(out, out.activeZone))) out.activeZone = START_ZONE;
+
+  // 設備（D45）：v6 起每一區各一份。v5 以前是全場一份布林表，補給**當下所有已解鎖的區**——
+  // 老玩家在舊規則下付過一次錢就全場生效，只補起始區會把他第二區的自動化默默拔掉。
+  // 兩種形狀用「值是不是布林」分辨而不是看 schemaVersion：存檔碼可能被人手改過版本號。
+  const rawEq = (r.equipment ?? {}) as Record<string, unknown>;
+  const legacyFlat = EQUIPMENT_IDS.some((id) => typeof rawEq[id] === 'boolean');
+  out.equipment = noEquipmentByZone(out.zones);
+  for (const z of out.zones) {
+    const src = legacyFlat ? (z.unlocked ? rawEq : undefined) : (rawEq[z.id] as Record<string, unknown> | undefined);
+    const eq = out.equipment[z.id]!;
+    for (const id of EQUIPMENT_IDS) eq[id] = src?.[id] === true;
+  }
 
   out.puddings = r.puddings.map((p, i) => {
     const src = (p ?? {}) as Partial<Pudding>;

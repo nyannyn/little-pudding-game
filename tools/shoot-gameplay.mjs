@@ -51,7 +51,7 @@ await shot('cp3-3-drop');
 await page.evaluate(() => {
   const s = window.__lpg.state;
   s.coins = 99999;
-  for (const k of Object.keys(s.equipment)) s.equipment[k] = true;
+  for (const k of Object.keys(s.equipment[s.activeZone])) s.equipment[s.activeZone][k] = true;
   s.stock.caramel = 40;
 });
 await page.waitForTimeout(1200);
@@ -64,7 +64,7 @@ await page.evaluate(() => {
   s.coins = 9999;
   s.stock.caramel = 0;
   s.stock.milk = 80;
-  s.equipment.autoFill = true;
+  s.equipment[s.activeZone].autoFill = true;
   s.basins[0].liquid = 'milk';
   s.basins[0].preferredLiquid = 'milk';
   s.basins[0].units = 3;

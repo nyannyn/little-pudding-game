@@ -22,7 +22,7 @@ test('回到前景會依 lastSeenAt 補跑背景那段時間', async ({ page }) 
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.stock.caramel = 200;
-    s.equipment.autoFill = true;
+    s.equipment[s.activeZone]!.autoFill = true;
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.preferredLiquid = 'caramel';
     s.basins[0]!.units = 3;

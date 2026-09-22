@@ -31,7 +31,7 @@ test('賣出時金幣從販售口彈出來、撒在地上、消失，然後整�
 
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.equipment.seller = true;
+    s.equipment[s.activeZone]!.seller = true;
     s.desserts.caramel = 6;
     s.orders.length = 0;
   });
@@ -66,7 +66,7 @@ test('同一幀賣掉多個物種只彈一次（逐物種各彈一次會撒出�
   await boot(page, '/?debug=1&fresh=1&seed=31&pause=1');
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.equipment.seller = true;
+    s.equipment[s.activeZone]!.seller = true;
     // 三個物種同時有貨：shipDesserts 逐物種賣，會在同一幀丟出三個 sell 事件
     s.desserts.caramel = 1;
     s.desserts.panna = 1;

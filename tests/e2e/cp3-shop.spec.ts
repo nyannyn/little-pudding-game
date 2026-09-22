@@ -121,7 +121,8 @@ test('新手引導說「去買原料收集手」時，按商店直接開在設�
   await expect(page.locator('[data-a="shopTab"][data-arg="equipment"]')).toHaveAttribute('aria-selected', 'true');
   // 不切分頁就買得到
   await page.locator('[data-a="buyEquip"][data-arg="collector"]').click();
-  expect((await state(page)).equipment.collector).toBe(true);
+  const bought = await state(page);
+  expect(bought.equipment[bought.activeZone]!.collector).toBe(true);
 });
 
 test('買了一件之後清單不會跳回最上面（捲動位置保留）', async ({ page }) => {
@@ -181,7 +182,7 @@ test('真的讀一份 v2 舊存檔：沒有 xp 也不會降回 Lv.1，已裝的�
     delete s.xp;
     s.schemaVersion = 2;
     s.stats = { baths: 300, sold: 200, mutations: 2, picked: 300, crafted: 100 };
-    (s.equipment as Record<string, boolean>).restock = true;
+    s.equipment = { restock: true }; // v5 以前是全場一份的扁平布林表（D45 之後才分區）
     return JSON.stringify(s);
   });
   await page.goto('/manifest.webmanifest');
@@ -192,7 +193,7 @@ test('真的讀一份 v2 舊存檔：沒有 xp 也不會降回 Lv.1，已裝的�
   await ready(page, '/?seed=37'); // 沒有 fresh=1：走正常讀檔
   const s = await state(page);
   expect(s.xp).toBeGreaterThan(0);
-  expect(s.equipment.restock).toBe(true);
+  expect(s.equipment[s.activeZone]!.restock).toBe(true);
   await expect(page.locator('.shopbtn .lvl')).not.toHaveText('Lv.1');
   await page.getByRole('button', { name: '商店' }).click();
   await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();

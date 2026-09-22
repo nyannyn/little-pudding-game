@@ -26,7 +26,7 @@ import { advance, createWorld, drainEvents, settleOffline, syncForSave } from '.
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
 import { exportCode, importCode } from './game/savecode';
 import { load, overwrite, save, useTestSave } from './game/storage';
-import { createNewSave, type GameState, type Vec2 } from './game/state';
+import { createNewSave, equipmentIn, hasEquipmentAnywhere, type GameState, type Vec2 } from './game/state';
 import { basinsIn, findZone, puddingsIn, unlockedZones, zoneKey } from './game/zones';
 import { createRenderer } from './scene/renderer';
 import { MAX_AZIMUTH, createCamera, createControls, fitBoxDistance, applyDistance } from './scene/camera';
@@ -315,7 +315,7 @@ function shipNothingReason(r: ShipResult): string {
     }
     return '手上的甜點都留給訂單了，湊齊份數就會自己交出去。';
   }
-  if (state.equipment.seller) return '自動販售口已經幫你賣掉了，沒有甜點要出貨。';
+  if (hasEquipmentAnywhere(state, 'seller')) return '自動販售口已經幫你賣掉了，沒有甜點要出貨。';
   return '還沒有甜點可以出貨，先按「加工」做一份。';
 }
 
@@ -469,7 +469,7 @@ function handle(e: SimEvent) {
  * 這條前緣帶才不會蓋住布丁。沒買販售口時（手動出貨）用同一條帶的正中央。
  */
 function spawnCoins(earned: number, ox: number, oy: number) {
-  const hasWindow = state.equipment.seller;
+  const hasWindow = equipmentIn(state, state.activeZone).seller; // 窗口 mesh 只畫在裝了它的那一區
   const x = ox + (hasWindow ? -0.3 : 0);
   const z = 0.6;
   const y = oy + 0.28; // 窗體頂在 floorY+0.25，從它上緣冒出來才不會第一幀就被擋住

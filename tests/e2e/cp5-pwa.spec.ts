@@ -106,7 +106,7 @@ test('警告類提示被 × 關掉只安靜一下就回來（農場停住不可�
   // 把存檔擺成「農場停住」：盆空、液體用完、布丁想泡澡
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.equipment.autoFill = true;
+    s.equipment[s.activeZone]!.autoFill = true;
     s.basins[0]!.units = 0;
     s.basins[0]!.liquid = null;
     s.basins[0]!.preferredLiquid = 'caramel';

@@ -42,7 +42,7 @@ test('繁殖出來的第三隻布丁真的出現在畫面上（三角形數與 d
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.stock.milk = 30;
-    s.equipment.autoFill = true;
+    s.equipment[s.activeZone]!.autoFill = true;
     for (const b of s.basins) {
       b.liquid = 'milk';
       b.preferredLiquid = 'milk';
@@ -82,7 +82,7 @@ test('負向對照：只泡焦糖澡不會生，畫面也不會多東西', async
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.stock.caramel = 30;
-    s.equipment.autoFill = true;
+    s.equipment[s.activeZone]!.autoFill = true;
     for (const b of s.basins) {
       b.liquid = 'caramel';
       b.preferredLiquid = 'caramel';

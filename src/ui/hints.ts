@@ -1,6 +1,6 @@
 import { BALANCE, EQUIPMENT } from '../game/balance';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
-import type { GameState } from '../game/state';
+import { equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
 import { basinsIn, dropsIn, puddingsIn, unlockedZones } from '../game/zones';
 
 /**
@@ -57,7 +57,7 @@ export function dismissHints(): void {
  * 補貨合約裝了就不會發生，那時不用講。
  */
 function stalledHint(state: GameState): Hint | null {
-  if (state.equipment.restock) return null;
+  if (hasEquipmentAnywhere(state, 'restock')) return null;
   const zone = state.activeZone;
   const basins = basinsIn(state, zone);
   if (basins.some((b) => b.units > 0)) return null;
@@ -67,7 +67,7 @@ function stalledHint(state: GameState): Hint | null {
   const pourable = (['caramel', 'milk', ...state.ownedBasins] as LiquidId[]).filter((l) => state.stock[l] > 0);
   const stalled = (text: string): Hint => ({ id: 'stalled', text, warning: true });
 
-  if (state.equipment.autoFill) {
+  if (equipmentIn(state, zone).autoFill) {
     // 注液閥只會補「上次倒的那一種」：那一種沒了就停，庫存裡有別種也不會自己換
     const wanted = [...new Set(basins.map((b) => b.preferredLiquid).filter((l): l is LiquidId => l !== null))];
     if (wanted.length === 0 || wanted.some((l) => state.stock[l] > 0)) return null;
@@ -111,7 +111,7 @@ export function nextHint(state: GameState): Hint | null {
   if (stalled) return stalled;
   const full = zoneFullHint(state);
   if (full) return full;
-  if (Object.values(state.equipment).some(Boolean)) return null;
+  if (hasAnyEquipment(state)) return null;
 
   const zone = state.activeZone;
 
