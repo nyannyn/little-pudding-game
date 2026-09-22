@@ -27,11 +27,13 @@ async function closeShop(page: Page) {
   await page.getByRole('button', { name: '關閉' }).click();
 }
 
-/** 畫面上這一區有幾件設備 mesh（`EquipmentView.sync` 只畫玩家正在看的那一區自己的設備） */
-async function equipmentMeshCount(page: Page): Promise<number> {
-  // 等一幀讓 sync 跑過
-  await page.waitForTimeout(200);
-  return page.evaluate(() => window.__lpg.three!.scene.getObjectByName('Equipment')!.children.length);
+/** 等到畫面上這一區的設備 mesh 數符合預期（`EquipmentView.sync` 每幀跑，只畫玩家正在看的那一區自己的設備） */
+async function expectEquipmentMeshes(page: Page, present: boolean) {
+  await page.waitForFunction(
+    (p) => (window.__lpg.three!.scene.getObjectByName('Equipment')!.children.length > 0) === p,
+    present,
+    { timeout: 5_000 },
+  );
 }
 
 test('解鎖上層之後設備要重買：卡片回到可買、這一層沒有設備 mesh、切回起始區又是已安裝', async ({ page }) => {
@@ -48,7 +50,7 @@ test('解鎖上層之後設備要重買：卡片回到可買、這一層沒有�
   await closeShop(page);
   const s1 = await state(page);
   expect(s1.equipment[s1.activeZone]!.collector).toBe(true);
-  expect(await equipmentMeshCount(page)).toBeGreaterThan(0);
+  await expectEquipmentMeshes(page, true);
 
   // ② 解鎖上層：鏡頭切過去，設備頁那兩張卡回到「可買」，這一層畫面上沒有設備
   await openShop(page, 'zone');
@@ -62,7 +64,7 @@ test('解鎖上層之後設備要重買：卡片回到可買、這一層沒有�
   expect(s2.activeZone).toBe('c0t2');
   expect(s2.equipment.c0t2!.collector).toBe(false);
   expect(s2.equipment.c0t1!.collector).toBe(true);
-  expect(await equipmentMeshCount(page)).toBe(0);
+  await expectEquipmentMeshes(page, false);
 
   // ③ 在上層再買一台收集手：再扣一次原價，只有上層多了它
   await openShop(page, 'equipment');
@@ -74,7 +76,7 @@ test('解鎖上層之後設備要重買：卡片回到可買、這一層沒有�
   expect(s3.equipment.c0t2!.collector).toBe(true);
   expect(s3.equipment.c0t2!.autoFill).toBe(false);
   expect(s2.coins - s3.coins).toBe(Number(price)); // 再買一次是原價
-  expect(await equipmentMeshCount(page)).toBeGreaterThan(0);
+  await expectEquipmentMeshes(page, true);
 
   // ④ 切回起始區：那邊的兩台還在
   await page.locator('[data-a="zoneStep"][data-arg="1"]').click();

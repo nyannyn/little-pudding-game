@@ -5,6 +5,7 @@ import type { SimEvent } from '../../src/game/events';
 import { advance } from '../../src/game/sim';
 import { SCHEMA_VERSION, createNewSave, equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, migrate } from '../../src/game/state';
 import { START_ZONE, basinsIn, dropsIn, findZone, puddingsIn, zoneKey } from '../../src/game/zones';
+import { exportCode, importCode } from '../../src/game/savecode';
 import { fillBasinDirect, makeWorld } from './helpers';
 
 /**
@@ -114,6 +115,32 @@ describe('分區設備只作用在自己那一區', () => {
     expect(hasEquipmentAnywhere(w.state, 'seller')).toBe(true);
     expect(hasAnyEquipment(w.state)).toBe(true);
   });
+
+  /**
+   * 這條鎖的是一個**設計事實**，不是 bug：加工／販售／補貨操作的是全場共用的庫存，
+   * 第二區再買一台功能上不會多做事（D45，使用者知情後選定五台都要重買）。
+   * 哪天有人把這三台改成真的逐區生效，這條會紅，逼人回頭重看 D45 再決定。
+   */
+  it('第二區再買加工機／販售口／補貨合約，產能與收入跟只有一台時一模一樣', () => {
+    const run = (secondZoneToo: boolean) => {
+      const w = twoZones(777);
+      for (const id of ['crafter', 'seller', 'restock'] as const) {
+        w.state.equipment[START_ZONE]![id] = true;
+        if (secondZoneToo) w.state.equipment[SECOND_CABINET]![id] = true;
+      }
+      w.state.equipment[START_ZONE]!.collector = true;
+      w.state.equipment[SECOND_CABINET]!.collector = true;
+      w.state.coins = 500;
+      w.state.stock.caramel = 30;
+      for (const [i] of w.state.basins.entries()) fillBasinDirect(w.state, 'caramel', BALANCE.basinCapacity, i);
+      for (const p of w.state.puddings) p.caramel = 5;
+      advance(w, 300);
+      return { coins: w.state.coins, desserts: { ...w.state.desserts }, crafted: w.state.stats.crafted, stock: { ...w.state.stock } };
+    };
+    const one = run(false);
+    expect(one.crafted).toBeGreaterThan(0); // 先確認這段時間真的有在生產，不然「相等」是空話
+    expect(run(true)).toEqual(one);
+  });
 });
 
 describe('schema v5 → v6：舊存檔的扁平設備表', () => {
@@ -155,6 +182,22 @@ describe('schema v5 → v6：舊存檔的扁平設備表', () => {
     expect(equipmentIn(back, UPPER).autoFill).toBe(true);
     expect('c9t9' in back.equipment).toBe(false);
     expect(hasEquipmentAnywhere(back, 'restock')).toBe(false);
+  });
+
+  it('存檔碼那條路：v5 的碼匯入後兩個已解鎖區的旗標都在（線上老玩家走的就是這條）', () => {
+    const raw = v5WithTwoZones();
+    const code = exportCode(raw as unknown as ReturnType<typeof createNewSave>);
+    const back = importCode(code);
+    expect(back).not.toBeNull();
+    expect(back!.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(equipmentIn(back!, START_ZONE).seller).toBe(true);
+    expect(equipmentIn(back!, UPPER).seller).toBe(true);
+    expect(equipmentIn(back!, UPPER).autoFill).toBe(true);
+    expect(hasEquipmentAnywhere(back!, 'restock')).toBe(false);
+    // 再匯出一次是 v6 的分區形狀，讀回來不會再被當成扁平表
+    const again = importCode(exportCode(back!));
+    expect(equipmentIn(again!, SECOND_CABINET).seller).toBe(false);
+    expect(equipmentIn(again!, UPPER).seller).toBe(true);
   });
 
   it('完全沒有 equipment 欄位的存檔：每一區都是空的，不會炸', () => {
