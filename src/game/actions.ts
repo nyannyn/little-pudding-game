@@ -4,7 +4,7 @@ import type { EventSink } from './events';
 import { grantXp, levelFor } from './level';
 import { basinLevel, stockCost, stockLevel } from './shop';
 import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from './species';
-import type { GameState, Vec2 } from './state';
+import type { GameState, Order, Vec2 } from './state';
 import { findZone } from './zones';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -126,6 +126,13 @@ export interface ShipResult {
   fulfilled: number;
   /** 直接賣掉幾份甜點 */
   sold: number;
+  /**
+   * 沒賣掉、被進行中訂單預留的甜點份數。
+   * `fulfilled` 與 `sold` 都是 0、而這個 > 0 ＝「按了出貨卻什麼都沒發生」的唯一合理成因，
+   * UI 端要拿它講出原因；不然玩家看到的就是一顆按了沒反應的按鈕
+   * （2026-09-22 使用者回報「出貨按鍵有時按不了」）。
+   */
+  reserved: number;
 }
 
 /**
@@ -139,7 +146,7 @@ export interface ShipResult {
  * 而被測試覆蓋的是 `equipment.autoSell` 那份正確的。規則寫在 `game/` 才測得到。
  */
 export function shipDesserts(state: GameState, emit: EventSink, auto = false): ShipResult {
-  const out: ShipResult = { fulfilled: 0, sold: 0 };
+  const out: ShipResult = { fulfilled: 0, sold: 0, reserved: 0 };
 
   for (const o of [...state.orders]) {
     if (o.expiresAt <= state.time) continue;
@@ -154,9 +161,26 @@ export function shipDesserts(state: GameState, emit: EventSink, auto = false): S
       .reduce((sum, o) => sum + o.qty, 0);
     const spare = state.desserts[s] - reserved;
     if (spare > 0 && sellDessert(state, s, spare, emit, auto).ok) out.sold += spare;
+    // 留在手上的那幾份（預留量可能大於庫存，只算真的被扣住的）
+    else out.reserved += Math.min(state.desserts[s], reserved);
   }
 
   return out;
+}
+
+/**
+ * 出貨之後「還差幾份才交得出來」的那張訂單：缺最少的那一張。
+ * 只給 UI 用——按了出貨卻沒動靜時要說得出是哪一張單在扣著甜點。
+ */
+export function nearestPendingOrder(state: GameState): { order: Order; short: number } | null {
+  let best: { order: Order; short: number } | null = null;
+  for (const o of state.orders) {
+    if (o.expiresAt <= state.time) continue;
+    const short = o.qty - state.desserts[o.species];
+    if (short <= 0) continue;
+    if (!best || short < best.short) best = { order: o, short };
+  }
+  return best;
 }
 
 /** 交付訂單卡：出價比直接賣高，但要有對應物種的甜點 */
