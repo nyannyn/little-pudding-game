@@ -221,7 +221,7 @@
 - **新檔第一隻焦糖 24＝一開局就在想泡澡、垂眼**，這是刻意的（教學第一步就是倒焦糖）；`cp3-pudding-look` 的「正常眼睛」量法因此改成先餵飽再量。
 - 證據：單元 183 綠（新 2 條；拿掉泡澡中判定 → 紅過）、e2e 新 `cp7-mood-icons.spec.ts` 2 條（拿掉泡澡中判定 → 3 變 4 紅過；`EYE_TIRED=1` → 比值 1.0 紅過），全套 55 條中 54 綠＋`cp3-pudding-look` 修測試後單跑綠、`npm run build` 綠、`tools/playtest/layout.mjs` 兩個視口無疊（住客列那三項判準已隨 `.living` 移除）。15 隻 draw calls 16→**17**。
 - **已知、非本次造成**：iPhone SE（320 寬）上「小提示」泡泡（`.hint` top 206px）會蓋住整個中層的布丁；以前被狀態卡擋在下面，現在左欄空了，可以考慮把泡泡往上移，但要避開右欄訂單卡，未做。
-- 待使用者視覺簽核（圖示大小／樣式、垂眼幅度）。
+- **PR #14 已 squash merge 上線（2026-09-23，merge commit `9db224e`）**：Pages deploy 綠，線上 bundle `index-DPSFOwlH.js` 含 `Pudding_MoodIcons`、不再有「悠閒彈跳」，`npm run smoke:live` 全過。待使用者在手機上視覺簽核（圖示大小／樣式、垂眼幅度）。
 
 ## 風味與焦糖離開澡盆 → 手動保養＋三台自動機（2026-09-22 第十二場，使用者要求「抹茶澡盆要改成撒抹茶粉的機器」）
 
