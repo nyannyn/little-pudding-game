@@ -175,6 +175,14 @@
 - **待使用者簽核**：商店提示行的文案與位置、上層空櫃畫面。
 - **PR #7 已開（`feat/zone-equipment-pr`，從 `origin/master` 開的乾淨分支，worktree `../lpg-wt-zone-equipment`）**：本地 `master` 比 `origin/master` 多 3 個未推的 WP7-1 commit、本地 `feat/zone-equipment` 又夾著並行 session 的兩個文件 commit（c31193b／020afaf），所以把 commit 單獨 cherry-pick 過去（計畫檔 D44／D45 衝突已解：保留 origin 的 D44＝WebGL context lost，D46／D47 不屬本 PR）。worktree 的 `node_modules` 是 junction，**收尾要 `cmd /c rmdir node_modules` 再 `git worktree remove`，不可 rm -rf**。`cp5-context-lost.spec.ts` 在本機對 `origin/master` 本身也紅（SwiftShader），與本 PR 無關。
 - 教訓：突變測試還原又用了一次 `git checkout --`，把 `actions.ts` 整份未提交改動洗掉重打——`pattern_git_workflow` 早寫了「用反向 sed 或 stash」。
+## 販賣機（2026-09-22 第十二場，使用者要求「美化自動販賣商店機器、添加更多細節」，D46）
+
+- **目標物＝設備 `seller`（自動販售口）**，原本是 `equipmentMesh.ts` 裡三塊方塊拼的外帶窗；商店本身是 2D UI，不是它。
+- **走程式化幾何，沒開 Blender、沒抓網路模型**：設備整組合併成一個 mesh 共用一個 toon 材質，外來 GLB 會帶自己的材質把合併打散；機器在畫面上只有百來 px，截圖迭代一輪幾秒。三輪迭代（第一版把澡盆整個擋住 → 挪到 `x=−0.14`、機身收窄到 0.32；招牌奶油色跟牆同色看不見 → 珊瑚框）。
+- **設備改頂點色**（`paint()` 給每塊幾何一個 `color` attribute，`toonMaterial(0xffffff, { vertexColors: true })`）：一個 draw call，比原本金屬／配色兩個 mesh 少一格。全設備＋2 隻布丁實測 draw 24。
+- **金幣生成點改成 `SELLER_SPOUT`（機頂）＋ `burst(..., 'right')` 只往右撒**：從機身裡生第一幀就被擋；往左落進澡盆像 bug、落機身正後方被擋、右前方 z≥0.45 又被名牌蓋——只有右邊 z 0–0.3 那片地板是空的。逐幀（`step(0.05)`）截圖 0/4/9/14/20/26/32 幀驗過：5 枚全程可見、落點 x 0.14–0.80。手動出貨（沒買販售口）彈法不變。
+- 商店卡 `src/assets/shop/eqSeller.svg` 手繪重畫成同款（不跑 `art:shop`，那支只抓 emoji 素材）。
+- 這一場在 worktree `Desktop/lpg-wt-vending`（分支 `feat/vending-machine`，從 `origin/master` `eaf96e4` 開）、dev server `5175`；主樹又是並行 session 的未提交工作（布丁 instancing）。
 
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。

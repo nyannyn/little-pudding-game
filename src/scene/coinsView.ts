@@ -78,15 +78,18 @@ export class CoinsView {
    * 一次出貨可能在同一幀丟出好幾個 `sell` 事件，用「距離上次 N 秒才准播」的節流
    * 會把同幀的其他幾筆吃掉。
    */
-  burst(x: number, y: number, z: number, n: number, floorY: number, rng: () => number = Math.random) {
+  burst(x: number, y: number, z: number, n: number, floorY: number, rng: () => number = Math.random, fan: 'both' | 'right' = 'both') {
     const count = Math.max(1, Math.min(n, 8));
     for (let i = 0; i < count; i++) {
       // 扇形撒開：左右散開，深度方向往 **−z**（櫥窗內側）拋。
-      // ①不可以往 +z：窗口 mesh 在 z=0.68、前玻璃在 0.7，只剩 2 公分，往那邊撒會穿模。
-      // ②往 −z 也不能只滾一點點：外帶窗是個 0.3×0.2 的箱體，落在它正後方（z≈0.5）
-      //   的金幣會被它整個擋住，玩家只看得到一角（2026-09-22 截圖實測）。
-      //   要拋過窗體、落到 z≈0.35 那片空地上才看得見。
-      const spread = (i / Math.max(1, count - 1) - 0.5) * 1.4 + (rng() - 0.5) * 0.3;
+      // ①不可以往 +z：生成點離前玻璃（z=0.7）只剩幾公分，往那邊撒會穿模。
+      // ②往 −z 也不能只滾一點點：落在生成物正後方的金幣會被它整個擋住，
+      //   玩家只看得到一角（2026-09-22 截圖實測）。要拋過去、落到後面的空地上才看得見。
+      // `fan = 'right'`：只往 +x 撒。販賣機的金幣是從機頂冒出來的，機身半公尺高，
+      //   落在它正後方的都會被擋住；左邊又是澡盆，金幣掉進澡盆看起來像 bug——
+      //   只有右邊那片地板是空的（2026-09-22 逐幀截圖實測）。
+      const t = i / Math.max(1, count - 1) + (rng() - 0.5) * 0.2;
+      const spread = fan === 'right' ? 0.5 + t * 0.9 : (t - 0.5) * 1.4;
       if (this.coins.length >= MAX) this.coins.shift();
       this.coins.push({
         x, y, z,
