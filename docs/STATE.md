@@ -201,7 +201,7 @@
 - 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 3 條（體色寫死成白 → 紅過；眼睛 instance 抄成本體矩陣 → 紅過。第三條讀的是 `Puddings_Eyes.instanceMatrix` 不是骨架——`cp3-pudding-look` 只量骨架，pool 抄錯矩陣它照樣綠；比值要除掉同一隻本體的比值，跳躍時根節點自己會拉長 1.19）、`npm run build` 綠、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**視覺簽核被退回（不是通過）**：使用者要「不同口味不同建模」→ D47（兩種輪廓＋五種加件，最壞 23 draw calls）；狀態卡改表情＋頭頂小圖示 → D48；順序定為 7-2a → 7-1b／7-2b → 7-3。
 - `tools/measure-pop.mjs` 使用者說刪，已刪（cp7-instancing 鎖住 15 隻）。
 
-## WP7-2a `zoneCapacity` 15＋平衡（2026-09-23，分支 `feat/zone-capacity-15`，獨立 worktree）
+## WP7-2a `zoneCapacity` 15＋平衡（2026-09-23，分支 `feat/zone-capacity-15`，獨立 worktree；已上線）
 
 - **另一個 session 同時在主樹改「設備每一區各買各的」**，所以這一包在 `.claude/worktrees/zone-cap` 做（使用者定的）。`node_modules` 用 `mklink /J` 借主樹的。
 - **在 worktree 跑 e2e 一定要帶 `LPG_PORT`**：`playwright.config.ts` 的 `reuseExistingServer: true` 會接上主樹還開著的 5173，於是測到的是別人改到一半的樹。實際踩到——七條紅（sell-coins／shop／game-loop／pour），換 `LPG_PORT=5199` 之後 51/51 全綠。**症狀長得像回歸，其實是測錯樹**。
@@ -212,6 +212,8 @@
 - **畫面問題照舊**（已排進 D48）：15 隻時左側狀態卡蓋掉大半個櫥窗。
 - **rebase 到 `89a632f`（origin 的每區設備 D45＋販賣機 D46）**：只有兩個 docs 檔衝突（merge-tree 先驗過），碼全自動合。**rebase 後重量 pacing**——每區重買設備會動到經濟，價格得重驗：11.1／21.7／35.9 分（rebase 前 11.1／21.1／35.1），價格不必重選。rebase 後單元 181 綠、e2e 53/53 綠、`npm run build` 綠。
 - **決策編號第二次撞號**：本地寫 D46／D47 時 origin 已有 D44（WebGL context lost）／D45（每區設備）／D46（販賣機），rebase 時改成 **D47 物種外觀／D48 狀態卡**。**並行 session 多的時候，決策編號等 rebase 完再定**。
+- **已 merge 上線（2026-09-23）**：PR #12 squash 成 `b888473`（WP7-1 InstancedMesh 與 WP7-2a 一起進 master），Pages run 35766353350 綠、`headSha` 相符；線上 bundle `assets/index-BDjV_iN0.js` grep 到 `zoneCapacity:15`、`price:500,level:4`／`price:2e3,level:6`／`price:5e3,level:7`。merge 前在「PR＋`origin/master`」的合併樹上驗：build 綠、單元 181 綠、e2e 第一輪 50/53（`cp3-game-loop:30` 紅、同檔 2 條沒跑到）、第二輪 **53/53**；`:30` 單跑 6/6 綠、`origin/master` 上同檔 3 輪 9/9 綠。`:30` 紅過兩個位置：`:80`（迴圈拿舊快照判斷「拿到焦糖」就跳出，跳出前 200ms 可能又掉一顆，**測試自己的競態，該修測試**）與 `:38`（按倒焦糖後立刻讀到 0 格，trace 沒留，**未查明**）。
+- **收尾後本地 `master` 仍停在舊的 3 個 WP7-1 commit（`aa32de3`，checkout 在 `../lpg-wt-zone-equipment`）**，內容已由 `b888473` 帶上 origin，但 sha 不同＝跟 `origin/master` 分岔。要用前先確認那個 worktree 沒人在用，再 `git reset --hard origin/master`（使用者決定）。
 
 ## 風味與焦糖離開澡盆 → 手動保養＋三台自動機（2026-09-22 第十二場，使用者要求「抹茶澡盆要改成撒抹茶粉的機器」）
 
