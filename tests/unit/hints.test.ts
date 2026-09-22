@@ -115,3 +115,92 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).not.toBe('pour');
   });
 });
+
+/**
+ * 2026-09-22 使用者回報：「我的小布丁跑完牛奶沒有再增加」。
+ * 存檔碼解開後的實況：3 隻布丁 caramel 全 0、drops 0、盆空、`preferredLiquid: 'milk'`、
+ * 牛乳 0、焦糖還有 2 份、只解鎖一區、泡了 21 次澡只生 1 隻。
+ * 兩個坑：提示說「布丁照樣會掉原料」（D35 之後是假的），以及全程沒人講「住滿了」。
+ */
+describe('2026-09-22 回報：注液閥卡在牛乳、農場整個停住', () => {
+  /** 重建使用者那份存檔的關鍵欄位 */
+  function stalledSave() {
+    const s = fresh();
+    s.equipment.autoFill = true;
+    s.equipment.collector = true;
+    s.equipment.crafter = true;
+    s.equipment.seller = true;
+    s.stock.caramel = 2;
+    s.stock.milk = 0;
+    s.basins[0]!.liquid = null;
+    s.basins[0]!.units = 0;
+    s.basins[0]!.preferredLiquid = 'milk';
+    for (const p of s.puddings) p.caramel = 0;
+    return s;
+  }
+
+  it('注液閥的口味沒庫存、但焦糖還有：要指名叫玩家按「倒焦糖」', () => {
+    const h = nextHint(stalledSave());
+    expect(h?.id).toBe('stalled');
+    expect(h?.warning).toBe(true);
+    expect(h?.text).toContain('倒焦糖'); // 出路＝動作列上那顆按鈕的字
+    expect(h?.text).toContain('不會自己換口味');
+  });
+
+  it('不可以再說「布丁照樣會掉原料」——D35 之後焦糖見底就完全停產', () => {
+    // 負向對照：把這句話寫回去，這條就要紅
+    expect(nextHint(stalledSave())?.text).not.toContain('照樣會掉原料');
+    // 而且要把「連原料都不會掉」講出來，否則玩家只會以為少了泡澡這件事
+    expect(nextHint(stalledSave())?.text).toContain('原料都不會掉');
+  });
+
+  it('真的什麼都沒得倒的時候，還是叫他去補貨', () => {
+    const s = stalledSave();
+    s.stock.caramel = 0;
+    const h = nextHint(s);
+    expect(h?.id).toBe('stalled');
+    expect(h?.text).toContain('去商店補貨');
+    expect(h?.text).not.toContain('照樣會掉原料');
+  });
+});
+
+describe('2026-09-22 回報：住滿了還一直泡牛乳，21 次澡只生 1 隻', () => {
+  /** 已解鎖的唯一一區住滿 zoneCapacity 隻，而且手上還有牛乳 */
+  function fullSave() {
+    const s = fresh();
+    const proto = s.puddings[0]!;
+    while (s.puddings.length < BALANCE.zoneCapacity) {
+      s.puddings.push({ ...proto, id: `pX${s.puddings.length}`, pos: { ...proto.pos }, from: { ...proto.from }, to: { ...proto.to } });
+    }
+    s.stock.milk = 5;
+    s.basins[0]!.liquid = 'caramel';
+    s.basins[0]!.units = 2; // 盆裡有東西，才不會先被 stalled 攔走
+    return s;
+  }
+
+  it('每一區都滿了又還在碰牛乳：要常駐警告，並指路去解鎖下一區', () => {
+    const h = nextHint(fullSave());
+    expect(h?.id).toBe('zonefull');
+    expect(h?.warning).toBe(true);
+    expect(h?.text).toContain('解鎖');
+  });
+
+  it('還有空位就不要唸——新生兒會自己溢出到隔壁', () => {
+    const s = fullSave();
+    s.zones.find((z) => z.id === 'c0t2')!.unlocked = true;
+    expect(nextHint(s)?.id).not.toBe('zonefull');
+  });
+
+  it('沒在碰牛乳的玩家不用被唸繁殖的事', () => {
+    const s = fullSave();
+    s.stock.milk = 0;
+    s.basins[0]!.preferredLiquid = 'caramel';
+    expect(nextHint(s)?.id).not.toBe('zonefull');
+  });
+
+  it('警告排在教學前面：買了設備讓教學停掉，這條仍然要出現', () => {
+    const s = fullSave();
+    s.equipment.collector = true;
+    expect(nextHint(s)?.id).toBe('zonefull');
+  });
+});

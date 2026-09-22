@@ -5,7 +5,7 @@ import { describePudding } from '../game/pudding';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { puddingsIn, unlockedZones } from '../game/zones';
-import { dismissHints, hintsDismissed, nextHint } from './hints';
+import { LIQUID_SHORT, dismissHints, hintsDismissed, nextHint } from './hints';
 import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
 import { ShopView, type ShopPage } from './shop';
@@ -35,14 +35,6 @@ const LIQUID_ICON: Record<LiquidId, CuteIconName> = {
   milk: 'milk',
   matcha: 'matcha',
   strawberry: 'strawberry',
-};
-
-/** 短名，按鈕塞得下才用得了 */
-const LIQUID_SHORT: Record<LiquidId, string> = {
-  caramel: '焦糖',
-  milk: '牛乳',
-  matcha: '抹茶',
-  strawberry: '草莓',
 };
 
 const el = (html: string): HTMLElement => {

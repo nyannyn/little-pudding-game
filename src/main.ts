@@ -7,6 +7,7 @@ import {
   craft,
   fillBasin,
   fulfillOrder,
+  nearestPendingOrder,
   pickAllDrops,
   pickDrop,
   sellDessert,
@@ -15,6 +16,7 @@ import {
   shipDesserts,
   switchZone,
   unlockZone,
+  type ShipResult,
 } from './game/actions';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
@@ -293,6 +295,20 @@ function basinIndexFor(liquid: LiquidId): number {
   return mine.find((i) => state.basins[i]?.preferredLiquid === liquid) ?? (mine[0] as number);
 }
 
+/** 按了出貨卻一份都沒出去時的說明。分成「被訂單扣著」與「根本沒甜點」兩種 */
+function shipNothingReason(r: ShipResult): string {
+  if (r.reserved > 0) {
+    const pending = nearestPendingOrder(state);
+    if (pending) {
+      const { order, short } = pending;
+      return `手上的甜點留給訂單了：「${SPECIES[order.species].dessert} ×${order.qty}」還差 ${short} 份才交得出來。`;
+    }
+    return '手上的甜點都留給訂單了，湊齊份數就會自己交出去。';
+  }
+  if (state.equipment.seller) return '自動販售口已經幫你賣掉了，沒有甜點要出貨。';
+  return '還沒有甜點可以出貨，先按「加工」做一份。';
+}
+
 function report(r: { ok: true } | { ok: false; error: string }) {
   if (!r.ok) hud.toast(r.error, true);
   hud.update(state, performance.now(), true);
@@ -318,7 +334,11 @@ const hud = new Hud(document.body, {
   ship: () => {
     // 規則在 game/：手動與自動販售口共用同一個函式（含「訂單預留量」），
     // 這裡再抄一份就是上次「出貨把湊到一半的甜點賣掉、訂單永遠交不出去」的成因
-    shipDesserts(state, world.emit);
+    const r = shipDesserts(state, world.emit);
+    // 什麼都沒出貨就一定要講話。手上的甜點被進行中的訂單預留住時，這顆鈕是亮的、
+    // 按下去卻完全沒有反應也沒有任何字——玩家看到的就是「按鍵壞了」
+    // （2026-09-22 使用者回報，存檔碼實證：裝了自動販售口＋一張焦糖 ×3 的單）
+    if (r.fulfilled === 0 && r.sold === 0) hud.toast(shipNothingReason(r), true);
     hud.update(state, performance.now(), true);
   },
   fulfill: (id) => report(fulfillOrder(state, id, world.emit)),

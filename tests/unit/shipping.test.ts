@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { craft, shipDesserts } from '../../src/game/actions';
+import { craft, nearestPendingOrder, shipDesserts } from '../../src/game/actions';
 import { BALANCE } from '../../src/game/balance';
 import { runAutomation } from '../../src/game/equipment';
 import { dessertPrice } from '../../src/game/species';
@@ -134,5 +134,87 @@ describe('出貨：訂單預留量', () => {
     expect(manual.state.coins).toBe(auto.state.coins);
     expect(manual.state.desserts.caramel).toBe(auto.state.desserts.caramel);
     expect(manual.state.orders.length).toBe(auto.state.orders.length);
+  });
+});
+
+/**
+ * 2026-09-22 使用者回報：「出貨按鍵有時按不了」。
+ * 存檔碼實況：裝了加工機＋自動販售口、桌上一張「焦糖布丁塔 ×3」的單。
+ * 甜點被那張單預留住的期間，按鈕是亮的（甜點數 > 0）、按下去卻一份都沒出去，
+ * 而且完全沒有任何字——玩家看到的就是一顆壞掉的按鈕。
+ * 預留規則本身是對的（上面那組測試在守），缺的是「講出來」的材料。
+ */
+describe('出貨什麼都沒出去時，要有材料講出原因', () => {
+  it('甜點全被進行中的訂單扣住：fulfilled／sold 都是 0，但 reserved 要算得出來', () => {
+    const w = makeWorld();
+    const s = w.state;
+    order(s, 3);
+    s.desserts.caramel = 2;
+
+    const r = shipDesserts(s, noop);
+
+    expect(r.fulfilled).toBe(0);
+    expect(r.sold).toBe(0);
+    expect(r.reserved).toBe(2); // 手上這 2 份是被扣住的，不是「沒有甜點」
+  });
+
+  it('預留量比手上的多時，只算真的被扣住的那幾份', () => {
+    const w = makeWorld();
+    const s = w.state;
+    order(s, 3);
+    order(s, 3); // 兩張單共預留 6 份
+    s.desserts.caramel = 1;
+
+    expect(shipDesserts(s, noop).reserved).toBe(1);
+  });
+
+  it('真的沒甜點就是 0，不可以誤報成「被訂單扣住」', () => {
+    const w = makeWorld();
+    const s = w.state;
+    order(s, 3);
+
+    const r = shipDesserts(s, noop);
+
+    expect(r.reserved).toBe(0);
+  });
+
+  it('全部出得掉的時候 reserved 是 0', () => {
+    const w = makeWorld();
+    const s = w.state;
+    s.desserts.caramel = 4;
+
+    expect(shipDesserts(s, noop).reserved).toBe(0);
+  });
+
+  it('要說得出是哪一張單在扣、還差幾份', () => {
+    const w = makeWorld();
+    const s = w.state;
+    order(s, 3);
+    s.desserts.caramel = 2;
+
+    const pending = nearestPendingOrder(s);
+
+    expect(pending?.order.qty).toBe(3);
+    expect(pending?.short).toBe(1);
+  });
+
+  it('缺最少的那一張優先講（玩家最快湊得出來的那張）', () => {
+    const w = makeWorld();
+    const s = w.state;
+    order(s, 5);
+    order(s, 3);
+    s.desserts.caramel = 2;
+
+    expect(nearestPendingOrder(s)?.short).toBe(1);
+  });
+
+  it('過期的訂單不算——它不會扣住任何東西', () => {
+    const w = makeWorld();
+    const s = w.state;
+    order(s, 3, true);
+    s.desserts.caramel = 1;
+
+    expect(nearestPendingOrder(s)).toBeNull();
+    expect(shipDesserts(s, noop).reserved).toBe(0);
   });
 });
