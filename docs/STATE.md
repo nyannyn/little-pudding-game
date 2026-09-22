@@ -186,6 +186,8 @@
 - 商店卡 `src/assets/shop/eqSeller.svg` 手繪重畫成同款（不跑 `art:shop`，那支只抓 emoji 素材）。
 - 這一場在 worktree `Desktop/lpg-wt-vending`（分支 `feat/vending-machine`，從 `origin/master` `eaf96e4` 開）、dev server `5175`；主樹又是並行 session 的未提交工作（布丁 instancing）。
 - **Rebase 到 `24ff373`（並行 session 的「設備每一區各買各的」，schema v6）**：三個檔衝突。`main.ts` 的 `spawnCoins` 取兩邊（`equipmentIn(state, activeZone).seller` ＋ `SELLER_SPOUT`）；`equipmentMesh.ts` 自動合併後實查過 `sync()` 用的是 `equipmentIn(state, zone)` 不是舊的扁平 `state.equipment`。**D45 撞號**（對方先進 master）→ 本條改成 **D46**。rebase 後重跑：build 綠、vitest 181/181 綠、畫面與金幣逐幀重拍一次（draw 仍 24）。
+- **已 merge 上線（2026-09-23 00:59）**：PR #8 squash 成 `d878b5b`。**自己那支 Pages run 被取消**——並行 session 的 `cf01c2a` 疊在上面、它的部署把我這支蓋掉了；`cf01c2a` 含我的 commit，所以線上就是新版。線上驗過：`smoke:live` 15 項全過（draw 25/35、SW、離線、零 console 錯誤），另用 iPhone 視口對線上拍了販賣機（`evidence/vending-live-2026-09-23.png`，draw 24、tris 8934，與本機一致）。
+- **rebase 後第三輪 e2e 50/50 全綠**；前兩輪各紅一條不同的（`cp3-game-loop:114`、`cp5-pwa:82`）且單跑皆綠，屬機器忙的機率型失敗，根因未查明。
 
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
