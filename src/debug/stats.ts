@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { storageReport } from '../game/storage';
 import type { GameState } from '../game/state';
 
 export interface LpgStats {
@@ -56,6 +57,9 @@ export function createStats(renderer: THREE.WebGLRenderer, visible: boolean) {
   const stats: LpgStats = { fps: 0, drawCalls: 0, triangles: 0, ready: false, pixels: 0, gpu: gpuName(renderer) };
   window.__lpg = { ...(window.__lpg ?? {}), stats };
 
+  // 存檔狀態：下一次「進度不見了」要看得到事實，不是用猜的。
+  // 每半秒才更新一次——這行要讀兩次 localStorage，不能每幀跑。
+  let storageLine = '';
   let frames = 0, last = performance.now();
   return {
     stats,
@@ -65,6 +69,11 @@ export function createStats(renderer: THREE.WebGLRenderer, visible: boolean) {
       if (now - last >= 500) {
         stats.fps = Math.round((frames * 1000) / (now - last));
         frames = 0; last = now;
+        const st = storageReport();
+        storageLine =
+          `${st.key} r${st.rev} ${st.mainBytes}B` +
+          `${st.backupBytes > 0 ? ` bak ${st.backupBytes}B/p${st.backupScore}` : ' bak 無'}` +
+          `${st.durable ? '' : ' 不持久'}${st.outdated ? ' 已停寫' : ''}`;
       }
       stats.drawCalls = renderer.info.render.calls;
       stats.triangles = renderer.info.render.triangles;
@@ -74,7 +83,7 @@ export function createStats(renderer: THREE.WebGLRenderer, visible: boolean) {
         el.textContent =
           `fps ${stats.fps}\ndraw ${stats.drawCalls}\ntris ${stats.triangles}\n` +
           `${size.x}×${size.y} (dpr ${renderer.getPixelRatio()})\n` +
-          `${(stats.pixels / 1e6).toFixed(1)} Mpx\n${stats.gpu}`;
+          `${(stats.pixels / 1e6).toFixed(1)} Mpx\n${stats.gpu}\n${storageLine}`;
       }
     },
   };

@@ -680,3 +680,42 @@
 .welcome h2 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
 .welcome p { margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; }
 .welcome button { width: 100%; }
+
+/* ── 存檔碼卡 ─────────────────────────────── */
+.savecard .code {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 2px solid var(--wood-light);
+  border-radius: 12px;
+  background: #fffdf6;
+  color: var(--ink-soft);
+  font: 400 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: none;
+  /* 一長串沒有空白的 base64，不強制斷字的話會把卡片撐爆 */
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.savecard .row { display: flex; gap: 8px; margin-bottom: 6px; }
+.savecard .row button { flex: 1; }
+.hud .savecard button.ghost {
+  background: none;
+  box-shadow: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 12px;
+  min-height: 30px;
+}
+.savecard h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
+.hud .savecard button.optrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 7px 12px;
+  border-radius: 13px;
+}
+.savecard .optrow .label { flex: 1; text-align: left; }
+.savecard .optrow .val { color: var(--ink-soft); font-size: 12px; font-weight: 400; }

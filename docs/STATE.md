@@ -111,6 +111,15 @@
 - **改規則時，e2e 的失敗有兩種要分清楚**：①測試寫死了舊規則（該改測試）②規則本身有死路（該改設計）。這次三條 e2e 全紅：`cp3-game-loop` 等「泡完澡掉原料」是①；`cp3-expansion` 看 `drops` 但那一步已裝收集手、掉落物會被立刻收走是①（改看 `stats.picked`）；而「等不到 ingredient 掉落」是②——**地板被 5 顆蛋塞滿就完全停止掉落**（eggChance 0.65 下連掉 5 顆蛋的機率 11.6%，固定 seed 必然重現）。
 - **`dropCap = 5` 在雙掉落物之後容易塞爆**：沒有收集手時地板很快被蛋堆滿，堆滿就不再掉任何東西（單元測試裡踩到，靠裝收集手才測得下去）。這是待調整的平衡點。
 
+## 進度消失 → 存檔碼＋備份格（2026-09-22 第九場，使用者回報「我剛剛 push 了 但網頁上的遊玩進度消失了 可能還是得做登入」）
+- **事故事實**：iPhone Safari，兩個分頁（其中一個是遺留的 `?debug=1` 分頁）都只剩全新農場。查到「主格 `lpg.save.v1` 讀不到」為止，**根因查不出來**，那份進度救不回來（已告知使用者）。
+- 排除掉的：`migrate()` 不可能把有效存檔變成新農場（`out.puddings = r.puddings.map(...)`）、`src/` 全樹沒有任何 `clear()`、存檔 key 從 `d0f558e` 到現在只有 `lpg.save.v1`、那次 push（`5bb7e02`）只動 `docs/` 與 `CLAUDE.md`。加到主畫面的分區假設也排除了（使用者一直在 Safari 分頁玩）。
+- **過程中挖到一個真的 bug**：`persist()` 無條件寫整份 state，開著沒關的舊分頁一回到前景就 `settleOffline` 往前推、5 秒後把新分頁的進度蓋掉。已修（D37）。
+- **`isDurable()` 偵測不到 Safari 無痕**：無痕的 localStorage 真的寫得進去、只在 session 結束被清，所以「這個瀏覽器存不了進度」的提示在最需要它的時候不會跳。**這條還沒解**，存檔碼只是繞過它。
+- 做了：`rev` ＋ `progressScore` 寫入守衛、備份格 `.bak`、存檔碼（設定卡，齒輪取代喇叭）、`?debug=1` 顯示兩格狀態。**帳號登入／雲端存檔沒做**，留待使用者決定。
+- 測試：`tests/unit/save-guard.test.ts`（12）、`tests/unit/savecode.test.ts`（7）、`tests/e2e/cp5-savecode.spec.ts`（4）。兩個守衛都做過突變負向對照——拿掉 `rev` 比對 → 3 條紅；備份改成無條件寫 → 2 條紅。
+- **既有 flake，不要誤判成回歸**：`cp3-game-loop.spec.ts` 的 AC3-1／AC3-1b 整檔連跑會隨機在「等下一批掉落物」逾時，單跑就過；在乾淨 worktree（HEAD `5bb7e02`、無本次改動）實測同樣紅，與這次無關。
+
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
 - 遊戲設計定稿與決策 D1–D14 在 [plans/game-plan-v1.md](plans/game-plan-v1.md)；改規則先改計畫檔的設計表再改 code。
