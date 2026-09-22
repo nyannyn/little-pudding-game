@@ -48,7 +48,7 @@ import {
 import { createCabinetRow } from './scene/cabinetRow';
 import { BASIN_SINK, BasinsView } from './scene/basinMesh';
 import { DropsView } from './scene/dropMesh';
-import { EquipmentView } from './scene/equipmentMesh';
+import { EquipmentView, SELLER_SPOUT } from './scene/equipmentMesh';
 import { Particles } from './scene/particles';
 import { ENTER as POUR_ENTER, PourView, THICKNESS, flowSeconds } from './scene/pourView';
 import { PuddingView } from './scene/puddingView';
@@ -462,21 +462,21 @@ function handle(e: SimEvent) {
 }
 
 /**
- * 賣出的金幣從外帶窗口彈出來、撒在窗前的地板上、消失（D42）。
+ * 賣出的金幣從販賣機彈出來、撒在地板上、消失（D42）。
  *
- * 生成點卡在 z=0.60：窗口 mesh 在 `d/2 − 0.02 = 0.68`、前玻璃在 0.7，
- * 從 0.68 生會卡在窗體裡、落在玻璃後面；布丁地板是 ±0.4，落在 0.42–0.60
- * 這條前緣帶才不會蓋住布丁。沒買販售口時（手動出貨）用同一條帶的正中央。
+ * 買了販售口：從販賣機**頂上**（`SELLER_SPOUT`）冒出來——機身有半公尺高，從機身裡生
+ * 第一幀就被擋住；往 −z 拋會越過機身落到地板上。沒買（手動出貨）：從前緣帶 z=0.6 正中央生，
+ * 布丁地板是 ±0.4，落在 0.42–0.60 這條帶才不會蓋住布丁。
  */
 function spawnCoins(earned: number, ox: number, oy: number) {
-  const hasWindow = equipmentIn(state, state.activeZone).seller; // 窗口 mesh 只畫在裝了它的那一區
-  const x = ox + (hasWindow ? -0.3 : 0);
-  const z = 0.6;
-  const y = oy + 0.28; // 窗體頂在 floorY+0.25，從它上緣冒出來才不會第一幀就被擋住
+  const hasWindow = equipmentIn(state, state.activeZone).seller; // 販賣機只畫在裝了它的那一區
+  const x = ox + (hasWindow ? SELLER_SPOUT.x : 0);
+  const z = hasWindow ? SELLER_SPOUT.z : 0.6;
+  const y = oy + (hasWindow ? SELLER_SPOUT.y : 0.28);
   // 金額越大越多枚，但看得清楚比例更重要：2–6 枚
   const n = Math.max(2, Math.min(6, 2 + Math.floor(earned / 40)));
-  coins.burst(x, y, z, n, oy);
-  particles.burst(x, y, z, 0xffe08a, 10); // 窗口冒一下，告訴玩家錢是從這裡出來的
+  coins.burst(x, y, z, n, oy, Math.random, hasWindow ? 'right' : 'both');
+  particles.burst(x, y, z, 0xffe08a, 10); // 機頂冒一下，告訴玩家錢是從這裡出來的
 }
 
 // ── 觸控：點掉落物撿起來、點澡盆倒液體 ────────────────
