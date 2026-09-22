@@ -143,7 +143,7 @@ export const BALANCE = {
    * （15 隻＝88）；布丁改 InstancedMesh 之後隻數不再是乘數，15 隻＝16（`tests/e2e/cp7-instancing.spec.ts`）。
    * 上限 2 等於繁殖永遠不會發生（開局就滿員），所以下限是 3。
    */
-  zoneCapacity: 3,
+  zoneCapacity: 15,
   /**
    * 出生後幾秒才算長大。**只影響顯示**（狀態列寫「幼布丁」）——
    * D34 之後繁殖由牛奶澡觸發，不設成年與冷卻限制：「泡完就生」要說到做到。

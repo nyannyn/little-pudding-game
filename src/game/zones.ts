@@ -45,9 +45,9 @@ export function defaultZones(): Zone[] {
     // 下層 700／二號 1800 是生產迴圈改版後用 `npm run pacing` 重新量過的（原 500／1200
     // 在新產量下 13／19 分就解鎖，長期目標變得不長期）。
     { id: zoneKey(0, 1), cabinet: 0, tier: 1, name: '一號櫥窗・中層', shortName: '中層', unlocked: true, price: 0, level: 1 },
-    { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', shortName: '上層', unlocked: false, price: 200, level: 4 },
-    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', shortName: '下層', unlocked: false, price: 700, level: 6 },
-    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', shortName: '二號・中層', unlocked: false, price: 1800, level: 7 },
+    { id: zoneKey(0, 2), cabinet: 0, tier: 2, name: '一號櫥窗・上層', shortName: '上層', unlocked: false, price: 500, level: 4 },
+    { id: zoneKey(0, 0), cabinet: 0, tier: 0, name: '一號櫥窗・下層', shortName: '下層', unlocked: false, price: 2000, level: 6 },
+    { id: zoneKey(1, 1), cabinet: 1, tier: 1, name: '二號櫥窗・中層', shortName: '二號・中層', unlocked: false, price: 5000, level: 7 },
   ];
 }
 

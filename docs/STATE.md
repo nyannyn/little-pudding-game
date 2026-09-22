@@ -199,6 +199,16 @@
 - 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 3 條（體色寫死成白 → 紅過；眼睛 instance 抄成本體矩陣 → 紅過。第三條讀的是 `Puddings_Eyes.instanceMatrix` 不是骨架——`cp3-pudding-look` 只量骨架，pool 抄錯矩陣它照樣綠；比值要除掉同一隻本體的比值，跳躍時根節點自己會拉長 1.19）、`npm run build` 綠、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**視覺簽核被退回（不是通過）**：使用者要「不同口味不同建模」→ D46（兩種輪廓＋五種加件，最壞 23 draw calls）；狀態卡改表情＋頭頂小圖示 → D47；順序定為 7-2a → 7-1b／7-2b → 7-3。
 - `tools/measure-pop.mjs` 使用者說刪，已刪（cp7-instancing 鎖住 15 隻）。
 
+## WP7-2a `zoneCapacity` 15＋平衡（2026-09-23，分支 `feat/zone-capacity-15`，獨立 worktree）
+
+- **另一個 session 同時在主樹改「設備每一區各買各的」**，所以這一包在 `.claude/worktrees/zone-cap` 做（使用者定的）。`node_modules` 用 `mklink /J` 借主樹的。
+- **在 worktree 跑 e2e 一定要帶 `LPG_PORT`**：`playwright.config.ts` 的 `reuseExistingServer: true` 會接上主樹還開著的 5173，於是測到的是別人改到一半的樹。實際踩到——七條紅（sell-coins／shop／game-loop／pour），換 `LPG_PORT=5199` 之後 51/51 全綠。**症狀長得像回歸，其實是測錯樹**。
+- 數字：`zoneCapacity` 15、分區價 500／2000／5000（使用者從四組實測曲線裡選）。掉落節奏不動。
+- pacing 改前（cap 3）12.1／22.1／31.9 分、32.6k 幣、12 隻 → 改後 11.1／21.1／35.1 分、67.2k 幣、60 隻。**不調價的話是 3.7／9.0／14.3 分**——住客翻五倍等於產量翻五倍，價格不跟上整條擴張線會在 15 分鐘內走完。
+- `npm run pacing` 在乾淨 worktree 連跑兩次結果完全相同（之前在主樹量到不一致，是因為另一個 session 正在改 `balance.ts`／`pacing.test.ts`）。
+- 實跑證據：無頭 iPhone 開注液閥灌牛乳，真的靠繁殖住到 15 隻（13 次生產），20 draw calls、零 console 錯誤、住滿提示自己改口成「每一區 15 隻」。截圖 `docs/previews/wp7-2a-cap15-bred.png`。
+- **畫面問題照舊**（已排進 D47）：15 隻時左側狀態卡蓋掉大半個櫥窗。
+
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
 - 遊戲設計定稿與決策 D1–D14 在 [plans/game-plan-v1.md](plans/game-plan-v1.md)；改規則先改計畫檔的設計表再改 code。
