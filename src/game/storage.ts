@@ -53,6 +53,21 @@ let outdated = false;
 /** 備份格目前的進度分數；-1＝還沒有備份 */
 let backupScore = -1;
 
+/**
+ * 接上目前這一格的序號與備份分數。
+ *
+ * **進入一個存檔格就一定要跑這個**，否則第一次 `save()` 會看到「storage 的序號比我大」，
+ * 跟自己上一場的存檔比進度，然後把自己判成過期。`?fresh=1` 就是這樣：它不呼叫 `load()`，
+ * 所以第二次開測試模式整場都不會存檔（序號沒接上，不是資料有問題）。
+ */
+function adoptSlot(): void {
+  rev = readRev(readRaw(key));
+  outdated = false;
+  const backupRaw = readRaw(backupKey);
+  const backup = backupRaw === null ? null : parseSave(backupRaw);
+  backupScore = backup?.restored ? progressScore(backup.state) : -1;
+}
+
 function resetSlotState(): void {
   rev = 0;
   outdated = false;
@@ -66,7 +81,7 @@ function resetSlotState(): void {
 export function useTestSave(on: boolean): void {
   key = on ? TEST_SAVE_KEY : SAVE_KEY;
   backupKey = key + BACKUP_SUFFIX;
-  resetSlotState();
+  adoptSlot();
 }
 
 /** 目前在寫哪一格；測試與除錯用 */

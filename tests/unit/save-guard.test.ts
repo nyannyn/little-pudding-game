@@ -194,3 +194,19 @@ describe('D37 誰該贏', () => {
     expect((JSON.parse(localStorage.getItem(SAVE_KEY) as string) as GameState).coins).toBe(900);
   });
 });
+
+describe('D37 進入存檔格要先接上它的序號', () => {
+  it('?fresh=1 第二次開照樣存得進去（測試模式不呼叫 load，序號要由 useTestSave 接）', async () => {
+    const first = await openTab();
+    first.useTestSave(true);
+    first.load();
+    expect(first.save(withProgress(20, 300))).toBe('saved');
+
+    // 下一場：一樣的網址再開一次。測試模式直接開新檔，不讀舊的，
+    // 序號沒接上的話它會拿「全新農場」去跟自己上一場的存檔比進度，然後把自己判出局。
+    const second = await openTab();
+    second.useTestSave(true);
+    expect(second.save(createNewSave({ seed: 7, now: 2 }))).toBe('saved');
+    expect(second.save(createNewSave({ seed: 7, now: 3 }))).toBe('saved');
+  });
+});
