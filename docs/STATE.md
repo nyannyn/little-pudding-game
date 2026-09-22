@@ -173,7 +173,7 @@
 - 證據：單元 179 綠（新 `tests/unit/zoneEquipment.test.ts` 11 條；四個突變各紅過：migrate 只補起始區／autoFill 不濾區／collector 撿全場／unlockZone 抄起始區設備）、e2e 51/51 綠＋新 `cp7-zone-equipment.spec.ts` 1 條（解鎖上層→卡片回可買、`Equipment` group 空、再買扣原價、切回起始區仍已安裝）、`npm run build` 綠、`npm run test:negative` 只剩 **AC2-9 一條在 master 上本來就紅**（`dropCap` 5→8 後測試名稱「地上已經 5 份時」對不上，不是本次造成）、截圖四張（上層商店全可買＋提示行、上層畫面無設備 mesh）。
 - **節奏**（`npm run pacing` seed 7 equip-first，harness 改成每區重買注液閥＋收集手）：上層 12.1／下層 22.7／二號櫥窗 33.5 分（改前 12.1／22.1／31.9；D24 目標 ≤20／≤45／≤90），三小時收入 32.6k→34.7k。
 - **待使用者簽核**：商店提示行的文案與位置、上層空櫃畫面。
-- **分支基底注意**：本地 `master` 比 `origin/master` 多 3 個未推的 WP7-1 commit，且並行 session 在本分支上又留了兩個文件 commit（c31193b／020afaf）。開 PR 前要把本次 commit 單獨 cherry-pick 到從 `origin/master` 開的乾淨分支。
+- **PR #7 已開（`feat/zone-equipment-pr`，從 `origin/master` 開的乾淨分支，worktree `../lpg-wt-zone-equipment`）**：本地 `master` 比 `origin/master` 多 3 個未推的 WP7-1 commit、本地 `feat/zone-equipment` 又夾著並行 session 的兩個文件 commit（c31193b／020afaf），所以把 commit 單獨 cherry-pick 過去（計畫檔 D44／D45 衝突已解：保留 origin 的 D44＝WebGL context lost，D46／D47 不屬本 PR）。worktree 的 `node_modules` 是 junction，**收尾要 `cmd /c rmdir node_modules` 再 `git worktree remove`，不可 rm -rf**。`cp5-context-lost.spec.ts` 在本機對 `origin/master` 本身也紅（SwiftShader），與本 PR 無關。
 - 教訓：突變測試還原又用了一次 `git checkout --`，把 `actions.ts` 整份未提交改動洗掉重打——`pattern_git_workflow` 早寫了「用反向 sed 或 stash」。
 
 ## General rules
