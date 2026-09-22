@@ -163,6 +163,8 @@
 - three 自己會 `preventDefault()` 並在 `webglcontextrestored` 時重建 GL 物件，但**不會重建 PMREM 的環境貼圖**（內容在 GPU render target 上），也不會告訴玩家；而 iOS 常常根本不還原。
 - 修法（`src/main.ts`＋`src/ui/hud.ts`）：`webglcontextlost` → `persist()` → `setAnimationLoop(null)` → 跳說明卡附「重新整理」；`webglcontextrestored` → `buildEnvironment()`＋`settleOffline` 補跑＋恢復迴圈；回到前景時另外自查一次 `getContext().isContextLost()`（iOS 有時候靜靜收掉、連事件都不發）。
 - 守門：`tests/e2e/cp5-context-lost.spec.ts`。三條負向對照**都實測紅過**——不掛 `webglcontextlost`（卡片不出現）、不停迴圈（`state.time` 繼續走）、不重建環境貼圖（`scene.environment.uuid` 沒變）。
+- **已 merge 上線並驗過（2026-09-22）**：PR #5 squash 進 master（`eaf96e4`），Pages 部署綠；線上 bundle `index-Dr79GVex.js` 內比對到「畫面被系統收走了」／`webglcontextlost`／`webglcontextrestored`／`reloadPage` 全部命中（不是只看 workflow 綠）；`npm run smoke:live` 對線上 15 項全過；**再用使用者那串存檔碼對線上跑完整條路徑**：還原 → 弄丟 context（卡片出現）→ 還原 context（卡片收起、3D 回來），零 console 錯誤。
+- **e2e 全套兩輪各有一條不同的紅，兩條單獨跑都綠**：第一輪 `AC3-1b 牛乳澡就是繁殖`（等 panna 基因逾時）、第二輪 `cp5-savecode 從備份格撈回來`（reload 後 coins 不是 424242）。兩條都吃真實時間／機率，diff 又完全沒碰 `src/game/` 與 `storage.ts`——跟前面記的 AC3-1 是同一族**測試本身的機率性**問題，**還沒修**。`cp5-savecode` 那條的機制講得出來：它的前置只等到 `BACKUP_KEY` **不是 null**，但 `progressScore` 只算 `xp`＋`stats`，**`coins` 不在分數裡**——備份格可能合法地停在 424242 之前的快照，reload 之後第 98 行就對不上。這是測試前置條件寫得不夠嚴，不是產品 bug。
 - **這一場又是並行 session 同樹**：開工時 `src/main.ts` 已被另一個 session 改（`?pop=` 的 15 個落點）＋新增 `tools/measure-pop.mjs`。處理方式：把自己動到的行用反向 patch 還原（**不可以 `git checkout --`**，會洗掉對方未 commit 的工作）、切回 master、改用 worktree（`node_modules` 用 `mklink /J` 借主樹，清理時要 `cmd /c rmdir` 拆連結）＋`LPG_PORT=5174` 跑自己的 dev server。
 
 ## 設備每一區各買各的（2026-09-22 第十三場，使用者要求「新買的櫥窗不該有已購買的自動化設備，要買要再加錢買」，分支 `feat/zone-equipment`）
