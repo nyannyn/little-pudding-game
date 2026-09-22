@@ -122,6 +122,14 @@
 - **`npm run playtest` 的 C 段（牛奶突變）是壞的，不是這次弄壞的**：`tools/playtest/midgame.mjs:39` 還在等 `p.tint >= 0.5`，而 `tint` 在 `e9c08be`（D34 拿掉變白突變）就移除了，所以那個 `waitForFunction` 永遠等不到。前三段（opening／taps／layout，都走 `?fresh=1`）正常。**要修的話得把 C 段改成驗繁殖**，還沒做。
 - **既有 flake，不要誤判成回歸**：`cp3-game-loop.spec.ts` 的 AC3-1／AC3-1b 整檔連跑會隨機在「等下一批掉落物」逾時，單跑就過；在乾淨 worktree（HEAD `5bb7e02`、無本次改動）實測同樣紅，與這次無關。
 
+## 停擺與靜默（2026-09-22 第十場，使用者回報「我的小布丁跑完牛奶沒有再增加」「出貨按鍵有時按不了」）
+
+- **使用者存檔碼是最有力的證據，記得要**。齒輪 → 設定 → 複製，貼回來用 `savecode.ts` 的格式在本機解（純 base64url＋FNV-1a，四行 node 就解得開）。這次解出來直接定案，不必靠推論：`baths 21 / births 1`、3 隻布丁 `caramel` 全 0、`drops 0`、盆空、`preferredLiquid: 'milk'`、`stock {caramel:2, milk:0}`、只解鎖一區、`equipment` 四台全有（`restock` 沒有）。
+- **根因鏈（三個坑都是靜默，不是規則錯）**：倒過一次牛乳 → 注液閥的 `preferredLiquid` 從此黏在牛乳（`autoFill` 讀 `b.liquid ?? b.preferredLiquid`，**永遠不會換回焦糖**）→ 剩下的牛乳全燒在「住滿了生不出來」的澡上 → 牛乳歸零 → 注液閥停擺 → 布丁焦糖歸零 → `dropCaramelMin` 判停產 → **整座農場死掉，而畫面上那句提示還寫著「布丁照樣會掉原料」**。
+- **已修（D39，分支 `fix/stall-and-ship-feedback`，commit `d962f99`）**：①停擺提示改成指名亮著的那顆按鈕；②新增 `zoneFullHint` 常駐警告（`pudding.ts:150` emit 的 `{type:'error'}` 從來沒有人接，但**不可以接成 toast**——離線八小時會丟上百次）；③`ShipResult` 加 `reserved`＋`nearestPendingOrder()`，出貨沒動靜時講得出「『焦糖布丁塔 ×3』還差 1 份」。證據：單元 168 綠、三組突變各自紅過、無頭 iPhone 四情境實跑、頁面零 error。
+- **使用者當下的解卡動作**：手動按一次「倒焦糖」（庫存還有 2 份），注液閥從此改補焦糖。
+- **待辦（已寫進計畫 D40／D41／D42 與 CP7 工作包）**：焦糖離開澡盆改手動刷＋新設備「焦糖刷」、`zoneCapacity` 3→15（**前置 WP7-1 布丁 InstancedMesh**，15 隻現況 88 draw calls／預算 35）、自動販售口販售動畫。**D40 與 D42 都有「動手前要先問使用者」的未定項**，別直接開工。
+
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
 - 遊戲設計定稿與決策 D1–D14 在 [plans/game-plan-v1.md](plans/game-plan-v1.md)；改規則先改計畫檔的設計表再改 code。
