@@ -39,3 +39,38 @@ test('每隻布丁的物種顏色走 instance 屬性，不是共用材質色', a
   expect(colors.body0).not.toEqual(colors.body1);
   expect(colors.top0).not.toEqual(colors.top1);
 });
+
+/**
+ * 閉眼要真的傳到畫出來的那顆 instance。`cp3-pudding-look` 量的是骨架節點 `Pudding_Eyes` 的 scale
+ * （沒有在畫的空節點）；骨架對了、pool 抄矩陣抄錯，它照樣綠而畫面照樣錯，所以這裡直接讀
+ * `Puddings_Eyes.instanceMatrix`，用 y 軸長度／x 軸長度這個比值判（跟既有測試同一套判準，不寫絕對值）。
+ * `?pause=1` 把時間凍住：泡澡只有一秒多，靠 wall clock 量會撞到「泡完了」的競態。
+ */
+test('泡澡那隻的眼睛在 instance 矩陣裡是壓扁的，另一隻是圓的', async ({ page }) => {
+  await page.goto('/?debug=1&fresh=1&seed=7&pop=2&pause=1');
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+  const ratios = await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    const bather = s.puddings[0]!;
+    bather.mode = 'bathing';
+    bather.basinIndex = 0;
+    bather.bathT = 999; // 不給計時就會在第一步 finishBath 退回 resting
+    s.puddings[1]!.mode = 'resting';
+    for (let i = 0; i < 30; i++) window.__lpg.step!(0.05); // 讓閉眼的 lerp 收斂
+    type Inst = { count: number; instanceMatrix: { array: ArrayLike<number> } };
+    const eyes = window.__lpg.three!.scene.getObjectByName('Puddings_Eyes') as unknown as Inst;
+    const body = window.__lpg.three!.scene.getObjectByName('Puddings_Body') as unknown as Inst;
+    const yOverX = (m: Inst, i: number) => {
+      const a = m.instanceMatrix.array, o = i * 16;
+      return Math.hypot(a[o + 4]!, a[o + 5]!, a[o + 6]!) / Math.hypot(a[o]!, a[o + 1]!, a[o + 2]!);
+    };
+    // 眼睛矩陣＝根節點 × 眼睛局部，根節點在跳躍時本身就會拉長（1.12/0.94）；
+    // 除掉同一隻的本體比值才剩下「眼睛自己被壓扁了多少」
+    const ratio = (i: number) => yOverX(eyes, i) / yOverX(body, i);
+    return { count: eyes.count, bather: ratio(0), other: ratio(1) };
+  });
+  expect(ratios.count).toBe(2);
+  expect(ratios.bather).toBeLessThan(0.5);
+  expect(ratios.other).toBeGreaterThan(0.9);
+  expect(ratios.other).toBeLessThan(1.1);
+});

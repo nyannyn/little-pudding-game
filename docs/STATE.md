@@ -196,7 +196,7 @@
 - **顏色空間會讓「同一個 hex」變色**：GLTFLoader 讀 `baseColorFactor` 是線性值，`new Color(0xff7885)` 走 sRGB→線性，腮紅明顯變濃（截圖並排才看得出來）。抄 GLB 的值要用 `setRGB(r,g,b, LinearSRGBColorSpace)`。
 - `PuddingView` 只剩骨架（`root` Group＋兩個空節點 `Pudding_Body`／`Pudding_Eyes`），照舊掛在 scene 裡，所以 `cp3-hud-band`／`cp3-pudding-look`／`tools/playtest/lib.mjs` 讀 scene graph 的量法不用改。
 - 副作用：陰影 pass 現在蓋整顆 1004 面（原本只有本體 468），每隻三角形 1696→2232；AC1-1 兩隻 4464 仍在 2000–5000 內但貼近上限。
-- 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 2 條（體色寫死成白 → 紅過）、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**使用者視覺簽核待做**。
+- 證據：單元 168 綠、e2e 48/48 綠＋新 `cp7-instancing.spec.ts` 3 條（體色寫死成白 → 紅過；眼睛 instance 抄成本體矩陣 → 紅過。第三條讀的是 `Puddings_Eyes.instanceMatrix` 不是骨架——`cp3-pudding-look` 只量骨架，pool 抄錯矩陣它照樣綠；比值要除掉同一隻本體的比值，跳躍時根節點自己會拉長 1.19）、`npm run build` 綠、`npm run models:optimize` ok（1228 面／23,968 bytes）、截圖前後並排（本體／焦糖／眼睛／腮紅一致）、六物種顏色各異、泡澡閉眼。**使用者視覺簽核待做**。
 - `tools/measure-pop.mjs`：量 `?pop=N` 的 draw calls／三角形並截圖的小工具（`OUT`／`TAG`／`POPS` 環境變數），要不要留待使用者決定。
 - WP7-2 要一起處理：15 隻時左側的布丁狀態卡疊滿整個畫面（截圖看得到）。
 
