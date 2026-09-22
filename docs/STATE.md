@@ -142,6 +142,20 @@
 - **突變測試三條都真的紅過**：金幣 mesh 恆 `visible` → 紅；逐事件各彈一次 → 撒出 8 枚（上限 6）而紅；警告比照教學句永久關掉 → 紅。**其中「只彈一次」第一版判定無效**（同幀三次彈出，畫面上 `count` 只跳一次），改成量**枚數**才抓得到。
 - **一次偶發**：`cp3-game-loop` 在某一輪 e2e 全跑紅，單獨重跑與整套重跑都綠（48/48）。未查明，記著。
 
+## 兩個 PR 都已 merge 上線（2026-09-22 第十場收尾）
+
+- `master` ＝ `0f2ecc5`。PR #3（D39 三條靜默）與 PR #4（D42 販售動畫＋D43 提示框）都 squash 進去了，Pages 部署綠。
+- **線上驗過不是只看 workflow 綠**：抓 `index.html` 的 bundle 檔名再下載該 bundle，比對只有新版才有的字串（`小提示`／`收起這則提示`／`注液閥只補上次倒的那一種`／`手上的甜點留給訂單了`／`櫥窗全住滿了`／`Coins`）全部命中；`npm run smoke:live` 對線上網址 15 項全過（draw 25/35、SW 註冊、離線可開、零 console 錯誤）。
+- **squash merge 之後疊在上面的 PR 要手動處理**（這次實際踩到）：①`gh pr merge --delete-branch=false` 會讓舊 base 分支留著，GitHub **不會**自動把下游 PR 改指 master；②下游分支要用 `git rebase --onto origin/master <上游最後一個 commit> <分支>`，直接 `rebase master` 會因為祖先誤判而重播已經被 squash 掉的 commit；③rebase 完 push 之後 PR 會變 `CONFLICTING`／`DIRTY`，要 `gh pr edit <n> --base master` 才會重算成 `CLEAN`。
+
+## AC3-1 的隨機逾時（追查完，不是這次改動造成的）
+
+- 症狀：`cp3-game-loop.spec.ts:30` **全套跑紅、單獨跑綠**，兩次全跑各紅一次。
+- **不是 HMR 假紅**（記憶裡對這個症狀的第一嫌疑犯），也不是這次的改動——對 `src/game/` 的 diff 只有一行註解，而且失敗發生在「賣」之前，那時一枚金幣都還沒生成。
+- 真因是**測試本身的結構性機率**：`fastTime=20` 下泡完澡的 100 焦糖只撐 **3.5 真實秒**（衰減 1.4×20＝28/秒），這段窗口最多再掉 2 份，`eggChance` 0.65 → 兩份都是蛋的機率 **42%**，中了就永遠等不到焦糖塊，而 D35 之後焦糖見底＝完全停產。
+- **固定 `?seed=` 救不了**：`advance` 的步數跟著真實幀時間走，整套跑（機器忙）與單獨跑的抽籤序列不同 —— 這就是「全跑紅、單跑綠」的來源。
+- 修法：測試改成**邊等邊補焦糖的短輪詢**。原本用 `waitForFunction(drops>0, 60_000)` 等，那 60 秒之內沒有人去倒澡盆，停產之後只能等到逾時。修完連跑 4 次全綠、整套 48 綠。
+
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
 - 遊戲設計定稿與決策 D1–D14 在 [plans/game-plan-v1.md](plans/game-plan-v1.md)；改規則先改計畫檔的設計表再改 code。
