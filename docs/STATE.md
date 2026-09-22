@@ -118,6 +118,8 @@
 - **`isDurable()` 偵測不到 Safari 無痕**：無痕的 localStorage 真的寫得進去、只在 session 結束被清，所以「這個瀏覽器存不了進度」的提示在最需要它的時候不會跳。**這條還沒解**，存檔碼只是繞過它。
 - 做了：`rev` ＋ `progressScore` 寫入守衛、備份格 `.bak`、存檔碼（設定卡，齒輪取代喇叭）、`?debug=1` 顯示兩格狀態。**帳號登入／雲端存檔沒做**，留待使用者決定。
 - 測試：`tests/unit/save-guard.test.ts`（12）、`tests/unit/savecode.test.ts`（7）、`tests/e2e/cp5-savecode.spec.ts`（4）。兩個守衛都做過突變負向對照——拿掉 `rev` 比對 → 3 條紅；備份改成無條件寫 → 2 條紅。
+- 同一場使用者追加兩件（D38）：效能面板搬進設定卡（維持 `?debug=1` 才存在）、頂列四顆 chip 與訂單卡數字點得出小布丁說明氣泡。測試 `tests/e2e/cp5-tips.spec.ts`（3 條）。
+- **`npm run playtest` 的 C 段（牛奶突變）是壞的，不是這次弄壞的**：`tools/playtest/midgame.mjs:39` 還在等 `p.tint >= 0.5`，而 `tint` 在 `e9c08be`（D34 拿掉變白突變）就移除了，所以那個 `waitForFunction` 永遠等不到。前三段（opening／taps／layout，都走 `?fresh=1`）正常。**要修的話得把 C 段改成驗繁殖**，還沒做。
 - **既有 flake，不要誤判成回歸**：`cp3-game-loop.spec.ts` 的 AC3-1／AC3-1b 整檔連跑會隨機在「等下一批掉落物」逾時，單跑就過；在乾淨 worktree（HEAD `5bb7e02`、無本次改動）實測同樣紅，與這次無關。
 
 ## General rules

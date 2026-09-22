@@ -119,3 +119,21 @@ test('開著沒關的舊分頁不會把新分頁的進度洗掉', async ({ conte
   await expect(stale.locator('.toast.bad', { hasText: '已停止存檔' })).toBeVisible({ timeout: 20_000 });
   expect(JSON.parse((await read(stale, PLAYER_KEY)) ?? '{}').coins).toBeGreaterThanOrEqual(900900);
 });
+
+test('?fresh=1 連開兩次都還存得進去（playtest 每次都會走這個循環）', async ({ page }) => {
+  const TEST_KEY = 'lpg.save.test';
+
+  // 第一場測試模式：留下一份「有進度」的測試存檔
+  await ready(page, '/?fresh=1&seed=31');
+  await page.evaluate(() => window.__lpg.grantXp?.(300));
+  await expect.poll(() => read(page, TEST_KEY), { timeout: 12_000 }).not.toBeNull();
+
+  // 第二場：同一個網址再開一次。測試模式不呼叫 load()，
+  // 序號沒接上的話它會拿「全新農場」去跟自己上一場比進度，然後把自己判成過期、整場不再存檔。
+  await ready(page, '/?fresh=1&seed=31');
+  await page.evaluate(() => { (window.__lpg.state as GameState).coins = 6161; });
+  await expect
+    .poll(async () => JSON.parse((await read(page, TEST_KEY)) ?? '{}').coins, { timeout: 12_000 })
+    .toBe(6161);
+  await expect(page.locator('.toast.bad', { hasText: '已停止存檔' })).toBeHidden();
+});

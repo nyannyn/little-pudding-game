@@ -17,7 +17,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `npm run smoke:live`：對正式建置或線上網址跑整頁煙霧測（`LPG_BASE` 指定網址）
 - `npm run models:optimize`：壓縮 `public/models/*.glb` 並檢查資產預算（超標 exit 1）
 - `npm run art:shop`：重抓商店商品圖（Microsoft Fluent Emoji 3D，MIT，釘 commit）縮成 160px WebP 到 `src/assets/shop/`；授權全文在同目錄 `LICENSE.txt`。只在改 `tools/fetch-shop-art.mjs` 的 ART 表時才需要重跑，輸出已進版控
-- 網址參數：`?debug=1` 顯示 fps／draw calls／三角形數與顯示卡、`?fresh=1` 開新檔（**測試模式**）、`?seed=N` 固定亂數、`?fastTime=N` 倍速、`?pop=N` 指定布丁隻數、`?noPudding=1` 不載布丁、`?dpr=N`／`?aa=0` 降解析度與關 MSAA（查效能）
+- 網址參數：`?debug=1` 在**設定卡（右上角齒輪）裡**顯示 fps／draw calls／三角形數、顯示卡與存檔狀態（原本是畫面左下的常駐浮層，D38 搬進去的；沒帶參數時連設定卡裡也不會出現）、`?fresh=1` 開新檔（**測試模式**）、`?seed=N` 固定亂數、`?fastTime=N` 倍速、`?pop=N` 指定布丁隻數、`?noPudding=1` 不載布丁、`?dpr=N`／`?aa=0` 降解析度與關 MSAA（查效能）
 - 手機實測走 GitHub Pages：push `master` 自動部署到 `https://nyannyn.github.io/little-pudding-game/`（`.github/workflows/pages.yml`）；PC 沒有 Wi-Fi 卡且防火牆擋 5173 入站，區網直連不可行
 
 ## 分層鐵則

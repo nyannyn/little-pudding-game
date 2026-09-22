@@ -53,7 +53,9 @@ declare global {
 // `?debug=1` 顯示面板；數字永遠寫進 window.__lpg.stats 供 Playwright 讀
 export function createStats(renderer: THREE.WebGLRenderer, visible: boolean) {
   const el = document.getElementById('debug')!;
-  el.hidden = !visible;
+  // 面板現在住在設定卡裡（HUD 先建好才跑到這裡），要連標題那一框一起開關
+  const box = (el.closest('.debugbox') as HTMLElement | null) ?? el;
+  box.hidden = !visible;
   const stats: LpgStats = { fps: 0, drawCalls: 0, triangles: 0, ready: false, pixels: 0, gpu: gpuName(renderer) };
   window.__lpg = { ...(window.__lpg ?? {}), stats };
 

@@ -719,3 +719,51 @@
 }
 .savecard .optrow .label { flex: 1; text-align: left; }
 .savecard .optrow .val { color: var(--ink-soft); font-size: 12px; font-weight: 400; }
+
+/* 效能面板：原本是畫面左下的浮層，改成設定卡裡的一區（仍然只有 ?debug=1 才出現） */
+.savecard .debugbox { width: 100%; margin-bottom: 8px; text-align: left; }
+.savecard .debugbox[hidden] { display: none; }
+.savecard .debugbox h3 { text-align: center; }
+.savecard .debugbox pre {
+  margin: 0;
+  padding: 8px 10px;
+  border: 2px solid var(--wood-light);
+  border-radius: 12px;
+  background: #fffdf6;
+  color: var(--ink-soft);
+  font: 400 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── 點數字跳出來的小氣泡 ─────────────────── */
+.chip { cursor: pointer; }
+.order .t { cursor: pointer; }
+.tipbubble {
+  position: absolute;
+  max-width: 272px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  border-radius: 16px;
+  padding: 13px 12px 10px;
+  box-shadow: 0 3px 0 var(--wood-light), var(--shadow);
+  font-size: 12.5px;
+  line-height: 1.45;
+  /* 蓋在畫面上但要點得穿，否則氣泡會擋住玩家的下一個動作 */
+  pointer-events: none;
+  z-index: 6;
+}
+.tipbubble[hidden] { display: none; }
+.tipbubble .who {
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(#98cc78, var(--green));
+  border: 2px solid var(--green-deep);
+  border-radius: 999px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
