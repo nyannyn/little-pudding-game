@@ -52,7 +52,7 @@ import { EquipmentView, SELLER_SPOUT } from './scene/equipmentMesh';
 import { Particles } from './scene/particles';
 import { ENTER as POUR_ENTER, PourView, THICKNESS, flowSeconds } from './scene/pourView';
 import { PuddingView } from './scene/puddingView';
-import { spawnPudding } from './scene/puddingMesh';
+import { loadPuddingParts, PuddingPool } from './scene/puddingPool';
 import { Sfx } from './scene/audio';
 import { nextHint } from './ui/hints';
 import { shouldSuggestHomeScreen } from './ui/homeScreen';
@@ -146,13 +146,24 @@ if (fresh) useTestSave(true);
 const newSaveOptions = {
   seed: Number.isFinite(seedParam) && seedParam > 0 ? seedParam : undefined,
   basinPos: BASIN_SLOTS[0],
-  // 前兩個是開局的兩隻；後面幾個是 `?pop=` 量 draw call 時才用得到的落點
+  // 前兩個是開局的兩隻；後面的是 `?pop=` 量 draw call 時才用得到的落點，
+  // 補到 15 個（＝D41 的 `zoneCapacity` 上限）才量得到滿層的基準。地板 x∈±0.875、z∈±0.4，避開澡盆 (−0.52, 0.12)
   puddingPositions: [
     { x: 0.05, z: 0.1 },
     { x: 0.5, z: -0.02 },
     { x: -0.45, z: 0.14 },
     { x: -0.12, z: -0.26 },
     { x: 0.7, z: 0.24 },
+    { x: -0.75, z: -0.3 },
+    { x: -0.3, z: -0.32 },
+    { x: 0.25, z: -0.3 },
+    { x: 0.75, z: -0.28 },
+    { x: -0.2, z: 0.3 },
+    { x: 0.3, z: 0.32 },
+    { x: 0.55, z: 0.1 },
+    { x: -0.8, z: 0.3 },
+    { x: 0.8, z: 0.05 },
+    { x: -0.25, z: 0.0 },
   ],
   puddingCount: Math.max(1, Number(params.get('pop')) || 2),
 };
@@ -598,16 +609,21 @@ window.addEventListener('pagehide', persist);
 const modelUrl = `${import.meta.env.BASE_URL}models/pudding_base.glb`;
 const noPudding = params.get('noPudding') === '1';
 let creating = false;
+/** 所有布丁共用的 InstancedMesh（D41）；GLB 載好才有 */
+let pool: PuddingPool | null = null;
 
-/** 每隻布丁一個 view（最多五隻）；非啟用區的隱藏起來，隱藏的物件不吃 draw call */
+/** 每隻布丁一個 view（只是骨架，mesh 在 pool 裡）；非啟用區的每幀不進 pool，就不吃 draw call */
 async function ensureViews() {
   if (noPudding || creating) return;
   creating = true;
   try {
+    if (!pool) {
+      pool = new PuddingPool(await loadPuddingParts(modelUrl));
+      scene.add(pool.body, pool.eyes);
+    }
     for (const p of state.puddings) {
       if (views.has(p.id)) continue;
-      const g = await spawnPudding(modelUrl);
-      const view = new PuddingView(g, p);
+      const view = new PuddingView(pool.parts, p);
       views.set(p.id, view);
       scene.add(view.root);
     }
@@ -696,13 +712,17 @@ function frame(dt: number, now: number) {
   particles.update(dt);
   coins.update(dt);
 
+  pool?.begin();
   for (const p of state.puddings) {
     const view = views.get(p.id);
     if (!view) continue;
     const visible = p.zone === state.activeZone;
     view.root.visible = visible;
-    if (visible) view.update(p, dt, ox, oy, BASIN_SINK);
+    if (!visible) continue;
+    view.update(p, dt, ox, oy, BASIN_SINK);
+    pool?.add(view);
   }
+  pool?.commit();
 
   // 切區時把鏡頭平移過去，保留玩家自己轉過的角度與縮放
   moveTmp.copy(desiredTarget).sub(controls.target);

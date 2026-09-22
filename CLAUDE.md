@@ -60,6 +60,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 
 ## 美術管線
 Blender MCP（`.mcp.json`；Blender 端側欄分頁「MCP for Blender」按連線鈕，**按鈕名稱隨 addon 版本變**，本機 4.5 是「Connect to Claude」）→ `tools/blender/render_preview.py` 出 4 角度預覽 → 使用者簽核 → `export_scene` 出 GLB 到 `public/models/` → `npm run models:optimize`。
+布丁本體不必開 Blender 介面：`blender --background --python tools/blender/build_pudding.py -- --out public/models/pudding_base.glb --preview docs/previews/pudding_base` 一條龍（建模＋預覽＋匯出；`shade_auto_smooth` 在背景模式失效，腳本已改用資料 API）。GLB 的 `Pudding_Body` 是本體／焦糖／腮紅併成的一顆 mesh，頂點色層 `Mask` 是遮罩不是顏色（R 本體、G 焦糖、B 腮紅），顏色在 `src/scene/puddingPool.ts` 的 shader 從 instance 屬性混出來——**改布丁外觀兩邊都要看**。
 商店商品圖（2D）走 `npm run art:shop`，不在 `models:optimize` 的預算檢查範圍內（目前 17 張共約 62 KB）。
 
 ## 提交
