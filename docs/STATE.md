@@ -185,6 +185,7 @@
 - **金幣生成點改成 `SELLER_SPOUT`（機頂）＋ `burst(..., 'right')` 只往右撒**：從機身裡生第一幀就被擋；往左落進澡盆像 bug、落機身正後方被擋、右前方 z≥0.45 又被名牌蓋——只有右邊 z 0–0.3 那片地板是空的。逐幀（`step(0.05)`）截圖 0/4/9/14/20/26/32 幀驗過：5 枚全程可見、落點 x 0.14–0.80。手動出貨（沒買販售口）彈法不變。
 - 商店卡 `src/assets/shop/eqSeller.svg` 手繪重畫成同款（不跑 `art:shop`，那支只抓 emoji 素材）。
 - 這一場在 worktree `Desktop/lpg-wt-vending`（分支 `feat/vending-machine`，從 `origin/master` `eaf96e4` 開）、dev server `5175`；主樹又是並行 session 的未提交工作（布丁 instancing）。
+- **Rebase 到 `24ff373`（並行 session 的「設備每一區各買各的」，schema v6）**：三個檔衝突。`main.ts` 的 `spawnCoins` 取兩邊（`equipmentIn(state, activeZone).seller` ＋ `SELLER_SPOUT`）；`equipmentMesh.ts` 自動合併後實查過 `sync()` 用的是 `equipmentIn(state, zone)` 不是舊的扁平 `state.equipment`。**D45 撞號**（對方先進 master）→ 本條改成 **D46**。rebase 後重跑：build 綠、vitest 181/181 綠、畫面與金幣逐幀重拍一次（draw 仍 24）。
 
 ## General rules
 - 使用者**沒有 Mac**；所有 iOS 路徑只給 Windows／雲端做法。
