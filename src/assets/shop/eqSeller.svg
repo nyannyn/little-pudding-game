@@ -15,7 +15,9 @@
       <stop offset="1" stop-color="#d8e6f2"/>
     </linearGradient>
   </defs>
-  <ellipse cx="80" cy="150" rx="46" ry="6" fill="#5a3d28" opacity=".14"/>
+  <ellipse cx="80" cy="150" rx="52" ry="7" fill="#5a3d28" opacity=".14"/>
+  <!-- 機器本體放大 1.2 倍，才跟旁邊四張設備卡一樣占滿卡面 -->
+  <g transform="translate(80 82) scale(1.2) translate(-80 -83)">
   <!-- 底座 -->
   <rect x="42" y="138" width="76" height="9" rx="3" fill="#4d4653"/>
   <!-- 機身 -->
@@ -55,4 +57,5 @@
   <!-- 取物口＋托盤 -->
   <rect x="54" y="114" width="36" height="12" rx="3" fill="#4d4653"/>
   <rect x="52" y="126" width="40" height="4" rx="2" fill="#cfd6dd"/>
+  </g>
 </svg>
