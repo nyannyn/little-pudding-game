@@ -52,6 +52,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 ## 測試紀律
 - **跑 e2e／playtest 期間不要改 `src/`**：Vite HMR 會重新載入頁面，測試看到的是「element was detached／非預期 navigation」，長得跟產品 bug 一樣。
 - 視覺類改動要使用者看畫面簽核；負向對照要真的紅過才算數。
+- **視覺簽核一定要給使用者一個手機打得開的網址**：使用者是在手機上看效果，`localhost`／區網網址在手機上打不開，截圖只能當輔助、不能取代。目前唯一能給的網址是 GitHub Pages（只部署 `master`），所以視覺類改動的收尾流程是：開 PR → 回報時**明講「這個改動要 merge 才看得到，要 merge 嗎？」** → 使用者同意後 merge → 等 Pages 部署跑完（`gh run watch` 或查 Actions 綠）→ 確認線上版已是新 build → 附上 `https://nyannyn.github.io/little-pudding-game/`（需要時帶 `?fresh=1` 等參數）請使用者看。不要只丟 PR 連結或本機截圖就當作「請簽核」。
 
 ## 完成與回報
 - **沒有實跑或 read-back 證據，不得宣告完成。** `npm run build`（tsc）綠只代表型別沒錯，不代表功能會動；碰到畫面或互動就要真的把頁面開起來跑過。
