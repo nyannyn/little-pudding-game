@@ -82,5 +82,11 @@ export function artFor(e: ShopEntry): ArtSpec {
   }
 }
 
+/** 倉庫格子（D49）用的家具圖：設備＝商店那張、澡盆＝浴缸（特殊盆角落疊液體） */
+export function furnitureArt(kind: 'basin' | 'equipment', id: EquipmentId | LiquidId | null): ArtSpec {
+  if (kind === 'equipment') return { main: EQUIPMENT_ART[id as EquipmentId] };
+  return id && id !== 'caramel' && id !== 'milk' ? { main: 'bathtub', corner: LIQUID_ART[id as LiquidId] } : { main: 'bathtub' };
+}
+
 /** 給 service worker 暖快取用：離線第一次開商店也要有圖 */
 export const SHOP_ART_URLS: string[] = Object.values(ART);

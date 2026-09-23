@@ -32,10 +32,12 @@ import {
   moveFurniture,
   placeFromStorage,
   placementError,
+  storageError,
+  storageSpot,
   storeFurniture,
   type FurnitureRef,
 } from './game/furniture';
-import { parseRefKey } from './ui/storage';
+import { dumpWarning, parseRefKey } from './ui/storage';
 import { unlockedAtLevel } from './game/shop';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
@@ -390,20 +392,10 @@ const hud = new Hud(document.body, {
     const spot = findFreeSpot(state, state.activeZone, { kind: 'basin', index: -1 }, slot) ?? slot;
     report(buySpecialBasin(state, liquid, spot, state.activeZone, world.emit));
   },
-  storeFurniture: (key) => {
-    const ref = parseRefKey(key);
-    if (!ref) return;
-    const r = storeFurniture(state, state.activeZone, ref);
-    if (r.ok && r.message) hud.toast(r.message);
-    report(r);
-  },
-  placeFurniture: (key) => {
-    const ref = parseRefKey(key);
-    if (!ref) return;
-    const r = placeFromStorage(state, state.activeZone, ref);
-    if (r.ok && r.message) hud.toast(r.message);
-    report(r);
-  },
+  placeFurniture: (key) => takeFromStorage(key),
+  editOk: () => confirmEdit(),
+  editCancel: () => endEdit(),
+  editStore: () => storeEdit(),
   unlockZone: (id) => {
     if (!report(unlockZone(state, id, spawnFor(), world.emit))) return;
     refreshShells();
@@ -530,11 +522,18 @@ let downAt = { x: 0, y: 0, t: 0 };
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   downAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+  if (edit) {
+    startEditDrag(ev);
+    return;
+  }
   armLongPress(ev);
 });
 renderer.domElement.addEventListener('pointerup', (ev) => {
-  // 長按拖家具（D49）的放手不是點擊：不然放在澡盆上會順手倒一份液體
-  if (endDrag(true)) return;
+  // 擺放模式（D49）裡的放手只是「放開手指」，不是點擊：不然放在澡盆上會順手倒一份液體
+  if (edit) {
+    edit.dragging = false;
+    return;
+  }
   cancelLongPress();
   // 只有「短按而且幾乎沒移動」才算點擊，否則那是在環繞鏡頭
   const moved = Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y);
@@ -567,30 +566,38 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   if (hitTier) tapZone(hitTier.point);
 });
 
-// ── 長按拖家具（D49） ────────────────────────────────
+// ── 擺放模式（D49） ─────────────────────────────────
 /**
- * 按住家具 `LONG_PRESS_MS` 不動 → 進入拖曳：鏡頭停止環繞、家具跟著手指走、腳下一圈
- * 綠（放得下）／紅（壓到別的或出界）。放手才呼叫 `furniture.moveFurniture` 寫進 state——
- * 拖的過程只是預覽，合不合法的判定全在 `game/`，這裡不自己算。
+ * 照一般手機經營遊戲的做法（Hay Day／動森）：家具要「拿起來」才能動，拿起來之後停在擺放模式，
+ * 畫面下方換成一排「收進倉庫／取消／確定」，按確定才寫進 state。
+ * 兩個入口：① 長按櫥窗裡的家具 `LONG_PRESS_MS`；② 倉庫卡點一件——拿出來就在擺放模式裡，可以直接拖。
+ * 擺放模式中鏡頭不轉，手指在畫面任何地方拖都是在拖這件家具（手指小、家具更小，要求按準它是折磨）。
+ * 合不合法的判定全在 `game/furniture.ts`，這裡只負責預覽。
  */
 const LONG_PRESS_MS = 450;
 let pressTimer = 0;
 let pressRef: FurnitureRef | null = null;
 /** 長按時手指打到家具的那一點（世界座標）：拖曳平面取它的高度，否則按機身一拖就跳到後牆 */
 const pressHit = new THREE.Vector3();
-interface Drag {
+interface Edit {
   ref: FurnitureRef;
+  /** 拿起來的那一區；切區就視同取消 */
+  zone: string;
   pos: Vec2;
   valid: boolean;
-  /** 拖設備時單獨的那一台（澡盆直接用 BasinsView 的預覽） */
+  /** 從倉庫拿出來的（state 裡還在倉庫，按確定才擺進來） */
+  fromStorage: boolean;
+  /** 設備單獨做成一台 mesh 跟著手指走（澡盆直接用 BasinsView 的預覽） */
   mesh: THREE.Mesh | null;
-  /** 拖曳平面的世界高度＝抓的那一點的高度 */
+  /** 手指正按著在拖 */
+  dragging: boolean;
+  /** 拖曳平面的世界高度 */
   planeY: number;
-  /** 家具中心－抓取點（區域座標）：放手時家具中心要停在「手指＋這個偏移」，不是手指底下 */
+  /** 家具中心－手指落點（區域座標）：家具跟著手指「平移」，不是跳到手指底下 */
   dx: number;
   dz: number;
 }
-let drag: Drag | null = null;
+let edit: Edit | null = null;
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const dragHit = new THREE.Vector3();
 const ringMat = new THREE.MeshBasicMaterial({ color: 0x7cb85c, transparent: true, opacity: 0.85, depthTest: false });
@@ -611,17 +618,21 @@ function setPointer(ev: { clientX: number; clientY: number }) {
   raycaster.setFromCamera(pointer, camera);
 }
 
-/** 手指底下是哪一件家具：打到澡盆或設備的 mesh，再挑離打點最近的那件 */
+/**
+ * 手指底下是哪一件家具：打到澡盆或設備的 mesh，再在**同一類**裡挑離打點最近的那件。
+ * 分類要看打到哪個 group：注液閥就掛在澡盆正上方，只比水平距離會分不出按的是管子還是盆。
+ */
 function furnitureUnder(ev: PointerEvent): FurnitureRef | null {
   setPointer(ev);
   const hit = raycaster.intersectObjects([...basins.group.children, ...equipment.group.children], false)[0];
   if (!hit) return null;
   pressHit.copy(hit.point);
+  const kind = basins.group.children.includes(hit.object) ? 'basin' : 'equipment';
   const { ox } = activeOrigin();
   const lx = hit.point.x - ox, lz = hit.point.z;
   let best: FurnitureRef | null = null, bestD = Infinity;
   for (const f of furnitureIn(state, state.activeZone)) {
-    if (!isDraggable(f.ref)) continue;
+    if (f.ref.kind !== kind) continue;
     const d = Math.hypot(f.pos.x - lx, f.pos.z - lz);
     if (d < bestD) { bestD = d; best = f.ref; }
   }
@@ -634,8 +645,19 @@ function armLongPress(ev: PointerEvent) {
   pressRef = furnitureUnder(ev);
   if (!pressRef) return;
   pressTimer = window.setTimeout(() => {
-    if (pressRef) beginDrag(pressRef);
+    const ref = pressRef;
     pressRef = null;
+    if (!ref) return;
+    // 手指還按著：拿起來就直接進入拖曳，偏移從手指按到的那一點算
+    const { ox } = activeOrigin();
+    const pos = currentPos(ref);
+    beginEdit(ref, pos, false);
+    if (edit) {
+      edit.dragging = true;
+      edit.planeY = pressHit.y;
+      edit.dx = pos.x - (pressHit.x - ox);
+      edit.dz = pos.z - pressHit.z;
+    }
   }, LONG_PRESS_MS);
 }
 
@@ -655,66 +677,140 @@ function footprintRadius(ref: FurnitureRef): number {
   return ref.id === 'seller' ? 0.22 : ref.id === 'crafter' ? 0.2 : ref.id === 'collector' ? 0.09 : 0.14;
 }
 
-function beginDrag(ref: FurnitureRef) {
+/** 不是從長按進來的拖曳（倉庫拿出來、放開後再拖）：平面取這件家具大約中段的高度 */
+function grabHeight(ref: FurnitureRef): number {
+  if (ref.kind === 'basin') return 0.05;
+  if (ref.id === 'collector') return TANK.height - 0.3;
+  return ref.id === 'seller' ? 0.3 : ref.id === 'autoFill' ? 0.3 : 0.15;
+}
+
+function editValid(e: Edit): boolean {
+  if (e.fromStorage) return !storageError(state, e.zone, e.ref) && !placementError(state, e.zone, e.ref.kind === 'basin' ? { kind: 'basin', index: -1 } : e.ref, e.pos);
+  return isDraggable(e.ref) && !placementError(state, e.zone, e.ref, e.pos);
+}
+
+function beginEdit(ref: FurnitureRef, pos: Vec2, fromStorage: boolean) {
+  endEdit();
   const { oy, ceilY } = activeOrigin();
-  controls.enabled = false; // 拖曳中手指不轉鏡頭
-  const { ox } = activeOrigin();
-  const pos = currentPos(ref);
-  drag = { ref, pos, valid: true, mesh: null, planeY: pressHit.y, dx: pos.x - (pressHit.x - ox), dz: pos.z - pressHit.z };
+  controls.enabled = false; // 擺放模式中手指是拖家具，不轉鏡頭
+  edit = { ref, zone: state.activeZone, pos: { ...pos }, valid: true, fromStorage, mesh: null, dragging: false, planeY: oy + grabHeight(ref), dx: 0, dz: 0 };
+  edit.valid = editValid(edit);
   if (ref.kind === 'equipment') {
-    drag.mesh = equipment.buildDragMesh(ref.id, oy, ceilY);
-    scene.add(drag.mesh);
+    edit.mesh = equipment.buildDragMesh(ref.id, oy, ceilY);
+    scene.add(edit.mesh);
   }
   const r = footprintRadius(ref);
   ring.scale.set(r, r, 1);
   ring.visible = true;
-  placeDragVisuals();
+  placeEditVisuals();
+  hud.showEditBar({ canStore: !fromStorage, movable: isDraggable(ref), ok: edit.valid });
   navigator.vibrate?.(12);
 }
 
-function placeDragVisuals() {
-  if (!drag) return;
+function placeEditVisuals() {
+  if (!edit) return;
   const { ox, oy } = activeOrigin();
-  drag.mesh?.position.set(ox + drag.pos.x, 0, drag.pos.z);
-  ring.position.set(ox + drag.pos.x, oy + 0.006, drag.pos.z);
-  ringMat.color.setHex(drag.valid ? 0x7cb85c : 0xe5704f);
+  edit.mesh?.position.set(ox + edit.pos.x, 0, edit.pos.z);
+  ring.position.set(ox + edit.pos.x, oy + 0.006, edit.pos.z);
+  ringMat.color.setHex(edit.valid ? 0x7cb85c : 0xe5704f);
+}
+
+/** 擺放模式中手指按下：從這裡開始拖（不必按準家具） */
+function startEditDrag(ev: PointerEvent) {
+  if (!edit || !isDraggable(edit.ref)) return;
+  setPointer(ev);
+  dragPlane.constant = -edit.planeY;
+  if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
+  const { ox } = activeOrigin();
+  edit.dx = edit.pos.x - (dragHit.x - ox);
+  edit.dz = edit.pos.z - dragHit.z;
+  edit.dragging = true;
 }
 
 renderer.domElement.addEventListener('pointermove', (ev) => {
   if (pressRef && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) > 10) cancelLongPress();
-  if (!drag) return;
+  if (!edit || !edit.dragging || !isDraggable(edit.ref)) return;
   const { ox } = activeOrigin();
   setPointer(ev);
-  // 平面高度＝當初抓的那一點（機身中段、夾爪…），投到地板上會有透視偏差，一動就跳位
-  dragPlane.constant = -drag.planeY;
+  dragPlane.constant = -edit.planeY;
   if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
-  drag.pos = clampToTank(drag.ref, { x: dragHit.x - ox + drag.dx, z: dragHit.z + drag.dz });
-  drag.valid = placementError(state, state.activeZone, drag.ref, drag.pos) === null;
-  placeDragVisuals();
+  edit.pos = clampToTank(edit.ref, { x: dragHit.x - ox + edit.dx, z: dragHit.z + edit.dz });
+  edit.valid = editValid(edit);
+  placeEditVisuals();
+  hud.setEditOk(edit.valid);
 });
 renderer.domElement.addEventListener('pointercancel', () => {
   cancelLongPress();
-  endDrag(false);
+  if (edit) edit.dragging = false;
 });
 
-/** 結束拖曳；`commit` 才寫進 state。回傳剛才是不是在拖 */
-function endDrag(commit: boolean): boolean {
-  if (!drag) return false;
-  const d = drag;
-  drag = null;
-  if (d.mesh) {
-    scene.remove(d.mesh);
-    d.mesh.geometry.dispose();
+/** 離開擺放模式（不寫入）。回傳剛才是不是在擺放模式 */
+function endEdit(): boolean {
+  if (!edit) return false;
+  const e = edit;
+  edit = null;
+  if (e.mesh) {
+    scene.remove(e.mesh);
+    e.mesh.geometry.dispose();
   }
   ring.visible = false;
+  hud.hideEditBar();
   controls.enabled = true;
-  if (commit) {
-    const r = moveFurniture(state, state.activeZone, d.ref, d.pos);
-    // 放不下就留在原地，並說明為什麼（壓到別的／出界）
-    if (!r.ok) hud.toast(`${r.error}，放回原位`, true);
-    hud.update(state, performance.now(), true);
-  }
   return true;
+}
+
+/** 按「確定」：搬家或從倉庫擺出來，規則在 `game/furniture.ts` */
+function confirmEdit() {
+  if (!edit) return;
+  const e = edit;
+  if (e.fromStorage) {
+    const r = placeFromStorage(state, e.zone, e.ref, e.pos);
+    if (!r.ok) {
+      hud.toast(r.error, true);
+      return; // 留在擺放模式讓玩家換個位置
+    }
+    if (r.message) hud.toast(r.message);
+  } else if (isDraggable(e.ref)) {
+    const r = moveFurniture(state, e.zone, e.ref, e.pos);
+    if (!r.ok) {
+      hud.toast(r.error, true);
+      return;
+    }
+  }
+  endEdit();
+  hud.update(state, performance.now(), true);
+}
+
+/** 按「收進倉庫」；盆裡還有液體就先跳確認卡（收起來＝倒掉，D49） */
+function storeEdit() {
+  if (!edit || edit.fromStorage) return;
+  const { ref, zone } = edit;
+  endEdit();
+  const doStore = () => {
+    const r = storeFurniture(state, zone, ref);
+    if (r.ok && r.message) hud.toast(r.message);
+    report(r);
+  };
+  const warn = dumpWarning(state, ref);
+  if (warn) hud.confirmStore(warn, doStore);
+  else doStore();
+}
+
+/** 倉庫卡點了一件：拿出來、直接進擺放模式 */
+function takeFromStorage(key: string) {
+  const ref = parseRefKey(key);
+  if (!ref) return;
+  const bad = storageError(state, state.activeZone, ref);
+  if (bad) {
+    hud.toast(bad, true);
+    return;
+  }
+  const spot = storageSpot(state, state.activeZone, ref);
+  if (!spot) {
+    hud.toast('這一區擺不下了，先把別的收起來', true);
+    return;
+  }
+  beginEdit(ref, spot, true);
 }
 
 const TIER_TARGET_NAMES = new Set(['TankPlates', 'TankLocks', 'TankGlass', 'TankFloors', 'NeighbourLock', 'NeighbourGlass', 'NeighbourWood']);
@@ -901,7 +997,9 @@ function frame(dt: number, now: number) {
     }
   }
 
-  const dg = drag; // 拖曳中的預覽位置（放手前不進 state）
+  // 擺放模式：切到別區就取消（拿起來的東西是這一區的）
+  if (edit && edit.zone !== state.activeZone) endEdit();
+  const dg = edit; // 擺放中的預覽位置（按確定前不進 state）
   basins.sync(state, state.activeZone, ox, oy, dt, dg && dg.ref.kind === 'basin' ? { index: dg.ref.index, pos: dg.pos } : null);
   pours.update(state, dt, ox, oy); // 要在 basins.sync 之後：水流的落點讀的是這一幀顯示中的液面
   drops.sync(state, state.activeZone, ox, oy, dt);

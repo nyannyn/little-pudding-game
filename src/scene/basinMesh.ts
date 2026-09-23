@@ -124,7 +124,8 @@ export class BasinsView {
     this.oy = oy;
     const mine: Array<{ index: number; b: GameState['basins'][number] }> = [];
     state.basins.forEach((b, index) => {
-      if (b.zone !== zone) return;
+      // 從倉庫拿出來、還在擺放模式的那一個盆（state 裡仍在倉庫）也要畫
+      if (b.zone !== zone && !(preview && preview.index === index)) return;
       // 拖曳中（D49）：畫在手指底下的預覽位置，放手才由 `furniture.moveFurniture` 寫進 state
       mine.push({ index, b: preview && preview.index === index ? { ...b, pos: preview.pos } : b });
     });
