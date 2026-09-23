@@ -10,7 +10,7 @@ import {
   blockerLines,
   dessertPrice,
   lineFailRate,
-  linePortions,
+  batchQty,
   recipeBlockers,
   takeRecipeMaterials,
   type StationId,
@@ -246,13 +246,13 @@ const OK: BakeryResult = { ok: true };
 const fail = (error: string): BakeryResult => ({ ok: false, error });
 
 /**
- * 從菜單把一盤放上線（D56）。機器、材料、起始站三項都要過，原料開工時一次扣齊；
- * 一盤份數＝這條線最低那台的份數（D57）。
+ * 從菜單把一盤放上線（D56）。機器、材料（至少 1 份）、起始站三項都要過，原料開工時一次扣齊；
+ * 一盤份數＝min(這條線最低那台的份數, 材料夠做的份數)（D57）。
  */
 export function startBatch(state: GameState, species: SpeciesId, emit: EventSink): BakeryResult {
   const lines = blockerLines(recipeBlockers(state, species));
   if (lines.length) return fail(lines.join('；'));
-  const qty = linePortions(state, species);
+  const qty = batchQty(state, species);
   takeRecipeMaterials(state, species, qty);
   const first = RECIPES[species].route[0]!;
   const st = state.bakery.stations[first];
@@ -419,8 +419,9 @@ export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
   // 跨了整天都沒 tick 到打烊（不該發生：advance 最大步長 1 秒）也要補結，不可以把那天的營收吞掉
   else if (bk.closedDay < c.day - 1) settleDay(state, c.day - 1, emit);
 
-  // 還沒湊齊任何一道甜點的整條線：店還沒開張，不排客人（D57）
-  if (!c.open || !anyLineReady(state)) {
+  // 還沒湊齊任何一道甜點的整條線、架上也沒貨：店還沒開張，不排客人（D57）。
+  // 架上有貨就照常營業——v8 老玩家升上來機器歸零，但展示架上的貨不能就這樣凍住賣不掉
+  if (!c.open || (!anyLineReady(state) && shelfCount(state) === 0)) {
     // 打烊中不排客人；開門那一刻第一位就上門
     bk.nextCustomerAt = state.time;
     return;

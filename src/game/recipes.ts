@@ -138,9 +138,22 @@ export function lineLevel(state: GameState, species: SpeciesId): number {
   return Math.min(...RECIPES[species].route.map((id) => machineLevel(state, id)));
 }
 
-/** 這條線一盤做幾份＝路線上最低那台的份數（D57「前期機器可以製作的甜點份數比較少」） */
+/** 這條線一盤**最多**做幾份＝路線上最低那台的份數（D57「前期機器可以製作的甜點份數比較少」） */
 export function linePortions(state: GameState, species: SpeciesId): number {
   return MACHINE_PORTIONS[lineLevel(state, species)] ?? 0;
+}
+
+/** 手上的材料夠做幾份（最缺的那一種決定） */
+export function affordablePortions(state: GameState, species: SpeciesId): number {
+  return Math.min(...recipeMaterials(species).map(([k, per]) => Math.floor(materialHave(state, k) / per)));
+}
+
+/**
+ * 這一盤實際做幾份＝min(機器上限, 材料夠做的份數)。**份數是上限不是門檻**：
+ * 整條線升到 Lv3（一盤 4 份）之後，材料只夠 1 份也要開得了工——不然升級等於花錢買降級（混種原料本來就少）。
+ */
+export function batchQty(state: GameState, species: SpeciesId): number {
+  return Math.min(linePortions(state, species), affordablePortions(state, species));
 }
 
 /** 目前機器下每份的失敗率 */
@@ -164,7 +177,7 @@ export function anyLineReady(state: GameState): boolean {
 export interface RecipeBlockers {
   /** 還沒買的機器（照路線順序） */
   machines: StationId[];
-  /** 不夠的材料（以這條線一盤的份數算；沒機器時以 1 份算） */
+  /** 連 1 份都不夠的材料（份數是上限，只要夠 1 份就開得了工） */
   materials: { key: MaterialKey; need: number; have: number }[];
   /** 起始站上還有一盤 */
   busy: StationId | null;
@@ -173,9 +186,8 @@ export interface RecipeBlockers {
 export function recipeBlockers(state: GameState, species: SpeciesId): RecipeBlockers {
   const r = RECIPES[species];
   const machines = r.route.filter((id) => machineLevel(state, id) === 0);
-  const qty = Math.max(1, linePortions(state, species));
   const materials = recipeMaterials(species)
-    .map(([key, per]) => ({ key, need: per * qty, have: materialHave(state, key) }))
+    .map(([key, per]) => ({ key, need: per, have: materialHave(state, key) }))
     .filter((m) => m.have < m.need);
   const first = r.route[0]!;
   const busy = state.bakery.stations[first].batch ? first : null;
@@ -187,11 +199,15 @@ export function canStartRecipe(state: GameState, species: SpeciesId): boolean {
   return b.machines.length === 0 && b.materials.length === 0 && b.busy === null;
 }
 
-/** 開工檢查的人話（菜單卡下方、按了沒動靜時的 toast 都用這份） */
-export function blockerLines(b: RecipeBlockers): string[] {
+/**
+ * 開工檢查的人話（菜單卡下方、按了沒動靜時的 toast 都用這份）。
+ * `withCounts: false`：菜單卡用——持有數會一直變（收集手在撿），放進文字就得一直重建卡片，
+ * 手指底下的按鈕會被換掉（D55 的教訓）；數字交給卡片上就地更新的材料晶片。
+ */
+export function blockerLines(b: RecipeBlockers, withCounts = true): string[] {
   const out: string[] = [];
   if (b.machines.length) out.push(`缺機器：${b.machines.map((id) => STATIONS[id].name).join('、')}`);
-  if (b.materials.length) out.push(`缺原料：${b.materials.map((m) => `${materialName(m.key)} ${m.have}/${m.need}`).join('、')}`);
+  if (b.materials.length) out.push(`缺原料：${b.materials.map((m) => (withCounts ? `${materialName(m.key)} ${m.have}/${m.need}` : materialName(m.key))).join('、')}`);
   if (b.busy) out.push(`${STATIONS[b.busy].name}上還有一盤，等它往下走`);
   return out;
 }

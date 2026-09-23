@@ -644,13 +644,14 @@ export class Hud {
    * 菜單（D56）：十道食譜一道一張卡——原料有／需、總時長、失敗率、售價、這條線一盤幾份；
    * 機器與原料都齊、起始站空著才能按「開始製作」，不然卡片下面逐條寫缺什麼。
    *
-   * 結構（能不能開工、缺哪幾樣、份數）變了才重建；持有數每 160ms 就地改字——
-   * 收集手一直在撿，把持有數放進 sig 等於一兩秒重建一次，手指底下的按鈕會被換掉（D55 的教訓）。
+   * 結構（能不能開工、缺哪幾樣、份數上限）變了才重建；持有數每 160ms 就地改字——
+   * 收集手一直在撿，把持有數放進 sig（包括「缺原料：蛋 3/4」這種字）等於一兩秒重建一次，
+   * 手指底下的按鈕會被換掉（D55 的教訓）。所以缺料那行只寫材料名，數字在晶片上。
    */
   private syncMenu(state: GameState) {
     const rows = SPECIES_IDS.map((id) => {
       const b = recipeBlockers(state, id);
-      return { id, ok: canStartRecipe(state, id), lines: blockerLines(b), qty: linePortions(state, id), fail: lineFailRate(state, id) };
+      return { id, ok: canStartRecipe(state, id), lines: blockerLines(b, false), qty: linePortions(state, id), fail: lineFailRate(state, id) };
     });
     const sig = JSON.stringify(rows);
     if (sig !== this.menuSig) {
@@ -663,9 +664,9 @@ export class Hud {
           const r = RECIPES[id];
           const secs = recipeSeconds(id);
           const time = secs >= 60 ? `${Math.floor(secs / 60)} 分 ${secs % 60} 秒` : `${secs} 秒`;
-          const per = Math.max(1, qty);
+          // 晶片寫「一份要幾個」：份數是上限（D57），夠 1 份就開得了工
           const mats = recipeMaterials(id)
-            .map(([k, n]) => `<span class="mat" data-k="${k}" data-need="${n * per}">${materialName(k)} <b>0</b>/${n * per}</span>`)
+            .map(([k, n]) => `<span class="mat" data-k="${k}" data-need="${n}">${materialName(k)} <b>0</b>/${n}</span>`)
             .join('');
           return `<div class="rcard" data-id="${id}" data-ok="${ok}">
             <div class="rhead">
@@ -673,7 +674,7 @@ export class Hud {
               <div class="txt"><b>${info.dessert}</b><small>${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
               <span class="price">${dessertPrice(id)}</span>
             </div>
-            <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>一盤 ${per} 份</span></div>
+            <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>${qty > 0 ? `一盤最多 ${qty} 份` : '還沒有機器'}</span></div>
             <div class="mats">${mats}</div>
             ${lines.map((t) => `<p class="miss">${t}</p>`).join('')}
             <button class="buy" data-a="startBatch" data-arg="${id}"${ok ? '' : ' disabled'}>開始製作</button>

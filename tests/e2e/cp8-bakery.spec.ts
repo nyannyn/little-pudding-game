@@ -100,6 +100,28 @@ test('AC9-8／9-9／9-3：商店買機器 → 菜單開工 → 線上自己走�
   await expect(page.locator('.daybar .today')).not.toHaveText('今日 +0');
 });
 
+test('菜單開著、收集手一直在撿：可以按的「開始製作」不會在手指底下被換掉（D55 同型坑）', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
+  await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    Object.assign(s.bakery.machines, { stove: 1, crack: 1, mix: 1, mold: 1, bake: 1, decorate: 1 });
+    s.stock.milk = 3; s.pantry.flour = 3; s.ingredients.caramel = 3; s.eggs = 2;
+  });
+  await step(page, 0.3);
+  await page.getByRole('button', { name: /菜單/ }).click();
+  // 焦糖布丁塔可以按：抓住這顆按鈕
+  const btn = await page.locator('.menucard .rcard[data-id="caramel"] [data-a="startBatch"]:not([disabled])').elementHandle();
+  const eggChip = page.locator('.menucard .rcard[data-id="caramel"] .mat[data-k="egg"] b');
+  // 蛋一顆一顆撿進來（2→5）：沒有任何一道食譜因此從缺料變不缺料＝結構沒變，只有晶片上的數字該動。
+  // 蛋數不能在 0／1 之間變：草莓布丁派一份只要 1 顆蛋，跨過去是真的結構變化（重建是對的）
+  for (const n of [3, 4, 5]) {
+    await page.evaluate((x) => { (window.__lpg.state as GameState).eggs = x; }, n);
+    await step(page, 0.3);
+  }
+  await expect(eggChip).toHaveText('5');
+  expect(await btn!.evaluate((b) => b.isConnected)).toBe(true);
+});
+
 test('商店工坊頁：買了變升級、滿級顯示已滿級；320px 分頁列不溢出', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');

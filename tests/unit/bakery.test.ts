@@ -221,6 +221,22 @@ describe('AC9-4 份數＝路線上最低那台', () => {
     expect(linePortions(p, 'panna')).toBe(2);
   });
 
+  it('份數是上限不是門檻：全線 Lv3、材料只夠 1 份也開得了工，開 1 份', () => {
+    const s = ready('matcha', 3);
+    stockFor(s, 'matcha', 1);
+    expect(canStartRecipe(s, 'matcha')).toBe(true);
+    expect(startBatch(s, 'matcha', sink).ok).toBe(true);
+    expect(s.bakery.stations.crack.batch).toEqual({ species: 'matcha', qty: 1 });
+  });
+
+  it('材料夠 3 份、上限 4 份：開 3 份，材料剛好扣完', () => {
+    const s = ready('hojicha', 3);
+    stockFor(s, 'hojicha', 3);
+    startBatch(s, 'hojicha', sink);
+    expect(s.bakery.stations.crack.batch?.qty).toBe(3);
+    for (const [k] of recipeMaterials('hojicha')) expect(materialHave(s, k)).toBe(0);
+  });
+
   it('開工扣的材料跟著份數走', () => {
     const s = ready('caramel', 2);
     stockFor(s, 'caramel', 5);
@@ -277,6 +293,17 @@ describe('AC9-6 沒整條線不來客、不出預訂單', () => {
     advance(w, 1800);
     expect(w.state.stats.missed).toBe(0);
     expect(w.state.orders).toHaveLength(0);
+  });
+
+  it('沒機器但展示架上有貨（v8 老玩家升上來）：照樣營業，貨賣得掉；賣空了閘門自己關上', () => {
+    const w = makeWorld({ puddings: 1 });
+    w.state.bakery.shelf.caramel = 3;
+    advance(w, 600);
+    expect(w.state.bakery.shelf.caramel).toBe(0);
+    expect(w.state.stats.served).toBeGreaterThan(0);
+    const missed = w.state.stats.missed;
+    advance(w, 600);
+    expect(w.state.stats.missed).toBe(missed);
   });
 
   it('湊齊一道甜點的線就開張', () => {
