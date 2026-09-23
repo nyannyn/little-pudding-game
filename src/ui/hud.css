@@ -993,3 +993,11 @@
   .topbar { gap: 4px; }
   .hud .topbar .iconbtn { width: 38px; min-height: 38px; padding: 7px; }
 }
+
+/* 頂列的數字按畫面挑：農場用不到甜點數（D50 起農場不做甜點）；
+   工坊在最窄的手機上藏原料總數（開工選單裡逐種都列著）。
+   320px 上四個數字＋兩顆鈕塞不下：金幣五位數時甜點膠囊會壓到齒輪 20px（2026-09-23 e2e 量到）。 */
+.hud[data-view="farm"] .chip[data-k="des"] { display: none; }
+@media (max-width: 359px) {
+  .hud[data-view="bakery"] .chip[data-k="ing"] { display: none; }
+}

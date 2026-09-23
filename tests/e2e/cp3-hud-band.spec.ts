@@ -103,19 +103,20 @@ test.describe('320px 寬', () => {
   test.use({ viewport: { width: 320, height: 568 } });
 
   for (const view of ['farm', 'bakery'] as const) {
-    test(`頂列四個數字都沒有被按鈕蓋住（${view}）`, async ({ page }) => {
+    test(`頂列的數字都沒有被按鈕蓋住（${view}）`, async ({ page }) => {
       await page.goto(`/?fresh=1&seed=5${view === 'bakery' ? '&view=bakery' : ''}`);
       await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
       await page.evaluate(() => { const s = window.__lpg.state!; s.coins = 12345; s.eggs = 88; s.desserts.caramel = 12; });
       await page.waitForTimeout(400);
       const r = await page.evaluate(() => {
         const box = (el: Element) => el.getBoundingClientRect();
-        const chips = [...document.querySelectorAll('.topbar .chip')].map(box);
+        // 只算看得到的膠囊（各畫面會藏掉用不到的那一個，見 hud.css）
+        const chips = [...document.querySelectorAll('.topbar .chip')].map(box).filter((b) => b.width > 0);
         const btns = [...document.querySelectorAll('.topbar .iconbtn')].map(box);
         const hit = chips.some((c) => btns.some((b) => c.right > b.left + 1 && c.left < b.right - 1 && c.bottom > b.top && c.top < b.bottom));
         return { hit, chips: chips.length, lastRight: Math.round(chips[chips.length - 1]!.right), firstBtn: Math.round(btns[0]!.left) };
       });
-      expect(r.chips).toBe(4);
+      expect(r.chips).toBe(3);
       expect(r.hit, JSON.stringify(r)).toBe(false);
     });
   }

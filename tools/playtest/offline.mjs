@@ -6,7 +6,7 @@ import { boot, launch, newPage, report, shot, tap } from './lib.mjs';
 const browser = await launch();
 let page = await newPage(browser);
 await boot(page, '?fresh=1&seed=9&fastTime=10');
-await page.evaluate(() => { const s = window.__lpg.state; for (const k of ['autoFill', 'collector', 'crafter', 'seller']) s.equipment[s.activeZone][k] = true; s.stock.caramel = 20; });
+await page.evaluate(() => { const s = window.__lpg.state; for (const k of ['autoFill', 'collector']) s.equipment[s.activeZone][k] = true; s.stock.caramel = 20; });
 await tap(page, '倒焦糖');
 await page.waitForTimeout(6500); // 每 5 秒存檔一次
 await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));

@@ -119,9 +119,10 @@ test('預訂單在工坊交：成品櫃不夠時從展示架補，交貨鈕按�
   // 工坊右欄的預訂單鈕：徽章是綠的（有交得出來的單）→ 開卡片按交貨
   await expect(page.locator('.ordbtn .badge')).toHaveClass(/ok/);
   await page.getByRole('button', { name: '預訂單' }).click();
-  await page.locator('.ordercard .order [data-a="fulfill"]').click();
+  // 撥時間的那一 tick 也可能剛好生出一張新訂單：只按這一張
+  await page.locator('.ordercard .order[data-id="o-e2e"] [data-a="fulfill"]').click();
   const s = await S(page);
-  expect(s.orders).toHaveLength(0);
+  expect(s.orders.find((o) => o.id === 'o-e2e')).toBeUndefined();
   expect(s.coins).toBe(coins + 150);
   expect(s.desserts.caramel + s.bakery.shelf.caramel).toBe(0);
 });
@@ -140,6 +141,11 @@ test('AC8-6：商店賣一隻布丁，畫面上真的少一隻（不是只有 st
   expect(s.puddings).toHaveLength(2);
   expect(s.coins).toBe(coins + Math.round(6 * BALANCE.puddingPriceMult));
   await expect.poll(count).toBe(2);
+  // 骨架（PuddingView.root）也要拿掉：instance 數是照 state 每幀重排的，就算 main.ts 沒釋放也會少一隻；
+  // 掛在 scene 上的骨架才是「賣掉的那隻還留在場景裡」的證據（其他讀 scene graph 的量法會數到它）
+  const skeletons = await page.evaluate(() =>
+    window.__lpg.three!.scene.children.filter((o) => o.getObjectByName('Pudding_Body')).length);
+  expect(skeletons).toBe(2);
 });
 
 test('AC8-8：成就達成要按「領取」才入帳，領過就變「已領取」', async ({ page }) => {
