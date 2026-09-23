@@ -22,10 +22,13 @@ function screen(page: Page, x: number, y: number, z: number) {
   return page.evaluate(([a, b, c]) => window.__lpg.toScreen!(a!, b!, c!), [x, y, z]);
 }
 
-/** 長按 `from`（區域座標＋高度）→ 拖到 `to`（地板上的區域座標）→ 放手；回傳拖曳途中量到的 draw calls */
-async function longPressDrag(page: Page, from: [number, number, number], to: [number, number], planeY = 0) {
+/**
+ * 長按 `from`（區域座標＋高度）→ 把抓的那一點拖到 `to` 正上方同一高度 → 放手；回傳拖曳途中量到的 draw calls。
+ * 拖曳平面是抓取點的高度（不是地板），家具中心保持與抓取點的偏移，所以終點誤差≈打點與中心的水平距離。
+ */
+async function longPressDrag(page: Page, from: [number, number, number], to: [number, number]) {
   const a = await screen(page, ...from);
-  const b = await screen(page, to[0], planeY, to[1]);
+  const b = await screen(page, to[0], from[1], to[1]);
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
   await page.waitForTimeout(700); // LONG_PRESS_MS＝450
@@ -65,8 +68,9 @@ test('長按販賣機拖到地板中間：鏡頭不轉、位置寫進 state、�
   const s = await state(page);
   const pos = s.equipmentPos[s.activeZone]?.seller;
   expect(pos).toBeDefined();
-  expect(Math.abs(pos!.x - 0.35)).toBeLessThan(0.06);
-  expect(Math.abs(pos!.z - -0.3)).toBeLessThan(0.06);
+  // 打點在機身正面（z≈0.66），中心在 0.60：終點會差這 0.06 上下
+  expect(Math.abs(pos!.x - 0.35)).toBeLessThan(0.1);
+  expect(Math.abs(pos!.z - -0.3)).toBeLessThan(0.1);
   // 拖曳中鏡頭不可以跟著轉（controls 有關掉）
   expect(Math.abs((await azimuth(page)) - before)).toBeLessThan(0.02);
   // 放手後併回單一設備 mesh
@@ -138,4 +142,29 @@ test('「櫥窗全住滿了」按 × 就永久關掉，重新整理也不再出�
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
   await page.waitForTimeout(1500);
   await expect(hint).toBeHidden();
+});
+
+test('抓起來只動一點點，家具不可以跳位（手指按的是機身，不是地板）', async ({ page }) => {
+  test.setTimeout(120_000);
+  await ready(page, '/?debug=1&fresh=1&seed=4549');
+  await page.evaluate(() => { const s = window.__lpg.state as GameState; s.coins = 99999; s.xp = 99999; });
+  await page.getByRole('button', { name: '商店' }).click();
+  await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
+  await page.locator('[data-a="buyEquip"][data-arg="seller"]').click();
+  await page.getByRole('button', { name: '關閉' }).click();
+
+  const a = await screen(page, -0.14, 0.3, 0.6);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.move(a.x + 5, a.y);
+  await page.waitForTimeout(100);
+  // EquipmentDrag 建在區域原點、position＝世界座標；起始區在第 0 座，世界 x 原點＝0
+  const at = await page.evaluate(() => {
+    const m = window.__lpg.three!.scene.getObjectByName('EquipmentDrag')!;
+    return { x: m.position.x, z: m.position.z };
+  });
+  await page.mouse.up();
+  expect(Math.abs(at.x - -0.14)).toBeLessThan(0.05);
+  expect(Math.abs(at.z - 0.6)).toBeLessThan(0.05);
 });

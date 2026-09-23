@@ -507,7 +507,7 @@ function handle(e: SimEvent) {
 /**
  * 賣出的金幣從販賣機彈出來、撒在地板上、消失（D42）。
  *
- * 買了販售口：從販賣機**頂上**（`SELLER_SPOUT`）冒出來——機身有半公尺高，從機身裡生
+ * 買了販售口：從販賣機**頂上**（`sellerSpout()`，跟著販賣機的位置走，D49）冒出來——機身有半公尺高，從機身裡生
  * 第一幀就被擋住；往 −z 拋會越過機身落到地板上。沒買（手動出貨）：從前緣帶 z=0.6 正中央生，
  * 布丁地板是 ±0.4，落在 0.42–0.60 這條帶才不會蓋住布丁。
  */
@@ -576,12 +576,19 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
 const LONG_PRESS_MS = 450;
 let pressTimer = 0;
 let pressRef: FurnitureRef | null = null;
+/** 長按時手指打到家具的那一點（世界座標）：拖曳平面取它的高度，否則按機身一拖就跳到後牆 */
+const pressHit = new THREE.Vector3();
 interface Drag {
   ref: FurnitureRef;
   pos: Vec2;
   valid: boolean;
   /** 拖設備時單獨的那一台（澡盆直接用 BasinsView 的預覽） */
   mesh: THREE.Mesh | null;
+  /** 拖曳平面的世界高度＝抓的那一點的高度 */
+  planeY: number;
+  /** 家具中心－抓取點（區域座標）：放手時家具中心要停在「手指＋這個偏移」，不是手指底下 */
+  dx: number;
+  dz: number;
 }
 let drag: Drag | null = null;
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -609,6 +616,7 @@ function furnitureUnder(ev: PointerEvent): FurnitureRef | null {
   setPointer(ev);
   const hit = raycaster.intersectObjects([...basins.group.children, ...equipment.group.children], false)[0];
   if (!hit) return null;
+  pressHit.copy(hit.point);
   const { ox } = activeOrigin();
   const lx = hit.point.x - ox, lz = hit.point.z;
   let best: FurnitureRef | null = null, bestD = Infinity;
@@ -650,7 +658,9 @@ function footprintRadius(ref: FurnitureRef): number {
 function beginDrag(ref: FurnitureRef) {
   const { oy, ceilY } = activeOrigin();
   controls.enabled = false; // 拖曳中手指不轉鏡頭
-  drag = { ref, pos: currentPos(ref), valid: true, mesh: null };
+  const { ox } = activeOrigin();
+  const pos = currentPos(ref);
+  drag = { ref, pos, valid: true, mesh: null, planeY: pressHit.y, dx: pos.x - (pressHit.x - ox), dz: pos.z - pressHit.z };
   if (ref.kind === 'equipment') {
     drag.mesh = equipment.buildDragMesh(ref.id, oy, ceilY);
     scene.add(drag.mesh);
@@ -673,13 +683,12 @@ function placeDragVisuals() {
 renderer.domElement.addEventListener('pointermove', (ev) => {
   if (pressRef && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) > 10) cancelLongPress();
   if (!drag) return;
-  const { ox, oy, ceilY } = activeOrigin();
+  const { ox } = activeOrigin();
   setPointer(ev);
-  // 收集手掛在頂板：手指對的是夾爪那個高度，投到地板上會有透視偏差
-  const planeY = drag.ref.kind === 'equipment' && drag.ref.id === 'collector' ? ceilY - 0.25 : oy;
-  dragPlane.constant = -planeY;
+  // 平面高度＝當初抓的那一點（機身中段、夾爪…），投到地板上會有透視偏差，一動就跳位
+  dragPlane.constant = -drag.planeY;
   if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
-  drag.pos = clampToTank(drag.ref, { x: dragHit.x - ox, z: dragHit.z });
+  drag.pos = clampToTank(drag.ref, { x: dragHit.x - ox + drag.dx, z: dragHit.z + drag.dz });
   drag.valid = placementError(state, state.activeZone, drag.ref, drag.pos) === null;
   placeDragVisuals();
 });

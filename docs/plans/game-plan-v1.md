@@ -370,7 +370,7 @@ CP1 不過的處理：AC1-1 紅＝GLB 匯出/載入鏈斷，先用 three.js 官�
   | 條目 | 判定方法 | 通過標準 | 負向對照 |
   |---|---|---|---|
   | AC7-1 停擺提示指得出出路 | `tests/unit/hints.test.ts` 重建使用者存檔 | 文字含「倒焦糖」且**不含**「照樣會掉原料」 | 把舊文案寫回去 → 3 條紅（**已紅過**） |
-  | AC7-2 住滿要有常駐警告 | 同上，全區滿員＋有牛乳 | `nextHint().id === 'zonefull'`、`warning: true`，關掉教學仍出現 | 拿掉 `zoneFullHint` 分派 → 2 條紅（**已紅過**） |
+  | AC7-2 住滿要有常駐警告 | 同上，全區滿員＋有牛乳 | `nextHint().id` 以 `zonefull:` 開頭（D49 起帶已解鎖區數，可永久關）、`warning: true`，關掉教學仍出現 | 拿掉 `zoneFullHint` 分派 → 2 條紅（**已紅過**） |
   | AC7-3 出貨沒動靜要講原因 | `tests/unit/shipping.test.ts`＋無頭頁面按鈕實測 | `reserved` 算得對；按下去跳「還差 N 份」；甜點沒被賣掉 | `reserved` 恆 0 → 2 條紅（**已紅過**） |
   | AC7-4 15 隻在預算內 | `tests/e2e/cp7-instancing.spec.ts`（`?pop=15` 量 `renderer.info.render.calls`） | ≤ 30；**實測 16（2026-09-22）** | 改版前同一量法＝88（見 AC7-4a）；第二條「物種色走 instance 屬性」把體色寫死成白 → 紅（**已紅過**） |
   | AC7-4a 15 隻的改版前基準 | `puddingPositions` 補到 15 個落點後、改 `scene/` 之前量 | **實測 88**（2 隻 23／5 隻 38／15 隻 88，與外推一致） | — |

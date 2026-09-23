@@ -58,7 +58,7 @@ function miniPudding(parts: Parts, x: number, shelfY: number, z: number, body: n
  * ① 前玻璃在 `z = d/2 = 0.70`，機身正面停在 0.66，雨遮、展示架、取物口這些會凸出來的
  *    最多到 0.695，再往前就穿玻璃。
  * ② 布丁的地板是 `z ≤ 0.4`（`floorRect`），機身背面 0.54 不能再往後退，否則布丁會跳進機器裡。
- * 金幣從機器**頂上**冒出來（`SELLER_SPOUT`）：機身現在有半公尺高，還從原本窗口那個高度生
+ * 金幣從機器**頂上**冒出來（`sellerSpout()`）：機身現在有半公尺高，還從原本窗口那個高度生
  * 會直接卡在機身裡。
  */
 function vendingMachine(parts: Parts, floorY: number, at: Vec2) {

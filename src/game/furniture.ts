@@ -16,8 +16,11 @@ import { findZone } from './zones';
  */
 export const TANK_INNER = { halfW: 2.35 / 2, halfD: 1.4 / 2 } as const;
 
-/** 家具離玻璃至少留這麼多，否則模型會穿出去 */
-const WALL_GAP = 0.02;
+/**
+ * 家具離玻璃至少留這麼多，否則模型會穿出去。
+ * 改版前販賣機的雨遮停在 z=0.695（離玻璃 0.005），新規則不可以把舊擺法判成違規，所以取 0.004。
+ */
+const WALL_GAP = 0.004;
 /** 兩件家具之間至少留這麼多 */
 const ITEM_GAP = 0.02;
 
@@ -27,14 +30,16 @@ export const BASIN_RADIUS = 0.21;
 export type FurnitureRef = { kind: 'basin'; index: number } | { kind: 'equipment'; id: EquipmentId };
 
 /**
- * 每件落地家具在地板上的佔地（半寬 hx、半深 hz）。含往外凸的零件：
- * 販賣機的雨遮／展示架往前凸 0.035，所以 hz 取 0.1（機身正面停在中心 +0.06）。
+ * 每件落地家具在地板上的佔地：半寬 hx、半深 hz，佔地中心比家具中心往 +z 偏 cz。
+ * 含往外凸的零件：販賣機的雨遮／展示架往前凸到中心 +0.095、底座往後到 −0.07，
+ * 前後不對稱，所以 hz＝0.0825、cz＝0.0125。
  * 收集手掛在頂板、注液閥掛在澡盆上方，它們不佔地板，沒有佔地。
  */
-const EQUIPMENT_FOOTPRINT: Partial<Record<EquipmentId, { hx: number; hz: number }>> = {
-  crafter: { hx: 0.15, hz: 0.12 },
-  seller: { hx: 0.17, hz: 0.1 },
-  restock: { hx: 0.11, hz: 0.07 },
+interface Footprint { hx: number; hz: number; cz: number }
+const EQUIPMENT_FOOTPRINT: Partial<Record<EquipmentId, Footprint>> = {
+  crafter: { hx: 0.15, hz: 0.12, cz: 0 },
+  seller: { hx: 0.17, hz: 0.0825, cz: 0.0125 },
+  restock: { hx: 0.11, hz: 0.07, cz: 0 },
 };
 
 /** 預設位置＝改版前寫死的位置，舊檔沒存位置就用這組，畫面跟改版前一模一樣 */
@@ -54,8 +59,8 @@ export function isDraggable(ref: FurnitureRef): boolean {
   return ref.kind === 'basin' || ref.id !== 'autoFill';
 }
 
-function footprint(ref: FurnitureRef): { hx: number; hz: number } | null {
-  if (ref.kind === 'basin') return { hx: BASIN_RADIUS, hz: BASIN_RADIUS };
+function footprint(ref: FurnitureRef): Footprint | null {
+  if (ref.kind === 'basin') return { hx: BASIN_RADIUS, hz: BASIN_RADIUS, cz: 0 };
   return EQUIPMENT_FOOTPRINT[ref.id] ?? null;
 }
 
@@ -81,9 +86,10 @@ export function furniturePos(state: GameState, zone: string, ref: FurnitureRef):
 export interface PlacedFurniture {
   ref: FurnitureRef;
   pos: Vec2;
-  /** 佔地（不佔地板的是 null） */
+  /** 佔地（不佔地板的全是 0、floor=false）；佔地中心＝pos 往 +z 偏 cz */
   hx: number;
   hz: number;
+  cz: number;
   floor: boolean;
 }
 
@@ -91,14 +97,14 @@ export interface PlacedFurniture {
 export function furnitureIn(state: GameState, zone: string): PlacedFurniture[] {
   const out: PlacedFurniture[] = [];
   state.basins.forEach((b, index) => {
-    if (b.zone === zone) out.push({ ref: { kind: 'basin', index }, pos: b.pos, hx: BASIN_RADIUS, hz: BASIN_RADIUS, floor: true });
+    if (b.zone === zone) out.push({ ref: { kind: 'basin', index }, pos: b.pos, hx: BASIN_RADIUS, hz: BASIN_RADIUS, cz: 0, floor: true });
   });
   const eq = state.equipment[zone];
   if (eq) {
     for (const id of EQUIPMENT_IDS) {
       if (!eq[id]) continue;
       const fp = footprint({ kind: 'equipment', id });
-      out.push({ ref: { kind: 'equipment', id }, pos: equipmentPos(state, zone, id), hx: fp?.hx ?? 0, hz: fp?.hz ?? 0, floor: fp !== null });
+      out.push({ ref: { kind: 'equipment', id }, pos: equipmentPos(state, zone, id), hx: fp?.hx ?? 0, hz: fp?.hz ?? 0, cz: fp?.cz ?? 0, floor: fp !== null });
     }
   }
   return out;
@@ -116,10 +122,11 @@ export function clampToTank(ref: FurnitureRef, pos: Vec2): Vec2 {
       z: Math.max(-COLLECTOR_RANGE.z, Math.min(COLLECTOR_RANGE.z, pos.z)),
     };
   }
-  const fp = footprint(ref) ?? { hx: 0, hz: 0 };
+  const fp = footprint(ref) ?? { hx: 0, hz: 0, cz: 0 };
   const mx = TANK_INNER.halfW - fp.hx - WALL_GAP;
   const mz = TANK_INNER.halfD - fp.hz - WALL_GAP;
-  return { x: Math.max(-mx, Math.min(mx, pos.x)), z: Math.max(-mz, Math.min(mz, pos.z)) };
+  // 佔地中心（pos.z + cz）夾在 ±mz 裡，再換回家具中心
+  return { x: Math.max(-mx, Math.min(mx, pos.x)), z: Math.max(-mz, Math.min(mz, pos.z + fp.cz)) - fp.cz };
 }
 
 /**
@@ -134,7 +141,7 @@ export function placementError(state: GameState, zone: string, ref: FurnitureRef
   if (!fp) return null; // 掛在頂板上的不會撞到地上的東西
   for (const other of furnitureIn(state, zone)) {
     if (!other.floor || sameRef(other.ref, ref)) continue;
-    if (Math.abs(other.pos.x - pos.x) < other.hx + fp.hx + ITEM_GAP && Math.abs(other.pos.z - pos.z) < other.hz + fp.hz + ITEM_GAP) {
+    if (Math.abs(other.pos.x - pos.x) < other.hx + fp.hx + ITEM_GAP && Math.abs(other.pos.z + other.cz - (pos.z + fp.cz)) < other.hz + fp.hz + ITEM_GAP) {
       return '跟別的家具重疊了';
     }
   }
@@ -145,7 +152,7 @@ export function placementError(state: GameState, zone: string, ref: FurnitureRef
 export function blockedByFurniture(state: GameState, zone: string, p: Vec2, pad: number): boolean {
   for (const f of furnitureIn(state, zone)) {
     if (!f.floor) continue;
-    if (Math.abs(f.pos.x - p.x) < f.hx + pad && Math.abs(f.pos.z - p.z) < f.hz + pad) return true;
+    if (Math.abs(f.pos.x - p.x) < f.hx + pad && Math.abs(f.pos.z + f.cz - p.z) < f.hz + pad) return true;
   }
   return false;
 }

@@ -9,6 +9,7 @@ import {
   TANK_INNER,
   equipmentPos,
   moveFurniture,
+  placementError,
   placeFromStorage,
   storeFurniture,
   storedBasins,
@@ -54,6 +55,30 @@ describe('game 抄的尺寸跟 scene 一致', () => {
     expect(TANK_INNER.halfW).toBeCloseTo(TANK.width / 2);
     expect(TANK_INNER.halfD).toBeCloseTo(TANK.depth / 2);
     expect(BASIN_RADIUS).toBeCloseTo(BASIN.radius);
+  });
+});
+
+describe('預設位置本身要合法（新規則不能判舊擺法違規）', () => {
+  it('每台落地設備的預設位置、開局澡盆位置，在只有它自己的區裡都放得下', () => {
+    for (const id of ['crafter', 'seller', 'restock', 'collector'] as const) {
+      const w = rich();
+      w.state.basins[0]!.zone = STORAGE_ZONE; // 清空這一區，只驗牆
+      w.state.equipment[START_ZONE]![id] = true;
+      expect(placementError(w.state, START_ZONE, { kind: 'equipment', id }, EQUIPMENT_DEFAULT_POS[id])).toBeNull();
+    }
+    const w = rich();
+    for (const pos of [w.state.basins[0]!.pos, { x: -0.52, z: 0.12 }, { x: 0.52, z: -0.24 }, { x: -0.52, z: -0.24 }]) {
+      expect(placementError(w.state, START_ZONE, BASIN0, pos)).toBeNull();
+    }
+  });
+
+  it('五台全裝在預設位置彼此不重疊（原地長按放手不可以被退回）', () => {
+    const w = rich();
+    for (const id of EQUIPMENT_IDS) buyEquipment(w.state, id, sink);
+    w.state.basins[0]!.pos = { x: -0.52, z: 0.12 }; // 正式版的開局盆位（main.ts BASIN_SLOTS[0]）
+    for (const id of ['crafter', 'seller', 'restock', 'collector'] as const) {
+      expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id }, EQUIPMENT_DEFAULT_POS[id]).ok).toBe(true);
+    }
   });
 });
 
