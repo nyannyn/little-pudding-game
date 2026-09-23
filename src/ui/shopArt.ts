@@ -1,6 +1,6 @@
 /**
  * 商店商品插圖。兩種來源：
- * - `*.svg`：自己畫的。**設備五件一定是畫的**——它們之後會真的出現在玻璃箱裡
+ * - `*.svg`：自己畫的。**設備一定是畫的**（D50 起剩三件：加工機與販售口退役）——它們之後會真的出現在玻璃箱裡
  *   （`scene/equipmentMesh.ts`：金屬 #cfd6dd＋配色 #e58a7b），商店圖要跟箱裡那件長得一樣；
  *   蜂蜜罐／紙盒牛奶／草莓果醬是使用者指定的長相，素材包裡沒有。
  * - `*.webp`：Microsoft Fluent Emoji 3D（MIT），來源與縮圖流程見 tools/fetch-shop-art.mjs。
@@ -15,9 +15,7 @@ import custard from '../assets/shop/custard.webp';
 import egg from '../assets/shop/egg.svg';
 import eqAutoFill from '../assets/shop/eqAutoFill.svg';
 import eqCollector from '../assets/shop/eqCollector.svg';
-import eqCrafter from '../assets/shop/eqCrafter.svg';
 import eqRestock from '../assets/shop/eqRestock.svg';
-import eqSeller from '../assets/shop/eqSeller.svg';
 import hojicha from '../assets/shop/hojicha.webp';
 import honeyJar from '../assets/shop/honeyJar.svg';
 import ingCaramel from '../assets/shop/ingCaramel.webp';
@@ -38,7 +36,7 @@ import type { LiquidId, SpeciesId } from '../game/species';
 
 export const ART = {
   honeyJar, milkCarton, matcha, jam, strawberry,
-  eqAutoFill, eqCollector, eqCrafter, eqSeller, eqRestock,
+  eqAutoFill, eqCollector, eqRestock,
   bathtub, window, store,
   ingCaramel, ingPanna, jar, custard, hojicha, candy, sakura, lock, star, egg,
 } as const;
@@ -53,7 +51,7 @@ export interface ArtSpec {
 
 const LIQUID_ART: Record<LiquidId, ArtKey> = { caramel: 'honeyJar', milk: 'milkCarton', matcha: 'matcha', strawberry: 'jam' };
 const EQUIPMENT_ART: Record<EquipmentId, ArtKey> = {
-  autoFill: 'eqAutoFill', collector: 'eqCollector', crafter: 'eqCrafter', seller: 'eqSeller', restock: 'eqRestock',
+  autoFill: 'eqAutoFill', collector: 'eqCollector', restock: 'eqRestock',
 };
 
 /** 蛋（D33 的通用原料，不屬於任何物種，所以不在 INGREDIENT_ART 裡） */

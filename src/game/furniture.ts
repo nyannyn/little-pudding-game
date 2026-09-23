@@ -37,8 +37,6 @@ export type FurnitureRef = { kind: 'basin'; index: number } | { kind: 'equipment
  */
 interface Footprint { hx: number; hz: number; cz: number }
 const EQUIPMENT_FOOTPRINT: Partial<Record<EquipmentId, Footprint>> = {
-  crafter: { hx: 0.15, hz: 0.12, cz: 0 },
-  seller: { hx: 0.17, hz: 0.0825, cz: 0.0125 },
   restock: { hx: 0.11, hz: 0.07, cz: 0 },
 };
 
@@ -46,8 +44,6 @@ const EQUIPMENT_FOOTPRINT: Partial<Record<EquipmentId, Footprint>> = {
 export const EQUIPMENT_DEFAULT_POS: Record<EquipmentId, Vec2> = {
   autoFill: { x: -0.52, z: 0.12 }, // 只在這一區沒有澡盆時用得到（平常跟著第一個澡盆）
   collector: { x: -0.282, z: -0.168 },
-  crafter: { x: -0.935, z: -0.5 },
-  seller: { x: -0.14, z: 0.6 },
   restock: { x: -1.015, z: 0.52 },
 };
 

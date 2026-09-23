@@ -1,4 +1,6 @@
-import { BALANCE, EQUIPMENT_IDS, type EquipmentId } from './balance';
+import { ACHIEVEMENT_IDS } from './achievements';
+import { createBakery, restoreBakery, type BakeryState } from './bakery';
+import { BALANCE, EQUIPMENT_IDS, RETIRED_EQUIPMENT_PRICE, type EquipmentId } from './balance';
 import { isAllele, normalizeGenes, phenotype, type Genes } from './genetics';
 import { xpFromStats } from './level';
 import { LIQUID_IDS, SPECIES, SPECIES_IDS, type AlleleId, type LiquidId, type SpeciesId } from './species';
@@ -24,8 +26,15 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * `equipmentPos`（玩家擺過的設備位置）；收起來的澡盆留在 `basins` 裡、`zone` 改成 `STORAGE_ZONE`
  * （不從陣列刪：`Pudding.basinIndex`／`pour` 事件／液面動畫都以索引為鍵，刪了會全部錯位）。
  * 舊檔補值：倉庫空、位置不補（沒存位置＝用改版前寫死的那組），畫面跟改版前一模一樣。
+ * 8（2026-09-23）：甜點工坊＋成就＋賣布丁（D50–D54）。新增 `bakery`（五站、展示架、營業日）、
+ * `claimedAchievements`、`speciesSeen` 與九個累計統計。補值方向：
+ * ① **工坊時鐘的 epoch＝升級那一刻的 `time`**（不是 0：老玩家的 time 好幾萬秒，會第一天就是 Day 30）；
+ * ② 手上的 `desserts` 原樣留著，當工坊的成品櫃；
+ * ③ **甜點加工機／自動販售口退役，照原價退款**——各區已安裝＋倉庫裡的台數全算，位置紀錄一併清掉；
+ * ④ `speciesSeen` 從目前的住客補（不知道他以前養過什麼，只能保證不少算現在有的）；
+ * ⑤ 新統計補 0，舊的 picked／baths／births 照舊——老玩家開檔就領得到那幾條成就，這是對的。
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /** 收進倉庫的澡盆的 `zone`。不是任何一個分區，所有「這一區的盆」查詢自然會略過它 */
 export const STORAGE_ZONE = 'storage';
@@ -158,7 +167,51 @@ export interface GameState {
   nextOrderAt: number;
   /** 流水號，產生 id 用（不用亂數，存檔重開才不會撞號） */
   nextId: number;
-  stats: { baths: number; sold: number; mutations: number; picked: number; crafted: number; births: number };
+  stats: Stats;
+  /** 甜點工坊（D51／D52） */
+  bakery: BakeryState;
+  /** 已領取的成就 id（D54） */
+  claimedAchievements: string[];
+  /** 養過的物種（只增不減，成就用；賣掉了也還是「養過」） */
+  speciesSeen: SpeciesId[];
+}
+
+/**
+ * 累計統計：**全部只增不減**（`progressScore` 與成就都靠這個性質）。
+ * `crafted` 是 D50 以前農場一鍵加工的次數，改版後不再增加，留著給舊存檔的 xp 回推用。
+ */
+export interface Stats {
+  baths: number;
+  sold: number;
+  mutations: number;
+  picked: number;
+  crafted: number;
+  births: number;
+  /** 工坊出爐的份數 */
+  baked: number;
+  /** 買到東西的客人數 */
+  served: number;
+  /** 上門但架上空空的客人數 */
+  missed: number;
+  /** 打烊結算過幾天 */
+  daysClosed: number;
+  /** 直接賣給商店的原料／蛋份數 */
+  ingredientsSold: number;
+  puddingsSold: number;
+  ordersDone: number;
+  /** 單日最高營收（取最大值，所以也是單調的） */
+  bestDayRevenue: number;
+}
+
+export const STAT_KEYS: (keyof Stats)[] = [
+  'baths', 'sold', 'mutations', 'picked', 'crafted', 'births',
+  'baked', 'served', 'missed', 'daysClosed', 'ingredientsSold', 'puddingsSold', 'ordersDone', 'bestDayRevenue',
+];
+
+export function zeroStats(): Stats {
+  const out = {} as Stats;
+  for (const k of STAT_KEYS) out[k] = 0;
+  return out;
 }
 
 function zeroBySpecies(): Record<SpeciesId, number> {
@@ -286,7 +339,10 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     // 從 1 開始的話，解鎖第二區生出來的布丁會叫 p1 撞號，
     // scene 端以 id 為鍵的 view Map 就會綁到錯的那一隻。
     nextId: puddings.length + 1,
-    stats: { baths: 0, sold: 0, mutations: 0, picked: 0, crafted: 0, births: 0 },
+    stats: zeroStats(),
+    bakery: createBakery(0),
+    claimedAchievements: [],
+    speciesSeen: ['caramel'],
   };
 }
 
@@ -371,6 +427,17 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
   // 兩種形狀用「值是不是布林」分辨而不是看 schemaVersion：存檔碼可能被人手改過版本號。
   const rawEq = (r.equipment ?? {}) as Record<string, unknown>;
   const legacyFlat = EQUIPMENT_IDS.some((id) => typeof rawEq[id] === 'boolean');
+
+  // D50：甜點加工機與自動販售口退役，照原價退款。台數＝各已知分區裝了幾台＋倉庫裡幾台；
+  // 舊的扁平形狀（v5 以前）在舊規則下是「付一次錢全場生效」，所以只退一台。
+  const rawStoredAll = (r.storedEquipment ?? {}) as Record<string, unknown>;
+  for (const [id, price] of Object.entries(RETIRED_EQUIPMENT_PRICE)) {
+    let n = legacyFlat
+      ? (rawEq[id] === true ? 1 : 0)
+      : out.zones.filter((z) => (rawEq[z.id] as Record<string, unknown> | undefined)?.[id] === true).length;
+    n += Math.max(0, Math.floor(num(rawStoredAll[id], 0)));
+    out.coins += n * price;
+  }
   out.equipment = noEquipmentByZone(out.zones);
   for (const z of out.zones) {
     const src = legacyFlat ? (z.unlocked ? rawEq : undefined) : (rawEq[z.id] as Record<string, unknown> | undefined);
@@ -474,14 +541,18 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     : [];
 
   const st = (r.stats ?? {}) as Record<string, unknown>;
-  out.stats = {
-    baths: Math.max(0, num(st.baths, 0)),
-    sold: Math.max(0, num(st.sold, 0)),
-    mutations: Math.max(0, num(st.mutations, 0)),
-    picked: Math.max(0, num(st.picked, 0)),
-    crafted: Math.max(0, num(st.crafted, 0)),
-    births: Math.max(0, num(st.births, 0)),
-  };
+  out.stats = zeroStats();
+  for (const k of STAT_KEYS) out.stats[k] = Math.max(0, num(st[k], 0));
+
+  // 工坊（D51）：沒有這欄就以「現在」當第 1 天 07:00
+  out.bakery = restoreBakery(r.bakery, out.time);
+  out.claimedAchievements = Array.isArray(r.claimedAchievements)
+    ? [...new Set(r.claimedAchievements.filter((x): x is string => typeof x === 'string' && ACHIEVEMENT_IDS.includes(x)))]
+    : [];
+  const seen = new Set<SpeciesId>();
+  if (Array.isArray(r.speciesSeen)) for (const x of r.speciesSeen) if (SPECIES_IDS.includes(x as SpeciesId)) seen.add(x as SpeciesId);
+  for (const p of out.puddings) seen.add(p.species);
+  out.speciesSeen = [...seen];
   // v2 以前沒有 xp：用累計統計回推，不然老玩家開檔會被降回 Lv.1、商店整片鎖住
   out.xp = Math.max(0, num(r.xp, xpFromStats(out.stats)));
 

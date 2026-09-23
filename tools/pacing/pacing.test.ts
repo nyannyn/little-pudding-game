@@ -3,13 +3,14 @@ import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../../src/g
 import {
   buyEquipment,
   buyStock,
-  craft,
   fillBasin,
-  fulfillOrder,
   pickAllDrops,
-  sellDessert,
+  sellEggs,
+  sellIngredient,
   unlockZone,
 } from '../../src/game/actions';
+import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
+import { STATION_IDS, advanceStation, canStartBatch, fulfillOrder, startBatch, stationStatus, stockShelf } from '../../src/game/bakery';
 import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
 import { applyGenes } from '../../src/game/genetics';
@@ -30,8 +31,8 @@ const FLOOR = { minX: -0.9, maxX: 0.9, minZ: -0.55, maxZ: 0.55 };
 const REACT_SEC = Number(process.env.REACT_SEC ?? 3);
 const HOURS = Number(process.env.SIM_HOURS ?? 3);
 const SPAWN = { puddingPos: { x: 0.1, z: 0.05 }, basinPos: { x: 0.62, z: 0.28 } };
-const BUY_ORDER: EquipmentId[] = ['collector', 'autoFill', 'crafter', 'seller', 'restock'];
-/** 設備每一區各買各的（D45）；只有這兩台的效果是分區的，理性玩家會在每一區重買，另外三台全場一台就夠 */
+const BUY_ORDER: EquipmentId[] = ['collector', 'autoFill', 'restock'];
+/** 設備每一區各買各的（D45）；只有這兩台的效果是分區的，理性玩家會在每一區重買，補貨合約全場一台就夠 */
 const ZONE_SCOPED = new Set<EquipmentId>(['collector', 'autoFill']);
 
 /**
@@ -40,7 +41,17 @@ const ZONE_SCOPED = new Set<EquipmentId>(['collector', 'autoFill']);
  * 要量的是「混種訂單接不接得到」：混種只有一隻在產，一份甜點要 2 份原料、
  * 一份原料要一次泡澡（約 65 秒），而訂單只活 `orderTtlSec` 秒。
  */
-function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
+/**
+ * D50–D54（2026-09-23）起甜點在工坊做：玩家每次看畫面就把做完的站往下推、打蛋站空了就開一盤、
+ * 補展示架、交預訂單；工坊用不到的多餘蛋與原料直接賣給商店（原料兩條路）。
+ * `raw-only` 情境＝完全不進工坊、原料全賣：拿來對照「工坊值不值得」。
+ * 成就一達成就領（D54 開局資金），里程碑記「成就領到 N 元」。
+ */
+/** 工坊留著用的底量：一盤要蛋 4／原料 2，留兩盤份，多的才賣 */
+const KEEP_EGGS = 2 * BALANCE.bakery.batchSize * BALANCE.eggsPerDessert;
+const KEEP_ING = 2 * BALANCE.bakery.batchSize * BALANCE.ingredientsPerDessert;
+
+function run(profile: 'equip-first' | 'zone-first' | 'hybrid' | 'raw-only', seed: number) {
   const state = createNewSave({ seed, now: 0 });
   if (profile === 'hybrid') applyGenes(state.puddings[0]!, 'caramel', 'panna');
   state.stock.milk = 6; // 牛乳是繁殖的入口，開局要有一點才玩得起來
@@ -53,6 +64,8 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
     if (!(k in milestones)) milestones[k] = state.time;
   };
 
+  let achievementCoins = 0;
+  let achievementCoins20 = 0;
   const total = HOURS * 3600;
   for (let t = 0; t < total; t += REACT_SEC) {
     advance(w, REACT_SEC);
@@ -69,22 +82,39 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
       pickAllDrops(state, noop, false);
       mark('first pick');
     }
-    // D33：一份甜點＝蛋×2＋原料×1。條件要跟 craft() 的前提一致，
-    // 少看蛋的話 craft 會一直失敗而迴圈條件永遠成立＝無窮迴圈（2026-09-22 踩過）
-    for (const s of SPECIES_IDS) {
-      while (state.eggs >= BALANCE.eggsPerDessert && state.ingredients[s] >= BALANCE.ingredientsPerDessert) {
-        if (!craft(state, s, noop).ok) break;
+    const bakery = profile !== 'raw-only';
+    if (bakery) {
+      // 下游先推，上游才推得過去
+      for (const id of [...STATION_IDS].reverse()) {
+        if (stationStatus(state, id) === 'ready') advanceStation(state, id, noop);
+      }
+      if (!state.bakery.stations.crack.batch) {
+        const best = SPECIES_IDS.filter((id) => canStartBatch(state, id)).sort((a, b) => state.ingredients[b] - state.ingredients[a])[0];
+        if (best) startBatch(state, best, noop);
+      }
+      if (state.stats.baked > 0) mark('first bake');
+      for (const o of [...state.orders]) {
+        if (state.desserts[o.species] + state.bakery.shelf[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
+      }
+      stockShelf(state, noop);
+      if (state.stats.served > 0) mark('first customer');
+      if (state.stats.daysClosed > 0) mark('first day closed');
+    }
+    // 原料兩條路：工坊留底量，多的直接賣
+    const keepEggs = bakery ? KEEP_EGGS : 0;
+    const keepIng = bakery ? KEEP_ING : 0;
+    if (state.eggs > keepEggs) sellEggs(state, state.eggs - keepEggs, noop);
+    for (const id of SPECIES_IDS) {
+      if (state.ingredients[id] > keepIng && sellIngredient(state, id, state.ingredients[id] - keepIng, noop).ok) mark('first sale');
+    }
+    for (const a of ACHIEVEMENTS) {
+      if (achievementStatus(state, a) === 'claimable') {
+        claimAchievement(state, a.id, noop);
+        achievementCoins += a.reward;
+        for (const c of [300, 640, 1500]) if (achievementCoins >= c) mark(`achievements ${c}`);
       }
     }
-    if (state.stats.crafted > 0) mark('first craft');
-    for (const o of [...state.orders]) {
-      if (state.desserts[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
-    }
-    for (const s of SPECIES_IDS) {
-      const reserved = state.orders.filter((o) => o.species === s).reduce((n, o) => n + o.qty, 0);
-      const spare = state.desserts[s] - reserved;
-      if (spare > 0 && sellDessert(state, s, spare, noop).ok) mark('first sale');
-    }
+    if (state.time <= 20 * 60) achievementCoins20 = achievementCoins;
     for (const l of ['caramel', 'milk'] as LiquidId[]) {
       if (state.stock[l] < 2) buyStock(state, l, 5, noop);
     }
@@ -120,7 +150,11 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid', seed: number) {
     .map(([k, s]) => `${(s / 60).toFixed(1).padStart(7)} min  ${k}`);
   console.log(
     `\n=== ${profile} (seed ${seed}, react every ${REACT_SEC}s, ${HOURS}h) ===\n${lines.join('\n')}\n` +
-      `end: coins=${Math.floor(state.coins)} xp=${state.xp} baths=${state.stats.baths} orders=${state.stats.sold} puddings=${state.puddings.length} ` +
+      `end: coins=${Math.floor(state.coins)} xp=${state.xp} baths=${state.stats.baths} sold=${state.stats.sold} puddings=${state.puddings.length} ` +
+      `baked=${state.stats.baked} served=${state.stats.served} missed=${state.stats.missed} days=${state.stats.daysClosed} bestDay=${state.stats.bestDayRevenue} ordersDone=${state.stats.ordersDone}
+` +
+      `achievements: ${achievementCoins} coins total, ${achievementCoins20} in first 20 min
+` +
       `equip=${unlockedZones(state).map((z) => `${z.shortName}:${EQUIPMENT_IDS.filter((e) => equipmentIn(state, z.id)[e]).join('+')}`).join(' ')}\n` +
       `species=${SPECIES_IDS.filter((id) => state.puddings.some((p) => p.species === id)).join(',')}\n` +
       `hybrid orders: new=${hybridOrders.new} done=${hybridOrders.done} expired=${hybridOrders.expired}\n`,
@@ -132,4 +166,5 @@ test('pacing report', () => {
   run('zone-first', 7);
   run('equip-first', 99);
   run('hybrid', 7);
+  run('raw-only', 7);
 });

@@ -1,4 +1,5 @@
 import type { LiquidId, SpeciesId } from './species';
+import type { StationId } from './bakery';
 import type { DropKind } from './state';
 
 /**
@@ -14,7 +15,16 @@ export type SimEvent =
   | { type: 'mutate'; puddingId: string; from: SpeciesId; to: SpeciesId; x: number; z: number }
   | { type: 'birth'; puddingId: string; zone: string; species: SpeciesId; parents: [string, string]; x: number; z: number }
   | { type: 'move'; puddingId: string; zone: string }
-  | { type: 'craft'; species: SpeciesId; auto: boolean }
+  // ── 甜點工坊（D51／D52）──
+  | { type: 'bakeStep'; station: StationId; species: SpeciesId; auto: boolean }
+  | { type: 'bakeDone'; species: SpeciesId; qty: number; auto: boolean }
+  | { type: 'shelfStocked'; qty: number; auto: boolean }
+  | { type: 'customer'; species: SpeciesId; qty: number; coins: number }
+  | { type: 'customerMissed' }
+  /** 打烊結算。**不要接成 toast**：離線一次會跑出 24 個（D52），畫面讀 `bakery.lastDay` */
+  | { type: 'dayClosed'; day: number; revenue: number; served: number; missed: number }
+  | { type: 'achievement'; id: string; name: string; reward: number }
+  | { type: 'puddingSold'; puddingId: string; species: SpeciesId; coins: number }
   | { type: 'sell'; species: SpeciesId; coins: number; auto: boolean }
   | { type: 'orderNew'; orderId: string; species: SpeciesId; qty: number; price: number }
   | { type: 'orderDone'; orderId: string; species: SpeciesId; coins: number; auto: boolean }

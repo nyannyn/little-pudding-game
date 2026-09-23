@@ -126,6 +126,8 @@ test('新手引導說「去買原料收集手」時，按商店直接開在設�
 });
 
 test('買了一件之後清單不會跳回最上面（捲動位置保留）', async ({ page }) => {
+  // D50 起設備頁只剩三台，iPhone 14 的高度下整頁放得下、捲不動；用矮一點的畫面才量得到捲動
+  await page.setViewportSize({ width: 390, height: 520 });
   await ready(page, '/?fresh=1&seed=35');
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;

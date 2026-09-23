@@ -3,13 +3,11 @@ import {
   buyEquipment,
   buySpecialBasin,
   buyStock,
-  craft,
   fillBasin,
-  fulfillOrder,
   pickDrop,
-  sellDessert,
   sellIngredient,
 } from '../../src/game/actions';
+import { fulfillOrder } from '../../src/game/bakery';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
 import type { SimEvent } from '../../src/game/events';
 import { generateOrder } from '../../src/game/orders';
@@ -51,14 +49,6 @@ describe('AC2-7 金幣與庫存不會變成負的', () => {
     expect(s.basins[0]!.units).toBe(0);
   });
 
-  it('原料不夠時加工失敗且不扣料', () => {
-    const s = createNewSave({ seed: 7, now: 0 });
-    s.ingredients.caramel = BALANCE.ingredientsPerDessert - 1;
-    expect(craft(s, 'caramel', sink).ok).toBe(false);
-    expect(s.ingredients.caramel).toBe(BALANCE.ingredientsPerDessert - 1);
-    expect(s.desserts.caramel).toBe(0);
-  });
-
   it('沒買澡盆就不能倒特殊液體、也不能買特殊液體', () => {
     const s = createNewSave({ seed: 7, now: 0 });
     s.coins = 9999;
@@ -69,7 +59,7 @@ describe('AC2-7 金幣與庫存不會變成負的', () => {
   });
 });
 
-describe('經濟：撿、加工、賣', () => {
+describe('經濟：撿、賣', () => {
   it('撿起來就入庫，賣掉就加錢', () => {
     const w = makeWorld({ puddings: 1 });
     keepFed(w);
@@ -114,29 +104,6 @@ describe('經濟：撿、加工、賣', () => {
     expect(w.state.eggs).toBe(eggsBefore + 1);
   });
 
-  it('蛋×2＋原料×1 換一份甜點（D33），甜點售價是原料的 dessertPriceMult 倍', () => {
-    const s = createNewSave({ seed: 7, now: 0 });
-    s.ingredients.caramel = BALANCE.ingredientsPerDessert;
-    s.eggs = BALANCE.eggsPerDessert;
-    expect(craft(s, 'caramel', sink).ok).toBe(true);
-    expect(s.ingredients.caramel).toBe(0);
-    expect(s.eggs).toBe(0);
-    expect(s.desserts.caramel).toBe(1);
-
-    const coins = s.coins;
-    expect(sellDessert(s, 'caramel', 1, sink).ok).toBe(true);
-    expect(s.coins).toBe(coins + SPECIES.caramel.ingredientPrice * BALANCE.dessertPriceMult);
-  });
-
-  it('負向對照：只有原料沒有蛋，做不出甜點', () => {
-    const s = createNewSave({ seed: 7, now: 0 });
-    s.ingredients.caramel = 99;
-    s.eggs = BALANCE.eggsPerDessert - 1;
-    const r = craft(s, 'caramel', sink);
-    expect(r.ok).toBe(false);
-    expect(s.desserts.caramel).toBe(0);
-  });
-
   it('買特殊澡盆後盆子數量增加、可以倒抹茶', () => {
     const s = createNewSave({ seed: 7, now: 0 });
     s.coins = BALANCE.specialBasinPrice + 100;
@@ -167,7 +134,7 @@ describe('AC2-10 訂單卡', () => {
     expect(o.qty).toBeGreaterThanOrEqual(1);
     expect(o.qty).toBeLessThanOrEqual(3);
 
-    const unit = dessertPrice(o.species, BALANCE.dessertPriceMult);
+    const unit = dessertPrice(o.species);
     expect(o.price).toBeGreaterThanOrEqual(Math.round(unit * o.qty * BALANCE.orderPriceMultMin) - 1);
     expect(o.price).toBeLessThanOrEqual(Math.round(unit * o.qty * BALANCE.orderPriceMultMax) + 1);
 
@@ -220,7 +187,7 @@ describe('AC2-10 訂單卡', () => {
 
 describe('設備定價維持「幾次泡澡的收入」的級距', () => {
   it('T1 < T2 < T3', () => {
-    expect(EQUIPMENT.autoFill.price).toBeLessThan(EQUIPMENT.crafter.price);
-    expect(EQUIPMENT.crafter.price).toBeLessThan(EQUIPMENT.restock.price);
+    expect(EQUIPMENT.collector.price).toBeLessThan(EQUIPMENT.restock.price);
+    expect(EQUIPMENT.autoFill.price).toBeLessThan(EQUIPMENT.restock.price);
   });
 });

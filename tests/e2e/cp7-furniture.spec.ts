@@ -55,31 +55,33 @@ async function azimuth(page: Page) {
   });
 }
 
-test('長按販賣機拖到地板中間：鏡頭不轉、位置寫進 state、拖曳中 draw calls 在預算內', async ({ page }) => {
+test('長按補貨合約機拖到地板中間：鏡頭不轉、位置寫進 state、拖曳中 draw calls 在預算內', async ({ page }) => {
   test.setTimeout(120_000);
   await ready(page, '/?debug=1&fresh=1&seed=4545');
   await page.evaluate(() => { const s = window.__lpg.state as GameState; s.coins = 99999; s.xp = 99999; });
   await page.getByRole('button', { name: '商店' }).click();
   await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
-  await page.locator('[data-a="buyEquip"][data-arg="seller"]').click();
+  await page.locator('[data-a="buyEquip"][data-arg="restock"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
+  // D50 起販賣機退役，改拿補貨合約（落地設備）來拖；它的預設位置貼著左牆、在鏡頭邊上，先擺到中間
+  await page.evaluate(() => { const s = window.__lpg.state as GameState; (s.equipmentPos[s.activeZone] ??= {}).restock = { x: -0.14, z: 0.5 }; });
 
   const before = await azimuth(page);
-  // 販賣機預設在 (−0.14, 0.60)，按機身中段（高 0.3）
-  const r = await longPressDrag(page, [-0.14, 0.3, 0.6], [0.35, -0.3]);
+  // 補貨機擺在 (−0.14, 0.50)，按信箱本體（高 0.28）
+  const r = await longPressDrag(page, [-0.14, 0.28, 0.5], [0.35, -0.3]);
   expect(r.dragMesh).toBe(true); // 拖曳中是單獨一台 mesh
   expect(r.midDraw).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
 
   // 放手之後還在擺放模式，state 還沒動；按「確定」才寫入
   await expect(editBar(page)).toBeVisible();
   const mid = await state(page);
-  expect(mid.equipmentPos[mid.activeZone]?.seller).toBeUndefined();
+  expect(mid.equipmentPos[mid.activeZone]?.restock).toEqual({ x: -0.14, z: 0.5 });
   await editBar(page).locator('[data-a="editOk"]').click();
   await expect(editBar(page)).toBeHidden();
   const s = await state(page);
-  const pos = s.equipmentPos[s.activeZone]?.seller;
+  const pos = s.equipmentPos[s.activeZone]?.restock;
   expect(pos).toBeDefined();
-  // 打點在機身正面（z≈0.66），中心在 0.60：終點會差這 0.06 上下
+  // 打點在信箱正面，中心在後面一點：終點會差幾公分
   expect(Math.abs(pos!.x - 0.35)).toBeLessThan(0.1);
   expect(Math.abs(pos!.z - -0.3)).toBeLessThan(0.1);
   // 拖曳中鏡頭不可以跟著轉（controls 有關掉）
@@ -88,19 +90,21 @@ test('長按販賣機拖到地板中間：鏡頭不轉、位置寫進 state、�
   await expect.poll(() => page.evaluate(() => window.__lpg.three!.scene.getObjectByName('EquipmentDrag') === undefined)).toBe(true);
 });
 
-test('把澡盆拖到販賣機上：「確定」按不下去，取消就回原位', async ({ page }) => {
+test('把澡盆拖到補貨機上：「確定」按不下去，取消就回原位', async ({ page }) => {
   test.setTimeout(120_000);
   await ready(page, '/?debug=1&fresh=1&seed=4546');
   await page.evaluate(() => { const s = window.__lpg.state as GameState; s.coins = 99999; s.xp = 99999; });
   await page.getByRole('button', { name: '商店' }).click();
   await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
-  await page.locator('[data-a="buyEquip"][data-arg="seller"]').click();
+  await page.locator('[data-a="buyEquip"][data-arg="restock"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
+  // D50 起販賣機退役，改拿補貨合約（落地設備）來拖；它的預設位置貼著左牆、在鏡頭邊上，先擺到中間
+  await page.evaluate(() => { const s = window.__lpg.state as GameState; (s.equipmentPos[s.activeZone] ??= {}).restock = { x: -0.14, z: 0.5 }; });
 
   const s0 = await state(page);
   const b0 = s0.basins[0]!.pos;
   const stock0 = s0.stock.caramel;
-  await longPressDrag(page, [b0.x, 0.05, b0.z], [-0.14, 0.55]);
+  await longPressDrag(page, [b0.x, 0.05, b0.z], [-0.14, 0.47]);
   await expect(editBar(page).locator('[data-a="editOk"]')).toBeDisabled();
   await editBar(page).locator('[data-a="editCancel"]').click();
   await expect(editBar(page)).toBeHidden();
@@ -180,16 +184,16 @@ test('倉庫：長按澡盆→收進倉庫要確認倒掉；倉庫格子有圖�
 test('從倉庫拿出來又按取消：東西還在倉庫', async ({ page }) => {
   test.setTimeout(120_000);
   await ready(page, '/?debug=1&fresh=1&seed=4550');
-  await page.evaluate(() => { const s = window.__lpg.state as GameState; s.storedEquipment.crafter = 1; });
+  await page.evaluate(() => { const s = window.__lpg.state as GameState; s.storedEquipment.restock = 1; });
   await page.getByRole('button', { name: '倉庫' }).click();
-  const tile = page.locator('.storecard .stile[data-arg="eq:crafter"]');
-  await expect(tile.locator('img.main')).toHaveAttribute('src', /eqCrafter/);
+  const tile = page.locator('.storecard .stile[data-arg="eq:restock"]');
+  await expect(tile.locator('img.main')).toHaveAttribute('src', /eqRestock/);
   await tile.click();
   await expect(page.locator('.editbar')).toBeVisible();
   await page.locator('.editbar [data-a="editCancel"]').click();
   const s = await state(page);
-  expect(s.storedEquipment.crafter).toBe(1);
-  expect(s.equipment[s.activeZone]!.crafter).toBe(false);
+  expect(s.storedEquipment.restock).toBe(1);
+  expect(s.equipment[s.activeZone]!.restock).toBe(false);
   await expect.poll(() => page.evaluate(() => window.__lpg.three!.scene.getObjectByName('EquipmentDrag') === undefined)).toBe(true);
 });
 
@@ -214,10 +218,12 @@ test('抓起來只動一點點，家具不可以跳位（手指按的是機身�
   await page.evaluate(() => { const s = window.__lpg.state as GameState; s.coins = 99999; s.xp = 99999; });
   await page.getByRole('button', { name: '商店' }).click();
   await page.locator('[data-a="shopTab"][data-arg="equipment"]').click();
-  await page.locator('[data-a="buyEquip"][data-arg="seller"]').click();
+  await page.locator('[data-a="buyEquip"][data-arg="restock"]').click();
   await page.getByRole('button', { name: '關閉' }).click();
+  // D50 起販賣機退役，改拿補貨合約（落地設備）來拖；它的預設位置貼著左牆、在鏡頭邊上，先擺到中間
+  await page.evaluate(() => { const s = window.__lpg.state as GameState; (s.equipmentPos[s.activeZone] ??= {}).restock = { x: -0.14, z: 0.5 }; });
 
-  const a = await screen(page, -0.14, 0.3, 0.6);
+  const a = await screen(page, -0.14, 0.28, 0.5);
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
   await page.waitForTimeout(700);
@@ -231,5 +237,5 @@ test('抓起來只動一點點，家具不可以跳位（手指按的是機身�
   await page.mouse.up();
   await editBar(page).locator('[data-a="editCancel"]').click();
   expect(Math.abs(at.x - -0.14)).toBeLessThan(0.05);
-  expect(Math.abs(at.z - 0.6)).toBeLessThan(0.05);
+  expect(Math.abs(at.z - 0.5)).toBeLessThan(0.05);
 });

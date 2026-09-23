@@ -3,8 +3,8 @@ import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
 import { grantXp, levelFor } from './level';
 import { basinLevel, stockCost, stockLevel } from './shop';
-import { LIQUIDS, SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from './species';
-import type { GameState, Order, Vec2 } from './state';
+import { LIQUIDS, SPECIES, puddingPrice, type LiquidId, type SpeciesId } from './species';
+import type { GameState, Vec2 } from './state';
 import { findZone } from './zones';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -71,6 +71,7 @@ export function sellIngredient(state: GameState, species: SpeciesId, qty: number
   state.ingredients[species] -= n;
   state.coins += coins;
   state.stats.sold += n;
+  state.stats.ingredientsSold += n;
   emit({ type: 'sell', species, coins, auto: false });
   grantXp(state, BALANCE.xp.sellIngredient * n, emit);
   return OK;
@@ -85,120 +86,8 @@ export function sellEggs(state: GameState, qty: number, emit: EventSink): Action
   state.eggs -= n;
   state.coins += coins;
   state.stats.sold += n;
+  state.stats.ingredientsSold += n;
   emit({ type: 'sell', species: 'caramel', coins, auto: false });
-  return OK;
-}
-
-/**
- * 加工（D33）：**蛋 ×`eggsPerDessert` ＋ 該物種原料 ×`ingredientsPerDessert` → 1 份甜點**。
- * 例：焦糖布丁塔＝蛋×2＋焦糖塊×1；抹茶布丁捲＝蛋×2＋抹茶粉罐×1。
- * 蛋是通用原料，第三樣跟著物種走——不然十個物種的專屬原料全部沒有用途。
- */
-export function craft(state: GameState, species: SpeciesId, emit: EventSink, auto = false): ActionResult {
-  const needEggs = BALANCE.eggsPerDessert;
-  const need = BALANCE.ingredientsPerDessert;
-  if (state.eggs < needEggs) return fail(`要 ${needEggs} 顆蛋才做得出來`);
-  if (state.ingredients[species] < need) return fail(`要 ${need} 份${SPECIES[species].ingredient}才做得出來`);
-  state.eggs -= needEggs;
-  state.ingredients[species] -= need;
-  state.desserts[species]++;
-  state.stats.crafted++;
-  emit({ type: 'craft', species, auto });
-  grantXp(state, BALANCE.xp.craft, emit);
-  return OK;
-}
-
-export function sellDessert(state: GameState, species: SpeciesId, qty: number, emit: EventSink, auto = false): ActionResult {
-  const n = Math.floor(qty);
-  if (n <= 0) return fail('數量要大於 0');
-  if (state.desserts[species] < n) return fail('甜點不足');
-  const coins = dessertPrice(species, BALANCE.dessertPriceMult) * n;
-  state.desserts[species] -= n;
-  state.coins += coins;
-  state.stats.sold += n;
-  emit({ type: 'sell', species, coins, auto });
-  grantXp(state, BALANCE.xp.sellDessert * n, emit);
-  return OK;
-}
-
-export interface ShipResult {
-  /** 交掉幾張訂單 */
-  fulfilled: number;
-  /** 直接賣掉幾份甜點 */
-  sold: number;
-  /**
-   * 沒賣掉、被進行中訂單預留的甜點份數。
-   * `fulfilled` 與 `sold` 都是 0、而這個 > 0 ＝「按了出貨卻什麼都沒發生」的唯一合理成因，
-   * UI 端要拿它講出原因；不然玩家看到的就是一顆按了沒反應的按鈕
-   * （2026-09-22 使用者回報「出貨按鍵有時按不了」）。
-   */
-  reserved: number;
-}
-
-/**
- * 出貨：先交掉接得到的訂單（出價 2–3 倍），剩下「**沒被進行中訂單預留**」的甜點才直接賣。
- *
- * 預留那一步是整個函式的重點。訂單要 ×2 而手上只有 1 份時，那 1 份不可以被賣掉——
- * 賣掉就永遠湊不到第二份：玩家按出貨、拿到零錢、訂單卻一直掛在那裡直到過期
- * （2026-09-22 使用者回報「焦糖布丁塔出貨後沒有解開任務」）。
- *
- * 手動與自動**共用這一個函式**：這個 bug 的成因就是 UI 端自己抄了一份少了預留的版本，
- * 而被測試覆蓋的是 `equipment.autoSell` 那份正確的。規則寫在 `game/` 才測得到。
- */
-export function shipDesserts(state: GameState, emit: EventSink, auto = false): ShipResult {
-  const out: ShipResult = { fulfilled: 0, sold: 0, reserved: 0 };
-
-  for (const o of [...state.orders]) {
-    if (o.expiresAt <= state.time) continue;
-    if (state.desserts[o.species] < o.qty) continue;
-    if (fulfillOrder(state, o.id, emit, auto).ok) out.fulfilled++;
-  }
-
-  for (const s of SPECIES_IDS) {
-    // 過期的訂單不預留：那些甜點已經沒人要了，留著只會佔庫存
-    const reserved = state.orders
-      .filter((o) => o.species === s && o.expiresAt > state.time)
-      .reduce((sum, o) => sum + o.qty, 0);
-    const spare = state.desserts[s] - reserved;
-    if (spare > 0 && sellDessert(state, s, spare, emit, auto).ok) out.sold += spare;
-    // 留在手上的那幾份（預留量可能大於庫存，只算真的被扣住的）
-    else out.reserved += Math.min(state.desserts[s], reserved);
-  }
-
-  return out;
-}
-
-/**
- * 出貨之後「還差幾份才交得出來」的那張訂單：缺最少的那一張。
- *
- * **唯讀查詢，不動 state**——這個檔案其餘的每一個匯出都是「玩家動作」，
- * 只有這個不是；放在這裡是因為它讀的是 `shipDesserts` 的預留規則，兩邊要一起改。
- * 只給 UI 用：按了出貨卻沒動靜時要說得出是哪一張單在扣著甜點。
- */
-export function nearestPendingOrder(state: GameState): { order: Order; short: number } | null {
-  let best: { order: Order; short: number } | null = null;
-  for (const o of state.orders) {
-    if (o.expiresAt <= state.time) continue;
-    const short = o.qty - state.desserts[o.species];
-    if (short <= 0) continue;
-    if (!best || short < best.short) best = { order: o, short };
-  }
-  return best;
-}
-
-/** 交付訂單卡：出價比直接賣高，但要有對應物種的甜點 */
-export function fulfillOrder(state: GameState, orderId: string, emit: EventSink, auto = false): ActionResult {
-  const i = state.orders.findIndex((o) => o.id === orderId);
-  const o = state.orders[i];
-  if (!o) return fail('訂單已經不在了');
-  if (o.expiresAt <= state.time) return fail('訂單已經過期');
-  if (state.desserts[o.species] < o.qty) return fail(`${SPECIES[o.species].dessert}不夠`);
-  state.desserts[o.species] -= o.qty;
-  state.coins += o.price;
-  state.stats.sold += o.qty;
-  state.orders.splice(i, 1);
-  emit({ type: 'orderDone', orderId: o.id, species: o.species, coins: o.price, auto });
-  grantXp(state, BALANCE.xp.order + BALANCE.xp.sellDessert * o.qty, emit);
   return OK;
 }
 
@@ -345,6 +234,36 @@ export function movePudding(state: GameState, puddingId: string, zoneId: string,
   p.to = { ...p.pos };
   p.hopT = 1;
   emit({ type: 'move', puddingId: p.id, zone: zoneId });
+  return OK;
+}
+
+/** 這隻布丁現在可以賣嗎；可以就回 null，不行就回原因（UI 灰掉按鈕時要講得出為什麼） */
+export function puddingSaleBlock(state: GameState, puddingId: string): string | null {
+  const p = state.puddings.find((x) => x.id === puddingId);
+  if (!p) return '沒有這隻布丁';
+  if (state.time - p.bornAt < BALANCE.matureAgeSec) return '幼布丁還不能賣';
+  if (p.mode === 'bathing') return '泡澡中，泡完再賣';
+  // 最後一隻賣掉，農場就再也生不出布丁（牛奶澡要有布丁去泡，D34）
+  if (state.puddings.length <= 1) return '這是最後一隻了';
+  return null;
+}
+
+/**
+ * 賣一隻布丁（D53）。成年、沒在泡澡、不是最後一隻才賣得掉。
+ * 牠正要跳進的澡盆要先讓出來：佔位不清，那個盆會被一隻已經不存在的布丁永久佔住（同 `movePudding`）。
+ */
+export function sellPudding(state: GameState, puddingId: string, emit: EventSink): ActionResult {
+  const why = puddingSaleBlock(state, puddingId);
+  if (why) return fail(why);
+  const i = state.puddings.findIndex((x) => x.id === puddingId);
+  const p = state.puddings[i]!;
+  for (const b of state.basins) if (b.occupantId === p.id) b.occupantId = null;
+  const coins = puddingPrice(p.species);
+  state.puddings.splice(i, 1);
+  state.coins += coins;
+  state.stats.puddingsSold++;
+  emit({ type: 'puddingSold', puddingId: p.id, species: p.species, coins });
+  grantXp(state, BALANCE.xp.sellPudding, emit);
   return OK;
 }
 

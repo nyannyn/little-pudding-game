@@ -1,7 +1,8 @@
 import { BALANCE } from '../game/balance';
 import { levelProgress } from '../game/level';
 import { shopCatalog, type ShopEntry, type ShopTab } from '../game/shop';
-import { SPECIES, SPECIES_IDS, dessertPrice, type SpeciesId } from '../game/species';
+import { puddingSaleBlock } from '../game/actions';
+import { SPECIES, SPECIES_IDS, dessertPrice, puddingPrice, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { findZone } from '../game/zones';
 import { icon } from './icons';
@@ -21,7 +22,7 @@ export type ShopPage = ShopTab | 'sell';
 
 const TABS: { id: ShopPage; label: string; art: keyof typeof ART }[] = [
   { id: 'stock', label: '補貨', art: 'honeyJar' },
-  { id: 'equipment', label: '設備', art: 'eqCrafter' },
+  { id: 'equipment', label: '設備', art: 'eqCollector' },
   { id: 'basin', label: '澡盆', art: 'bathtub' },
   { id: 'zone', label: '擴建', art: 'window' },
   { id: 'sell', label: '賣出', art: 'ingCaramel' },
@@ -71,7 +72,7 @@ function sellCardHtml(s: SpeciesId): string {
   return `<div class="card" data-id="sell:${s}" data-status="available">
     ${artHtml(INGREDIENT_ART[s])}
     <div class="name">${info.ingredient}</div>
-    <div class="desc">＋${BALANCE.eggsPerDessert} 顆蛋做成${info.dessert}，可賣 ${dessertPrice(s, BALANCE.dessertPriceMult)}／份</div>
+    <div class="desc">直接賣 ${info.ingredientPrice}／份。送進甜點店做成${info.dessert}可賣 ${dessertPrice(s)}</div>
     <div class="stock">持有 <b>0</b></div>
     <div class="foot"><button class="buy sell" data-a="sellIng" data-arg="${s}">0</button></div>
   </div>`;
@@ -82,10 +83,30 @@ function eggCardHtml(): string {
   return `<div class="card" data-id="sell:egg" data-status="available">
     ${artHtml(EGG_ART)}
     <div class="name">蛋</div>
-    <div class="desc">每份甜點要 ${BALANCE.eggsPerDessert} 顆，留著加工比較划算</div>
+    <div class="desc">直接賣 ${BALANCE.eggPrice}／顆。甜點店一份甜點要 ${BALANCE.eggsPerDessert} 顆</div>
     <div class="stock">持有 <b>0</b></div>
     <div class="foot"><button class="buy sell" data-a="sellEggs">0</button></div>
   </div>`;
+}
+
+/**
+ * 賣布丁（D53）：一個物種一張卡，按一下賣一隻（成年、沒在泡澡的；優先賣目前這一區的）。
+ * 一隻一張卡在養滿 60 隻時會變成一整頁的捲動，而玩家要的其實是「這種賣掉一隻」。
+ */
+function puddingCardHtml(s: SpeciesId): string {
+  const info = SPECIES[s];
+  return `<div class="card" data-id="sellpud:${s}" data-status="available">
+    ${artHtml(INGREDIENT_ART[s])}
+    <div class="name">${info.name}</div>
+    <div class="desc">賣一隻 ${puddingPrice(s)}。幼布丁與泡澡中的不賣，最後一隻留著</div>
+    <div class="stock">可賣 <b>0</b> 隻</div>
+    <div class="foot"><button class="buy sell" data-a="sellPud" data-arg="${s}">${puddingPrice(s)}</button></div>
+  </div>`;
+}
+
+/** 這個物種現在可以賣幾隻 */
+export function sellablePuddings(state: GameState, s: SpeciesId): number {
+  return state.puddings.filter((p) => p.species === s && puddingSaleBlock(state, p.id) === null).length;
 }
 
 export class ShopView {
@@ -151,6 +172,7 @@ export class ShopView {
     const catalog = shopCatalog(state);
     const sellable = SPECIES_IDS.filter((s) => state.ingredients[s] > 0);
     const hasEggs = state.eggs > 0;
+    const pudSpecies = SPECIES_IDS.filter((s) => state.puddings.some((p) => p.species === s));
 
     // 分頁鈕：作用中的那頁＋「賣出」有沒有東西可賣
     for (const btn of this.tabs.querySelectorAll<HTMLButtonElement>('[data-a="shopTab"]')) {
@@ -180,7 +202,7 @@ export class ShopView {
         : '';
     const key =
       this.page === 'sell'
-        ? `sell:${sellable.join(',')}:egg${hasEggs ? 1 : 0}`
+        ? `sell:${sellable.join(',')}:egg${hasEggs ? 1 : 0}:pud${pudSpecies.join(',')}`
         : `${this.page}:${zoneName}:${entries.map((e) => `${e.id}=${e.status}`).join(',')}:lv${lp.level}`;
     if (key !== this.structureKey) {
       this.structureKey = key;
@@ -188,9 +210,10 @@ export class ShopView {
       const scroll = this.body.scrollTop;
       this.body.innerHTML =
         this.page === 'sell'
-          ? sellable.length || hasEggs
-            ? `<div class="grid">${hasEggs ? eggCardHtml() : ''}${sellable.map(sellCardHtml).join('')}</div>`
-            : '<div class="empty">還沒有東西可賣。布丁待著就會掉蛋與原料，撿起來就進庫存。</div>'
+          ? (sellable.length || hasEggs
+              ? `<div class="grid">${hasEggs ? eggCardHtml() : ''}${sellable.map(sellCardHtml).join('')}</div>`
+              : '<div class="empty">還沒有原料可賣。布丁待著就會掉蛋與原料，撿起來就進庫存。</div>') +
+            `<div class="note">賣布丁</div><div class="grid">${pudSpecies.map(puddingCardHtml).join('')}</div>`
           : `${zoneNote}<div class="grid">${entries.map(cardHtml).join('')}</div>`;
       // 這一級剛上架的商品貼 NEW：不存「看過沒」，升下一級自然消失
       for (const e of entries) {
@@ -214,6 +237,13 @@ export class ShopView {
         const n = state.ingredients[s];
         (card.querySelector('.stock b') as HTMLElement).textContent = String(n);
         (card.querySelector('button') as HTMLButtonElement).textContent = String(SPECIES[s].ingredientPrice * n);
+      }
+      for (const s of pudSpecies) {
+        const card = this.body.querySelector(`[data-id="sellpud:${s}"]`);
+        if (!card) continue;
+        const n = sellablePuddings(state, s);
+        (card.querySelector('.stock b') as HTMLElement).textContent = String(n);
+        (card.querySelector('button') as HTMLButtonElement).disabled = n === 0;
       }
       return;
     }

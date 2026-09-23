@@ -93,56 +93,31 @@ test('點畫布上的原料撿得到（投影偏移有套進射線）', async ({
 });
 
 /**
- * 訂單欄不得蓋住啟用層的地板（布丁與掉落物），最窄的手機（320×568）也一樣。
- * 由來：三張訂單卡在 iPhone SE 疊到 309px，地板從 257px 起，兩隻布丁整個在卡片後面且點不到。
- * 卡片矩形要跟欄的可見範圍取交集（欄會捲動，被剪掉的部分不算蓋住）。
- * 負向對照：拿掉 .orders 的 max-height → SE 上兩隻布丁被蓋而紅。
+ * 最窄的手機（320×568）：頂列四個數字不可以被右邊的鈕蓋住。
+ *
+ * 原本這裡測的是「訂單卡不蓋住布丁」——D50 起訂單搬進工坊、收進右欄的一顆鈕，農場畫面不再有訂單卡，
+ * 那條風險整個消失了。換成這一條：2026-09-23 iPhone SE 截圖上齒輪鈕蓋掉了第四個數字（甜點數）。
+ * 負向對照：拿掉 hud.css 的 `@media (max-width: 359px)` 那段 → 甜點膠囊的右緣壓到齒輪而紅。
  */
 test.describe('320px 寬', () => {
   test.use({ viewport: { width: 320, height: 568 } });
 
-  test('三張訂單卡加五份掉落物，沒有任何布丁或原料被卡片蓋住', async ({ page }) => {
-    await page.goto('/?fresh=1&seed=5');
-    await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
-    await page.evaluate(() => {
-      const s = window.__lpg.state!;
-      for (let i = 0; i < 3; i++) s.orders.push({ id: `o${i}`, species: 'caramel', qty: 2, price: 100 + i, createdAt: s.time, expiresAt: s.time + 300 });
-      const b = s.basins[0]!;
-      for (let i = 0; i < 5; i++) {
-        const a = i * 1.2566;
-        s.drops.push({ id: `dd${i}`, zone: 'c0t1', kind: 'ingredient' as const, species: 'caramel', pos: { x: b.pos.x + 0.32 * Math.cos(a), z: b.pos.z + 0.224 * Math.sin(a) }, bornAt: s.time - 5 });
-      }
-    });
-    await page.waitForTimeout(700);
-
-    const r = await page.evaluate(() => {
-      const { camera, scene } = window.__lpg.three!;
-      const proj = (x: number, y: number, z: number) => {
-        const mv = camera.matrixWorldInverse.elements, p = camera.projectionMatrix.elements;
-        const cx = mv[0]! * x + mv[4]! * y + mv[8]! * z + mv[12]!;
-        const cy = mv[1]! * x + mv[5]! * y + mv[9]! * z + mv[13]!;
-        const cz = mv[2]! * x + mv[6]! * y + mv[10]! * z + mv[14]!;
-        const px = p[0]! * cx + p[4]! * cy + p[8]! * cz + p[12]!;
-        const py = p[1]! * cx + p[5]! * cy + p[9]! * cz + p[13]!;
-        const pw = p[3]! * cx + p[7]! * cy + p[11]! * cz + p[15]!;
-        return { x: ((px / pw + 1) / 2) * innerWidth, y: ((1 - py / pw) / 2) * innerHeight };
-      };
-      const pts: { kind: string; x: number; y: number }[] = [];
-      scene.traverse((o) => {
-        if (o.parent === scene && o.getObjectByName('Pudding_Body')) pts.push({ kind: 'pudding', ...proj(o.position.x, o.position.y + 0.12, o.position.z) });
+  for (const view of ['farm', 'bakery'] as const) {
+    test(`頂列的數字都沒有被按鈕蓋住（${view}）`, async ({ page }) => {
+      await page.goto(`/?fresh=1&seed=5${view === 'bakery' ? '&view=bakery' : ''}`);
+      await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+      await page.evaluate(() => { const s = window.__lpg.state!; s.coins = 12345; s.eggs = 88; s.desserts.caramel = 12; });
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const box = (el: Element) => el.getBoundingClientRect();
+        // 只算看得到的膠囊（各畫面會藏掉用不到的那一個，見 hud.css）
+        const chips = [...document.querySelectorAll('.topbar .chip')].map(box).filter((b) => b.width > 0);
+        const btns = [...document.querySelectorAll('.topbar .iconbtn')].map(box);
+        const hit = chips.some((c) => btns.some((b) => c.right > b.left + 1 && c.left < b.right - 1 && c.bottom > b.top && c.top < b.bottom));
+        return { hit, chips: chips.length, lastRight: Math.round(chips[chips.length - 1]!.right), firstBtn: Math.round(btns[0]!.left) };
       });
-      const drops = scene.getObjectByName('Drops') as unknown as { count: number; instanceMatrix: { array: ArrayLike<number> } };
-      const e = drops.instanceMatrix.array;
-      for (let i = 0; i < drops.count; i++) pts.push({ kind: 'drop', ...proj(e[i * 16 + 12]!, e[i * 16 + 13]!, e[i * 16 + 14]!) });
-      const col = document.querySelector('.orders')!.getBoundingClientRect();
-      const cards = [...document.querySelectorAll('.order')]
-        .map((el) => { const b = el.getBoundingClientRect(); return { l: Math.max(b.left, col.left), t: Math.max(b.top, col.top), r: Math.min(b.right, col.right), b: Math.min(b.bottom, col.bottom) }; })
-        .filter((c) => c.b > c.t);
-      const covered = pts.filter((q) => cards.some((c) => q.x >= c.l - 8 && q.x <= c.r + 8 && q.y >= c.t - 8 && q.y <= c.b + 8));
-      return { cards: cards.length, pts: pts.length, covered };
+      expect(r.chips).toBe(3);
+      expect(r.hit, JSON.stringify(r)).toBe(false);
     });
-    expect(r.cards).toBeGreaterThan(0);
-    expect(r.pts).toBe(7);
-    expect(r.covered, '被訂單卡蓋住的布丁／原料').toEqual([]);
-  });
+  }
 });

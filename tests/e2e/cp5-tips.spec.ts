@@ -18,7 +18,8 @@ async function ready(page: Page, query = '/') {
 }
 
 test('點頂列的四個數字，各跳一則小布丁的說明', async ({ page }) => {
-  await ready(page);
+  // 甜點數只在工坊畫面顯示（D50 起農場不做甜點）；工坊在 390px 上四個都看得到
+  await ready(page, '/?view=bakery');
 
   const bubble = page.locator('.tipbubble');
   await expect(bubble).toBeHidden();
@@ -41,11 +42,13 @@ test('點頂列的四個數字，各跳一則小布丁的說明', async ({ page 
 });
 
 test('點訂單卡上的數字，說明要幾份、給多少、什麼時候過期', async ({ page }) => {
-  await ready(page);
+  // D50 起訂單在甜點店：右欄「預訂單」鈕開卡片
+  await ready(page, '/?view=bakery');
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.orders.push({ id: 'o-tip', species: 'caramel', qty: 3, price: 42, createdAt: s.time, expiresAt: s.time + 600 });
   });
+  await page.getByRole('button', { name: '預訂單' }).click();
   await page.waitForSelector('.order[data-id="o-tip"]');
 
   await page.locator('.order[data-id="o-tip"] .t').click();

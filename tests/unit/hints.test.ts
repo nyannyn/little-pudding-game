@@ -72,23 +72,42 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).toBe('pick');
   });
 
-  it('原料夠就叫他加工，做過一次之後不再重複講', () => {
+  it('蛋與原料湊得齊一盤就帶去甜點店，做過一盤之後不再講（D50）', () => {
     const s = fresh();
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
-    s.ingredients.caramel = BALANCE.ingredientsPerDessert;
-    expect(nextHint(s)?.id).toBe('craft');
+    s.eggs = BALANCE.bakery.batchSize * BALANCE.eggsPerDessert;
+    s.ingredients.caramel = BALANCE.bakery.batchSize * BALANCE.ingredientsPerDessert;
+    expect(nextHint(s)?.id).toBe('bakery');
 
-    s.stats.crafted = 1;
-    expect(nextHint(s)?.id).not.toBe('craft');
+    s.stats.baked = 2;
+    expect(nextHint(s)?.id).not.toBe('bakery');
   });
 
-  it('有甜點就叫他出貨', () => {
+  it('只有原料沒有蛋：不叫他去甜點店（去了也開不了工）', () => {
+    const s = fresh();
+    s.basins[0]!.liquid = 'caramel';
+    s.basins[0]!.units = 1;
+    s.ingredients.caramel = 99;
+    expect(nextHint(s)?.id).not.toBe('bakery');
+  });
+
+  it('成品櫃有甜點、還沒有客人買過：叫他上架', () => {
     const s = fresh();
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
     s.desserts.caramel = 1;
-    expect(nextHint(s)?.id).toBe('ship');
+    expect(nextHint(s)?.id).toBe('shelf');
+  });
+
+  it('有成就可以領、一次都沒領過：先講成就（開局資金）', () => {
+    const s = fresh();
+    s.basins[0]!.liquid = 'caramel';
+    s.basins[0]!.units = 1;
+    s.stats.baths = 1;
+    expect(nextHint(s)?.id).toBe('achieve');
+    s.claimedAchievements.push('firstBath');
+    expect(nextHint(s)?.id).not.toBe('achieve');
   });
 
   it('錢夠了就指向第一台設備', () => {
@@ -128,8 +147,6 @@ describe('2026-09-22 回報：注液閥卡在牛乳、農場整個停住', () =>
     const s = fresh();
     s.equipment[s.activeZone]!.autoFill = true;
     s.equipment[s.activeZone]!.collector = true;
-    s.equipment[s.activeZone]!.crafter = true;
-    s.equipment[s.activeZone]!.seller = true;
     s.stock.caramel = 2;
     s.stock.milk = 0;
     s.basins[0]!.liquid = null;

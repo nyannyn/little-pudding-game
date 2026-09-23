@@ -17,7 +17,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `npm run smoke:live`：對正式建置或線上網址跑整頁煙霧測（`LPG_BASE` 指定網址）
 - `npm run models:optimize`：壓縮 `public/models/*.glb` 並檢查資產預算（超標 exit 1）
 - `npm run art:shop`：重抓商店商品圖（Microsoft Fluent Emoji 3D，MIT，釘 commit）縮成 160px WebP 到 `src/assets/shop/`；授權全文在同目錄 `LICENSE.txt`。只在改 `tools/fetch-shop-art.mjs` 的 ART 表時才需要重跑，輸出已進版控
-- 網址參數：`?debug=1` 在**設定卡（右上角齒輪）裡**顯示 fps／draw calls／三角形數、顯示卡與存檔狀態（原本是畫面左下的常駐浮層，D38 搬進去的；沒帶參數時連設定卡裡也不會出現）、`?fresh=1` 開新檔（**測試模式**）、`?seed=N` 固定亂數、`?fastTime=N` 倍速、`?pop=N` 指定布丁隻數、`?noPudding=1` 不載布丁、`?dpr=N`／`?aa=0` 降解析度與關 MSAA（查效能）
+- 網址參數：`?debug=1` 在**設定卡（右上角齒輪）裡**顯示 fps／draw calls／三角形數、顯示卡與存檔狀態（原本是畫面左下的常駐浮層，D38 搬進去的；沒帶參數時連設定卡裡也不會出現）、`?fresh=1` 開新檔（**測試模式**）、`?seed=N` 固定亂數、`?fastTime=N` 倍速、`?pop=N` 指定布丁隻數、`?noPudding=1` 不載布丁、`?dpr=N`／`?aa=0` 降解析度與關 MSAA（查效能）、`?view=bakery` 直接開在甜點工坊（e2e／截圖用）
 - 手機實測走 GitHub Pages：push `master` 自動部署到 `https://nyannyn.github.io/little-pudding-game/`（`.github/workflows/pages.yml`）；PC 沒有 Wi-Fi 卡且防火牆擋 5173 入站，區網直連不可行
 
 ## 分層鐵則
@@ -61,7 +61,8 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 ## 美術管線
 Blender MCP（`.mcp.json`；Blender 端側欄分頁「MCP for Blender」按連線鈕，**按鈕名稱隨 addon 版本變**，本機 4.5 是「Connect to Claude」）→ `tools/blender/render_preview.py` 出 4 角度預覽 → 使用者簽核 → `export_scene` 出 GLB 到 `public/models/` → `npm run models:optimize`。
 布丁本體不必開 Blender 介面：`blender --background --python tools/blender/build_pudding.py -- --out public/models/pudding_base.glb --preview docs/previews/pudding_base` 一條龍（建模＋預覽＋匯出；`shade_auto_smooth` 在背景模式失效，腳本已改用資料 API）。GLB 的 `Pudding_Body` 是本體／焦糖／腮紅併成的一顆 mesh，頂點色層 `Mask` 是遮罩不是顏色（R 本體、G 焦糖、B 腮紅），顏色在 `src/scene/puddingPool.ts` 的 shader 從 instance 屬性混出來——**改布丁外觀兩邊都要看**。
-商店商品圖（2D）走 `npm run art:shop`，不在 `models:optimize` 的預算檢查範圍內（目前 17 張共約 62 KB）。
+商店商品圖（2D）走 `npm run art:shop`，不在 `models:optimize` 的預算檢查範圍內。
+甜點工坊（D51）**不用 Blender**：房間與五台機器是 `src/scene/bakery/room.ts` 用程式拼的圓角幾何，顏色寫在頂點色、整間併成一個 mesh（D46 做法）；會動的部件在 `bakeryView.ts`。簽核截圖：`node tools/shoot-bakery.mjs <輸出資料夾>`（`LPG_BASE` 指向這棵樹的 dev server）。
 
 ## 提交
 - 繁體中文一行 commit；不加 Co-Authored-By 標記。

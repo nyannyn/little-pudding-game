@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buyEquipment, unlockZone } from '../../src/game/actions';
-import { BALANCE, EQUIPMENT, EQUIPMENT_IDS } from '../../src/game/balance';
+import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, RETIRED_EQUIPMENT_PRICE } from '../../src/game/balance';
 import type { SimEvent } from '../../src/game/events';
 import { advance } from '../../src/game/sim';
 import { SCHEMA_VERSION, createNewSave, equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, migrate } from '../../src/game/state';
@@ -104,41 +104,40 @@ describe('分區設備只作用在自己那一區', () => {
     expect(basinsIn(w.state, SECOND_CABINET)[0]!.units).toBe(0);
   });
 
-  it('販售口裝在二號櫥窗也會賣掉全場的甜點（庫存是共用的）', () => {
+  it('補貨合約裝在二號櫥窗也會補全場共用的庫存', () => {
     const w = twoZones();
-    w.state.equipment[SECOND_CABINET]!.seller = true;
-    w.state.desserts.caramel = 3;
-    w.state.coins = 0;
+    w.state.equipment[SECOND_CABINET]!.restock = true;
+    w.state.stock.caramel = 0;
+    w.state.coins = 500;
     advance(w, 1);
-    expect(w.state.desserts.caramel).toBe(0);
-    expect(w.state.coins).toBeGreaterThan(0);
-    expect(hasEquipmentAnywhere(w.state, 'seller')).toBe(true);
+    expect(w.state.stock.caramel).toBe(BALANCE.restockTarget);
+    expect(hasEquipmentAnywhere(w.state, 'restock')).toBe(true);
     expect(hasAnyEquipment(w.state)).toBe(true);
   });
 
   /**
-   * 這條鎖的是一個**設計事實**，不是 bug：加工／販售／補貨操作的是全場共用的庫存，
-   * 第二區再買一台功能上不會多做事（D45，使用者知情後選定五台都要重買）。
-   * 哪天有人把這三台改成真的逐區生效，這條會紅，逼人回頭重看 D45 再決定。
+   * 這條鎖的是一個**設計事實**，不是 bug：補貨合約操作的是全場共用的庫存，
+   * 第二區再買一台功能上不會多做事（D45，使用者知情後選定全部都要重買；
+   * 加工機與販售口在 D50 退役）。哪天有人把它改成真的逐區生效，這條會紅，逼人回頭重看 D45。
    */
-  it('第二區再買加工機／販售口／補貨合約，產能與收入跟只有一台時一模一樣', () => {
+  it('第二區再買補貨合約，庫存與花費跟只有一台時一模一樣', () => {
     const run = (secondZoneToo: boolean) => {
       const w = twoZones(777);
-      for (const id of ['crafter', 'seller', 'restock'] as const) {
-        w.state.equipment[START_ZONE]![id] = true;
-        if (secondZoneToo) w.state.equipment[SECOND_CABINET]![id] = true;
-      }
+      w.state.equipment[START_ZONE]!.restock = true;
+      if (secondZoneToo) w.state.equipment[SECOND_CABINET]!.restock = true;
       w.state.equipment[START_ZONE]!.collector = true;
       w.state.equipment[SECOND_CABINET]!.collector = true;
+      w.state.equipment[START_ZONE]!.autoFill = true;
+      w.state.equipment[SECOND_CABINET]!.autoFill = true;
       w.state.coins = 500;
-      w.state.stock.caramel = 30;
+      w.state.stock.caramel = 5;
       for (const [i] of w.state.basins.entries()) fillBasinDirect(w.state, 'caramel', BALANCE.basinCapacity, i);
       for (const p of w.state.puddings) p.caramel = 5;
       advance(w, 300);
-      return { coins: w.state.coins, desserts: { ...w.state.desserts }, crafted: w.state.stats.crafted, stock: { ...w.state.stock } };
+      return { coins: w.state.coins, stock: { ...w.state.stock }, baths: w.state.stats.baths };
     };
     const one = run(false);
-    expect(one.crafted).toBeGreaterThan(0); // 先確認這段時間真的有在生產，不然「相等」是空話
+    expect(one.coins).toBeLessThan(500); // 先確認這段時間真的有補過貨，不然「相等」是空話
     expect(run(true)).toEqual(one);
   });
 });
@@ -150,6 +149,7 @@ describe('schema v5 → v6：舊存檔的扁平設備表', () => {
     const raw = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
     raw.schemaVersion = 5;
     raw.equipment = { autoFill: true, collector: true, crafter: false, seller: true, restock: false };
+    raw.coins = 30;
     return raw;
   }
 
@@ -157,7 +157,7 @@ describe('schema v5 → v6：舊存檔的扁平設備表', () => {
     const s = migrate(v5WithTwoZones(), { seed: 1, now: 0 });
     expect(s.schemaVersion).toBe(SCHEMA_VERSION);
     for (const zone of [START_ZONE, UPPER]) {
-      expect(equipmentIn(s, zone)).toEqual({ autoFill: true, collector: true, crafter: false, seller: true, restock: false });
+      expect(equipmentIn(s, zone)).toEqual({ autoFill: true, collector: true, restock: false });
     }
     expect(Object.values(equipmentIn(s, SECOND_CABINET)).some(Boolean)).toBe(false);
     expect(Object.values(equipmentIn(s, zoneKey(0, 0))).some(Boolean)).toBe(false);
@@ -165,7 +165,12 @@ describe('schema v5 → v6：舊存檔的扁平設備表', () => {
 
   it('負向對照：只補起始區的話上層會少掉已付費的設備（這條測的是補值方向）', () => {
     const s = migrate(v5WithTwoZones(), { seed: 1, now: 0 });
-    expect(equipmentIn(s, UPPER).seller).toBe(true);
+    expect(equipmentIn(s, UPPER).collector).toBe(true);
+  });
+
+  it('D50：扁平表裡的販售口退役、照原價退一台（舊規則是付一次全場生效）', () => {
+    const s = migrate(v5WithTwoZones(), { seed: 1, now: 0 });
+    expect(s.coins).toBe(30 + RETIRED_EQUIPMENT_PRICE.seller!);
   });
 
   it('v6 的分區設備表原樣讀回，未知的區與非布林值一律當成沒裝', () => {
@@ -178,7 +183,8 @@ describe('schema v5 → v6：舊存檔的扁平設備表', () => {
       c9t9: { restock: true },
     };
     const back = migrate(raw, { seed: 1, now: 0 });
-    expect(equipmentIn(back, START_ZONE)).toEqual({ autoFill: false, collector: true, crafter: false, seller: false, restock: false });
+    expect(equipmentIn(back, START_ZONE)).toEqual({ autoFill: false, collector: true, restock: false });
+    expect(back.coins).toBe(s.coins); // 'yes' 不是 true：沒裝就不退款
     expect(equipmentIn(back, UPPER).autoFill).toBe(true);
     expect('c9t9' in back.equipment).toBe(false);
     expect(hasEquipmentAnywhere(back, 'restock')).toBe(false);
@@ -190,14 +196,15 @@ describe('schema v5 → v6：舊存檔的扁平設備表', () => {
     const back = importCode(code);
     expect(back).not.toBeNull();
     expect(back!.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(equipmentIn(back!, START_ZONE).seller).toBe(true);
-    expect(equipmentIn(back!, UPPER).seller).toBe(true);
+    expect(equipmentIn(back!, START_ZONE).collector).toBe(true);
+    expect(equipmentIn(back!, UPPER).collector).toBe(true);
     expect(equipmentIn(back!, UPPER).autoFill).toBe(true);
     expect(hasEquipmentAnywhere(back!, 'restock')).toBe(false);
     // 再匯出一次是 v6 的分區形狀，讀回來不會再被當成扁平表
     const again = importCode(exportCode(back!));
-    expect(equipmentIn(again!, SECOND_CABINET).seller).toBe(false);
-    expect(equipmentIn(again!, UPPER).seller).toBe(true);
+    expect(equipmentIn(again!, SECOND_CABINET).collector).toBe(false);
+    expect(equipmentIn(again!, UPPER).collector).toBe(true);
+    expect(again!.coins).toBe(back!.coins); // 退款只發生一次：第二趟已經沒有販售口可退
   });
 
   it('完全沒有 equipment 欄位的存檔：每一區都是空的，不會炸', () => {

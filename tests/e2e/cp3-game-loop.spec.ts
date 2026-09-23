@@ -76,6 +76,8 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
     if (s.drops.length > 0) await page.getByRole('button', { name: '撿原料' }).click();
     await page.waitForTimeout(200);
   }
+  // 跳出迴圈前那 200ms 裡可能又掉了一顆：玩家會順手再撿一次，測試也照做（不然是在賭掉落時機）
+  if ((await state(page)).drops.length > 0) await page.getByRole('button', { name: '撿原料' }).click();
   const picked = await state(page);
   expect(picked.drops.length).toBe(0);
   expect(picked.ingredients.caramel).toBeGreaterThanOrEqual(1);
