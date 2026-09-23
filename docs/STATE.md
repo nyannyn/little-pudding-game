@@ -31,7 +31,9 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
-## 【進行中】食譜制全自動流水線 D56–D58（2026-09-24，分支 `feat/bakery-line`，worktree `../lpg-wt-line`，計畫檔 CP9）
+## 食譜制全自動流水線 D56–D58（2026-09-24，已上線，PR #26，計畫檔 CP9）
+
+- **已上線（2026-09-24）**：PR #26 squash merge，master＝`59bda8c`；Pages 部署綠；線上 bundle `index-Y9ks08tM.js` 含「開始製作」「冷藏櫃」「未購買」「糯米粉」「缺機器」；`npm run smoke:live` 對線上 15 項全過（draw 19/35、SW、離線、零 console 錯誤）。**使用者在手機上遠端遙控、看不到 PDF**，授權「最差的情況直接 merge」——視覺簽核改成使用者用手機開正式網址看；有意見再開新的一包。
 
 **使用者原話（逐字，四則陸續追加）**：
 > 甜點店應該要有流水線的樣子  而且機器也都要購買
@@ -63,7 +65,7 @@
 - 證據：vitest 248、build 綠、`test:negative` 只剩 AC2-9、cp8＋cp3-shop 20 passed、**整套 e2e 73 passed**（commit `b84ee2f`）；簽核 PDF v2（8 頁，iPhone 14／SE 對照）已傳。
 
 ### 還沒做／待使用者
-- 視覺簽核（PDF v2）；**PR #26 尚未 merge**（merge 要使用者同意：CP8 的授權不涵蓋這一包）。worktree `../lpg-wt-line` 的 `node_modules` 是 junction，merge 後先 `cmd /c rmdir node_modules` 再 `git worktree remove`。
+- 視覺意見等使用者在手機上玩過再說（**以後別傳 PDF 當簽核品**：使用者多半用手機遠端，看不到本機檔；改給正式網址）。
 - 菜單卡的圖用的是原料圖（沒有甜點圖）；無頭試玩太慢，只驗到買第一台機器（完整流程靠 e2e）。
 
 ## 成就改版 D55（2026-09-24，使用者：「成就系統請分類 而且參照其他遊戲的成就系統做得更美觀 成就設定的有趣一點」，分支 `feat/achievements-v2`，worktree `../lpg-wt-achievements`）
