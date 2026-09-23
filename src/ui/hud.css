@@ -308,7 +308,7 @@
 /* ── 商店抽屜（D25）：分頁＋兩欄商品卡 ────────
    商品圖是 Fluent Emoji 3D 的 WebP（src/ui/shopArt.ts），不是線條圖示。
    鎖住的商品不藏：灰掉＋掛 Lv 牌，讓玩家看得到下一個目標。 */
-.sheet {
+:is(.sheet, .achsheet) {
   position: absolute;
   inset: auto 0 0 0;
   height: 82%; /* 固定高度：分頁內容有多有少，用 max-height 的話切頁時整排分頁鈕會上下跳 */
@@ -322,14 +322,14 @@
   flex-direction: column;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-.sheet[hidden] { display: none; }
-.sheet header {
+:is(.sheet, .achsheet)[hidden] { display: none; }
+:is(.sheet, .achsheet) header {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 12px 6px 14px;
 }
-.sheet h2 {
+:is(.sheet, .achsheet) h2 {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
@@ -348,7 +348,7 @@
 .sheet .lvl .row img { width: 20px; height: 20px; }
 .sheet .lvl .row b { font-size: 14px; }
 .sheet .lvl .xptext { color: var(--ink-soft); font-size: 11px; font-weight: 400; margin-left: auto; font-variant-numeric: tabular-nums; }
-.sheet .xpbar {
+:is(.sheet, .achsheet) .xpbar {
   margin-top: 4px;
   height: 8px;
   border-radius: 4px;
@@ -356,15 +356,15 @@
   box-shadow: inset 0 1px 2px rgba(90, 61, 40, 0.18);
   overflow: hidden;
 }
-.sheet .xpbar > i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#ffe08a, var(--yellow-dark)); }
+:is(.sheet, .achsheet) .xpbar > i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#ffe08a, var(--yellow-dark)); }
 
 /* 分頁：一排圖示磚，作用中的往上凸、綠底 */
-.sheet .tabs {
+:is(.sheet, .achsheet) .tabs {
   display: flex;
   gap: 6px;
   padding: 6px 12px 0;
 }
-.hud .sheet .tabs button {
+.hud :is(.sheet, .achsheet) .tabs button {
   flex: 1;
   min-width: 0;
   flex-direction: column;
@@ -376,17 +376,17 @@
   position: relative;
   --edge: var(--wood-light);
 }
-.hud .sheet .tabs button img { width: 26px; height: 26px; }
-.hud .sheet .tabs button[aria-selected="true"] {
+.hud :is(.sheet, .achsheet) .tabs button img { width: 26px; height: 26px; }
+.hud :is(.sheet, .achsheet) .tabs button[aria-selected="true"] {
   --edge: var(--green-deep);
   background: linear-gradient(#98cc78, var(--green));
   color: #fff;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
   transform: translateY(-2px);
 }
-.hud .sheet .tabs button[aria-selected="true"]:active { transform: translateY(1px); }
+.hud :is(.sheet, .achsheet) .tabs button[aria-selected="true"]:active { transform: translateY(1px); }
 /* 這頁有新東西／有東西可賣：紅點 */
-.sheet .tabs .dot {
+:is(.sheet, .achsheet) .tabs .dot {
   position: absolute;
   top: 4px;
   right: 6px;
@@ -396,10 +396,10 @@
   background: var(--coral);
   border: 2px solid #fff8e8;
 }
-.sheet .tabs .dot[hidden] { display: none; }
+:is(.sheet, .achsheet) .tabs .dot[hidden] { display: none; }
 
-.sheet .body { overflow: auto; padding: 10px 12px 16px; -webkit-overflow-scrolling: touch; }
-.sheet .grid {
+:is(.sheet, .achsheet) .body { overflow: auto; padding: 10px 12px 16px; -webkit-overflow-scrolling: touch; }
+:is(.sheet, .achsheet) .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -920,14 +920,10 @@
 }
 .achbtn .badge[hidden] { display: none; }
 
-/* 成就卡與開工選單：一列一項，右邊一顆鈕 */
-.achcard .card,
+/* 開工選單：一列一項，右邊一顆鈕（成就改成底部抽屜了，見下方 .achsheet） */
 .batchcard .card { box-sizing: border-box; width: 100%; max-width: 360px; max-height: 80vh; overflow-y: auto; }
-.achcard .lead,
 .batchcard .lead { margin-bottom: 10px; }
-.achcard .alist,
 .batchcard .blist { align-self: stretch; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; text-align: left; }
-.arow,
 .brow {
   display: flex;
   align-items: center;
@@ -937,17 +933,8 @@
   border-radius: 14px;
   padding: 6px 8px;
 }
-.arow .txt,
 .brow .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.arow small,
 .brow small { color: var(--ink-soft); font-size: 11px; }
-.arow[data-status="claimable"] { border-color: var(--yellow-dark); background: #fff4d2; }
-.arow[data-status="claimed"] { opacity: 0.55; }
-.arow .abar { display: block; height: 4px; border-radius: 2px; background: var(--paper-3); overflow: hidden; margin-top: 3px; }
-.arow .abar > i { display: block; height: 100%; background: var(--yellow); }
-.arow .reward { font-size: 12px; color: #a5721c; font-weight: 700; white-space: nowrap; }
-.arow .done { font-size: 12px; color: var(--green-deep); white-space: nowrap; }
-.hud .arow button.buy,
 .hud .brow button.buy { width: auto; min-height: 34px; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
 .brow .art { position: relative; width: 40px; height: 40px; flex: none; }
 .brow .art .main { width: 40px; height: 40px; object-fit: contain; }
@@ -1000,4 +987,165 @@
 .hud[data-view="farm"] .chip[data-k="des"] { display: none; }
 @media (max-width: 359px) {
   .hud[data-view="bakery"] .chip[data-k="ing"] { display: none; }
+}
+
+/* ── 成就抽屜（D55）───────────────────────────
+   樣式跟商店共用（上面的 :is(.sheet, .achsheet)），但**不掛 .sheet**：e2e 與試玩腳本都把 .sheet 當商店。一列＝一個系列：左邊獎章（銅／銀／金底）、中間名字＋星星＋進度、右邊領取。
+   **不要掛 .card**：商店卡的 .card .foot／.card button.buy 會漏進來（舊版直排文字就是這樣來的） */
+.achsheet .achsum { flex: 1; min-width: 0; }
+.achsheet .achsum .row { display: flex; align-items: center; gap: 5px; font-size: 13px; line-height: 1.2; }
+.achsheet .achsum .row > .ic { width: 22px; height: 22px; }
+.achsheet .achsum .row b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.achsheet .achsum .coins { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; color: #a5721c; font-size: 12px; font-variant-numeric: tabular-nums; }
+.achsheet .achsum .coins .ic { width: 16px; height: 16px; }
+.hud .achsheet .tabs button .ic { width: 26px; height: 26px; }
+.hud .achsheet .tabs button span { white-space: nowrap; }
+
+.hud .achsheet button.claimall {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  margin-bottom: 10px;
+  gap: 8px;
+  font-size: 14px;
+  --edge: var(--green-deep);
+  background: linear-gradient(#98cc78, var(--green));
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+.hud .achsheet button.claimall[hidden] { display: none; }
+
+.achsheet .alist { display: flex; flex-direction: column; gap: 8px; }
+.achsheet .arow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 8px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  border-radius: 16px;
+  box-shadow: 0 3px 0 var(--wood-light);
+}
+.achsheet .arow[data-status="claimable"] {
+  border-color: var(--yellow-dark);
+  background: linear-gradient(#fff9e6, #ffefc2);
+  box-shadow: 0 3px 0 var(--yellow-dark), 0 0 0 3px rgba(247, 201, 90, 0.28);
+}
+.achsheet .arow[data-status="claimed"] { background: var(--paper-2); box-shadow: 0 3px 0 var(--paper-3); border-color: var(--paper-3); }
+.achsheet .arow[data-concealed] { background: #f3eadb; border-style: dashed; box-shadow: none; }
+
+/* 獎章：外圈＝階級色、內圈奶油底放彩色圖 */
+.achsheet .medal {
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 3px 0 rgba(90, 61, 40, 0.22), inset 0 2px 0 rgba(255, 255, 255, 0.55);
+}
+.achsheet .medal::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #fffdf6, #f7ead2 80%);
+  box-shadow: inset 0 2px 3px rgba(90, 61, 40, 0.18);
+}
+.achsheet .medal .ic { position: relative; width: 28px; height: 28px; }
+.achsheet .medal.m-bronze { background: linear-gradient(145deg, #f2c08e, #c47a3c 70%, #a8622a); }
+.achsheet .medal.m-silver { background: linear-gradient(145deg, #ffffff, #c3ccd6 60%, #939eab); }
+.achsheet .medal.m-gold { background: linear-gradient(145deg, #fff0b0, #f2c14e 55%, #cf931f); }
+.achsheet .medal.m-hidden { background: linear-gradient(145deg, #e2d6c3, #c2ad8f); }
+.achsheet .medal .q { position: relative; font-size: 22px; font-weight: 700; color: var(--ink-faint); }
+/* 全系列完成：右下角綠勾 */
+.achsheet .medal .check {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 12.5 4 4 8-9' fill='none' stroke='%23fff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat;
+  border: 2px solid #fff8e8;
+}
+
+.achsheet .arow .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.achsheet .arow .ttl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.achsheet .arow .ttl b { font-size: 14px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.achsheet .arow .desc { color: var(--ink-soft); font-size: 11.5px; font-weight: 400; line-height: 1.35; }
+.achsheet .arow[data-status="claimed"] .ttl b { color: var(--ink-soft); }
+
+/* 星星＝已領幾階 */
+.achsheet .stars { display: inline-flex; gap: 1px; flex: none; }
+.achsheet .stars i {
+  width: 12px;
+  height: 12px;
+  background: #e3d3b6;
+  clip-path: polygon(50% 0, 62% 34%, 98% 36%, 69% 58%, 80% 94%, 50% 73%, 20% 94%, 31% 58%, 2% 36%, 38% 34%);
+}
+.achsheet .stars i.on { background: linear-gradient(#ffe08a, #e0a62e); }
+
+.achsheet .prog { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.achsheet .abar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--paper-3);
+  box-shadow: inset 0 1px 2px rgba(90, 61, 40, 0.18);
+  overflow: hidden;
+}
+.achsheet .abar > i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(#ffe08a, var(--yellow-dark)); }
+.achsheet .cnt { flex: none; font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.achsheet .arow .act { flex: none; display: flex; }
+/* 錢幣：跟商店買鈕同一顆 */
+.achsheet .claim b::before,
+.achsheet .claimall b::before,
+.achsheet .reward::before {
+  content: "";
+  display: inline-block;
+  vertical-align: -0.18em;
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 2px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9.5' fill='%23ffe08a' stroke='%23a86d12' stroke-width='1.8'/%3E%3Cpath d='M12 8v8M10 9.8h3a1.8 1.8 0 0 1 0 3.6h-3' fill='none' stroke='%23a86d12' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.hud .achsheet button.claim {
+  flex-direction: column;
+  gap: 0;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 3px 10px;
+  border-radius: 13px;
+  font-size: 12px;
+  line-height: 1.2;
+  --edge: var(--yellow-dark);
+  background: linear-gradient(#ffe08a, var(--yellow));
+  color: #6a4512;
+  font-variant-numeric: tabular-nums;
+}
+.hud .achsheet button.claim b { font-size: 13px; }
+.achsheet .reward {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  border: 1.5px solid var(--paper-3);
+  color: #a5721c;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.achsheet .done {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e3f1d8;
+  color: var(--green-deep);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }

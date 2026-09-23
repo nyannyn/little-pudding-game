@@ -31,6 +31,16 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
+## 成就改版 D55（2026-09-24，使用者：「成就系統請分類 而且參照其他遊戲的成就系統做得更美觀 成就設定的有趣一點」，分支 `feat/achievements-v2`，worktree `../lpg-wt-achievements`）
+
+- **使用者截圖的直排文字**：舊成就卡外框掛 `.card`，商店卡的 `.card .foot { width:100% }` 漏進成就列，文字欄被擠到 0～一個字寬。改成跟商店同款的底部抽屜 `src/ui/achievements.ts`（`.achsheet`，不掛 `.card`）。
+- **踩坑：成就抽屜第一版掛了 `.sheet`**，結果 `cp3-expansion` 的 `page.locator('.sheet .body').waitFor()` 撞嚴格模式（兩個 `.sheet`）——e2e 與 `tools/playtest/*.mjs` 十幾處都把 `.sheet` 當「商店」。新的底部抽屜不要掛 `.sheet`，樣式走 `:is(.sheet, .achsheet)`。
+- **抽屜開著時的重建條件**：sig 只放結構（分頁、每列目前階／狀態／隱藏、紅點），進度值變了就地改 `.abar`／`.cnt`。把進度放進 sig＝遊戲跑著時每一兩秒整張 innerHTML，手指底下的「領取」被換掉（e2e 用 `?pause=1` 抓不到，另寫了一條「抓住按鈕 handle、推進度、斷言 isConnected」）。
+- 設計見計畫 D55：四類分頁（牧場日常／布丁家族／甜點工坊／生意經）＋紅點；同條件合成系列（銅→銀→金獎章＋星星）；頂部已領 x／36＋累計焦糖幣；兩條以上可領時出現「全部領取」（`claimAllAchievements`，只發一個 `achievementsClaimed` 事件＝一則 toast）；兩條隱藏成就（突變、讓 50 位客人撲空）。舊 20 個 id 全保留、只改名字；新增 16 條；**沒動 `GameState`、沒升 schema**。
+- 證據：單元 227 綠（新 `tests/unit/achievements.test.ts` 9 條，四個突變各紅過：改舊 id／系列永遠停第一階／全部領取逐條發事件／隱藏不看狀態）；e2e 新 D55 兩條＋改 AC8-8，**負向對照**：把 `.achsheet .arow .act { width:100% }` 塞回去→文字欄寬 0 紅；把進度值放回 sig→按鈕 detached 紅；拿掉就地更新→進度停在 1／100 紅。全套 e2e 67／68（`cp5-savecode`「舊分頁不洗掉新進度」全套跑時紅、單獨重跑兩次綠＝機率性，toast 只亮 2.6 秒）；`npm run test:negative` 只剩 AC2-9（舊問題）；`tools/playtest/opening.mjs` 跑過、開局照常領到成就；`npm run build` 綠；iPhone 14／SE 截圖看過（說明字 11.5px）。
+- 節奏（`npm run pacing` 改前→改後）：前 20 分鐘成就收入 1740→2110；上層不變；下層早 0.2–0.8 分；二號櫥窗早 1.5–9.6 分（equip-first seed 7：41.3→31.7）；3 小時成就總額 4540→8560（多出來的是後段系列）。都在 D24 目標內，**要不要再收斂由使用者決定**。
+- **使用者簽核（2026-09-24）**：看過 PDF（iPhone 14／SE 截圖＋36 條一覽）後回「好」——分類名、文案、獎章外觀照現版，節奏不收斂。
+
 ## 【重點】甜點工坊改版需求（2026-09-23 使用者提出，分支 `feat/bakery`，worktree `../lpg-wt-bakery`，D50–D54）
 
 **使用者原話（逐字保留）**：

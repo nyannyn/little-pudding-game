@@ -157,8 +157,60 @@ test('AC8-8：成就達成要按「領取」才入帳，領過就變「已領取
   await page.getByRole('button', { name: '成就' }).click();
   await page.locator('.arow[data-id="firstPick"] [data-a="claim"]').click();
   expect((await S(page)).coins).toBe(coins + 30);
-  await expect(page.locator('.arow[data-id="firstPick"]')).toHaveAttribute('data-status', 'claimed');
+  expect((await S(page)).claimedAchievements).toContain('firstPick');
+  // D55：同一系列合成一列，領完第一階就換成下一階（撿 100 份）、亮一顆星
+  const row = page.locator('.arow[data-series="pick"]');
+  await expect(row).toHaveAttribute('data-id', 'pick100');
+  await expect(row).toHaveAttribute('data-status', 'locked');
+  await expect(row.locator('.stars i.on')).toHaveCount(1);
   await expect(page.locator('.achbtn .badge')).toBeHidden();
+});
+
+test('D55：成就分四類分頁；文字欄不被擠成直排；「全部領取」跨分類一次領完', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&pause=1');
+  await page.evaluate(() => { Object.assign((window.__lpg.state as GameState).stats, { picked: 120, baths: 1, baked: 1 }); });
+  await step(page, 0.3);
+  await page.getByRole('button', { name: '成就' }).click();
+  await expect(page.locator('[data-a="achTab"]')).toHaveCount(4);
+  // 打開就跳到第一個有東西可領的分頁
+  await expect(page.locator('[data-a="achTab"][data-arg="farm"]')).toHaveAttribute('aria-selected', 'true');
+  // 2026-09-23 使用者截圖：商店卡的 `.card .foot { width:100% }` 漏進成就列，文字欄只剩一個字寬（~15px）
+  const widths = await page.$$eval('.achsheet .arow', (rows) =>
+    rows.map((r) => (r.querySelector('.txt') as HTMLElement).getBoundingClientRect().width));
+  expect(widths.length).toBeGreaterThan(0);
+  for (const w of widths) expect(w).toBeGreaterThan(100);
+  await page.locator('[data-a="achTab"][data-arg="bakery"]').click();
+  await expect(page.locator('.achsheet .arow[data-series="bake"]')).toHaveAttribute('data-status', 'claimable');
+
+  const coins = (await S(page)).coins;
+  await page.locator('[data-a="claimAllAch"]').click();
+  const s = await S(page);
+  expect([...s.claimedAchievements].sort()).toEqual(['firstBake', 'firstBath', 'firstPick', 'pick100']);
+  expect(s.coins).toBe(coins + 30 + 100 + 30 + 150);
+  await expect(page.locator('.toast', { hasText: '領了 4 個成就' })).toBeVisible();
+  await expect(page.locator('.achbtn .badge')).toBeHidden();
+  await expect(page.locator('[data-a="claimAllAch"]')).toBeHidden();
+});
+
+test('D55：抽屜開著、進度一直在漲，「領取」鈕不會在手指底下被換掉；進度條照樣跟著動', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&pause=1');
+  await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    Object.assign(s.stats, { picked: 1, baths: 1 });
+    s.claimedAchievements.push('firstBath'); // 泡澡系列停在「溫泉常客」（1／100），同一頁有可領的撿拾
+  });
+  await step(page, 0.3);
+  await page.getByRole('button', { name: '成就' }).click();
+  const btn = await page.locator('.arow[data-id="firstPick"] [data-a="claim"]').elementHandle();
+  const cnt = page.locator('.arow[data-series="bath"] .cnt');
+  await expect(cnt).toHaveText('1／100');
+  // 同一頁另一列的進度在漲、沒跨門檻（實際遊戲裡泡澡每一兩秒就一次）
+  for (const n of [2, 3, 37]) {
+    await page.evaluate((x) => { (window.__lpg.state as GameState).stats.baths = x; }, n);
+    await step(page, 0.3);
+  }
+  await expect(cnt).toHaveText('37／100');
+  expect(await btn!.evaluate((b) => b.isConnected)).toBe(true);
 });
 
 test('AC8-9：工坊畫面五站全開、客人在店裡，draw calls 仍在預算內', async ({ page }) => {

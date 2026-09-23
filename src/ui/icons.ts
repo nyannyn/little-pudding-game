@@ -126,6 +126,51 @@ export const CUTE_ICONS = {
       '<path d="M5 12.6h14" stroke="#d9708b" stroke-width="1.1"/>' +
       '<path d="M7 12.4c0-1.6.8-2.6 1.8-2.6s1.8 1 1.8 2.6ZM13.4 12.4c0-1.6.8-2.6 1.8-2.6s1.8 1 1.8 2.6ZM10.2 18.2c0-1.6.8-2.6 1.8-2.6s1.8 1 1.8 2.6Z" fill="#f8c854"/>',
   ),
+  // ── 成就獎章（D55）──
+  pudding: cute(
+    '<ellipse cx="12" cy="19" rx="7.6" ry="1.7" fill="#f2e3cc" stroke="#d9c4a2" stroke-width="1"/>' +
+      '<path d="M6 18.6c-.6-5.2 1.6-10.4 6-10.4s6.6 5.2 6 10.4Z" fill="#fbd46a" stroke="#c99a2b" stroke-width="1.2"/>' +
+      '<path d="M7.4 11.6c1.4-.8 3-1.6 4.6-1.6s3.2.8 4.6 1.6c-.3-2.6-2-4.4-4.6-4.4s-4.3 1.8-4.6 4.4Z" fill="#b7651d"/>' +
+      '<g fill="#5a3d28"><circle cx="10.4" cy="14.6" r=".8"/><circle cx="13.6" cy="14.6" r=".8"/></g>' +
+      '<g fill="#f4a7b0"><ellipse cx="8.8" cy="16" rx="1" ry=".6"/><ellipse cx="15.2" cy="16" rx="1" ry=".6"/></g>',
+  ),
+  basin: cute(
+    '<g fill="#fff" stroke="#8fc3db" stroke-width=".9"><circle cx="8" cy="6.6" r="1.6"/><circle cx="11.8" cy="4.6" r="1.2"/><circle cx="15" cy="6.8" r="1.8"/></g>' +
+      '<path d="M3.4 11h17.2l-1.4 6.4a2.6 2.6 0 0 1-2.5 2H7.3a2.6 2.6 0 0 1-2.5-2Z" fill="#9fd3ea" stroke="#5c9dbb" stroke-width="1.2"/>' +
+      '<rect x="2.6" y="9.6" width="18.8" height="2.4" rx="1.2" fill="#fffdf8" stroke="#5c9dbb" stroke-width="1.1"/>',
+  ),
+  book: cute(
+    '<path d="M4 5.2c2.6-.8 5.4-.6 8 1v13.6c-2.6-1.6-5.4-1.8-8-1Z" fill="#f7a7bb" stroke="#c2566f" stroke-width="1.2"/>' +
+      '<path d="M20 5.2c-2.6-.8-5.4-.6-8 1v13.6c2.6-1.6 5.4-1.8 8-1Z" fill="#fbd46a" stroke="#c99a2b" stroke-width="1.2"/>' +
+      '<path d="M6.2 9.4c1.4-.2 2.8 0 4 .6M13.8 10c1.2-.6 2.6-.8 4-.6M6.2 12.6c1.4-.2 2.8 0 4 .6M13.8 13.2c1.2-.6 2.6-.8 4-.6" stroke="#fff8e8" stroke-width="1.1"/>',
+  ),
+  sparkle: cute(
+    '<path d="M11 3.2c.6 4 1.8 5.4 5.8 6-4 .6-5.2 2-5.8 6-.6-4-1.8-5.4-5.8-6 4-.6 5.2-2 5.8-6Z" fill="#fbd46a" stroke="#d9a02f" stroke-width="1.1"/>' +
+      '<path d="M17.6 13.6c.3 2 .9 2.7 2.9 3-2 .3-2.6 1-2.9 3-.3-2-.9-2.7-2.9-3 2-.3 2.6-1 2.9-3Z" fill="#f7a7bb" stroke="#d9708b" stroke-width="1"/>' +
+      '<circle cx="6" cy="18" r="1.3" fill="#9fd3ea"/>',
+  ),
+  heart: cute(
+    '<path d="M12 20.2c-4.8-3-8.2-6.2-8.2-9.8a4.2 4.2 0 0 1 8.2-1.3 4.2 4.2 0 0 1 8.2 1.3c0 3.6-3.4 6.8-8.2 9.8Z" fill="#ec5a63" stroke="#c2394a" stroke-width="1.2"/>' +
+      '<path d="M7.2 9.4a2 2 0 0 1 2-1.4" stroke="#ffd6da" stroke-width="1.6"/>',
+  ),
+  order: cute(
+    '<path d="M5.6 3.4h12.8v17.2l-2.1-1.5-2.1 1.5-2.2-1.5-2.1 1.5-2.2-1.5-2.1 1.5Z" fill="#fffdf8" stroke="#c99a6a" stroke-width="1.2"/>' +
+      '<path d="M8.4 8h7.2M8.4 11.4h5" stroke="#c99a6a" stroke-width="1.3"/>' +
+      '<circle cx="15" cy="15.2" r="2.1" fill="#ec5a63" stroke="#c2394a" stroke-width=".9"/>',
+  ),
+  coin: cute(
+    '<circle cx="12" cy="12" r="8.6" fill="#ffd96a" stroke="#c9901c" stroke-width="1.3"/>' +
+      '<circle cx="12" cy="12" r="6.2" stroke="#f0b53a" stroke-width="1"/>' +
+      '<path d="M12 8.6v6.8M10.2 10.2h2.6a1.7 1.7 0 0 1 0 3.4h-2.6" stroke="#a86d12" stroke-width="1.5"/>' +
+      '<path d="M7.4 9.4a5 5 0 0 1 2.4-2.6" stroke="#fff4c8" stroke-width="1.4"/>',
+  ),
+  trophy: cute(
+    '<path d="M7.2 5.4H4.6a2.8 2.8 0 0 0 3.2 3.8M16.8 5.4h2.6a2.8 2.8 0 0 1-3.2 3.8" stroke="#c9901c" stroke-width="1.3"/>' +
+      '<path d="M7.2 3.6h9.6v5.2a4.8 4.8 0 0 1-9.6 0Z" fill="#ffd96a" stroke="#c9901c" stroke-width="1.2"/>' +
+      '<path d="M10.6 13.4h2.8v3.4h-2.8Z" fill="#f0b53a"/>' +
+      '<path d="M7.8 20.4h8.4l-.8-3.8H8.6Z" fill="#b8834f" stroke="#8f5f33" stroke-width="1.1"/>' +
+      '<path d="M9.4 5.6v3" stroke="#fff4c8" stroke-width="1.4"/>',
+  ),
 } as const;
 
 export type CuteIconName = keyof typeof CUTE_ICONS;
