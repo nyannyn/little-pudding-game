@@ -990,7 +990,7 @@
 }
 
 /* ── 成就抽屜（D55）───────────────────────────
-   跟商店同一張 .sheet；一列＝一個系列：左邊獎章（銅／銀／金底）、中間名字＋星星＋進度、右邊領取。
+   樣式跟商店共用（上面的 :is(.sheet, .achsheet)），但**不掛 .sheet**：e2e 與試玩腳本都把 .sheet 當商店。一列＝一個系列：左邊獎章（銅／銀／金底）、中間名字＋星星＋進度、右邊領取。
    **不要掛 .card**：商店卡的 .card .foot／.card button.buy 會漏進來（舊版直排文字就是這樣來的） */
 .achsheet .achsum { flex: 1; min-width: 0; }
 .achsheet .achsum .row { display: flex; align-items: center; gap: 5px; font-size: 13px; line-height: 1.2; }

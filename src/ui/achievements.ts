@@ -152,7 +152,11 @@ export class AchievementSheet {
     this.sig = '';
   }
 
-  /** 只在內容變了才重建：每幀 innerHTML 會讓按到一半的「領取」被換掉（手指底下的節點消失） */
+  /**
+   * 只在「結構」變了才重建（哪一階、可不可領、藏不藏、紅點）：遊戲跑著的時候撿／泡／生的次數
+   * 每一兩秒就在加，把進度值也算進去的話整張清單會一直 innerHTML，手指底下的「領取」被換掉＝按了沒反應。
+   * 單純進度變了就只改進度條寬度與數字，節點不動
+   */
   render(state: GameState) {
     if (this.jump) {
       this.jump = false;
@@ -166,9 +170,12 @@ export class AchievementSheet {
       total,
       state.claimedAchievements.length,
       ...ACHIEVEMENT_CATEGORIES.map((c) => categoryClaimable(state, c.id)),
-      ...rows.map((v) => `${v.current.id}:${v.status}:${v.value}`),
+      ...rows.map((v) => `${v.current.id}:${v.status}:${v.concealed}`),
     ].join(',');
-    if (sig === this.sig) return;
+    if (sig === this.sig) {
+      for (const v of rows) this.updateProgress(v);
+      return;
+    }
     this.sig = sig;
 
     const got = state.claimedAchievements.length;
@@ -192,5 +199,14 @@ export class AchievementSheet {
     // 可領的排最前、再來進行中（隱藏的殿後）、全系列領完的沉到最後
     const rank = (v: SeriesView) => (v.status === 'claimable' ? 0 : v.status === 'locked' ? (v.concealed ? 2 : 1) : 3);
     this.list.innerHTML = [...rows].sort((a, b) => rank(a) - rank(b)).map(rowHtml).join('');
+  }
+
+  private updateProgress(v: SeriesView) {
+    const row = this.list.querySelector<HTMLElement>(`.arow[data-series="${v.series}"]`);
+    const bar = row?.querySelector<HTMLElement>('.abar > i');
+    const cnt = row?.querySelector<HTMLElement>('.cnt');
+    if (!bar || !cnt) return;
+    bar.style.width = `${Math.round((v.value / v.current.target) * 100)}%`;
+    cnt.textContent = `${fmt(v.value)}／${fmt(v.current.target)}`;
   }
 }

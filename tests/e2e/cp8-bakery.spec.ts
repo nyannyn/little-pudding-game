@@ -192,6 +192,27 @@ test('D55：成就分四類分頁；文字欄不被擠成直排；「全部領�
   await expect(page.locator('[data-a="claimAllAch"]')).toBeHidden();
 });
 
+test('D55：抽屜開著、進度一直在漲，「領取」鈕不會在手指底下被換掉；進度條照樣跟著動', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&pause=1');
+  await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    Object.assign(s.stats, { picked: 1, baths: 1 });
+    s.claimedAchievements.push('firstBath'); // 泡澡系列停在「溫泉常客」（1／100），同一頁有可領的撿拾
+  });
+  await step(page, 0.3);
+  await page.getByRole('button', { name: '成就' }).click();
+  const btn = await page.locator('.arow[data-id="firstPick"] [data-a="claim"]').elementHandle();
+  const cnt = page.locator('.arow[data-series="bath"] .cnt');
+  await expect(cnt).toHaveText('1／100');
+  // 同一頁另一列的進度在漲、沒跨門檻（實際遊戲裡泡澡每一兩秒就一次）
+  for (const n of [2, 3, 37]) {
+    await page.evaluate((x) => { (window.__lpg.state as GameState).stats.baths = x; }, n);
+    await step(page, 0.3);
+  }
+  await expect(cnt).toHaveText('37／100');
+  expect(await btn!.evaluate((b) => b.isConnected)).toBe(true);
+});
+
 test('AC8-9：工坊畫面五站全開、客人在店裡，draw calls 仍在預算內', async ({ page }) => {
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1&debug=1');
   await page.evaluate(() => {
