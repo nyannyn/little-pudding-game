@@ -33,7 +33,7 @@ const el = (html: string): HTMLElement => {
   return t.content.firstElementChild as HTMLElement;
 };
 
-function artHtml(spec: ArtSpec, badge = ''): string {
+export function artHtml(spec: ArtSpec, badge = ''): string {
   return `<div class="art">
     <img class="main" src="${ART[spec.main]}" alt="" draggable="false">
     ${spec.corner ? `<img class="corner" src="${ART[spec.corner]}" alt="" draggable="false">` : ''}

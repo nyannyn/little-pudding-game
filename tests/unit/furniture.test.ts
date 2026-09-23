@@ -11,6 +11,7 @@ import {
   moveFurniture,
   placementError,
   placeFromStorage,
+  storageSpot,
   storeFurniture,
   storedBasins,
 } from '../../src/game/furniture';
@@ -207,19 +208,29 @@ describe('收進倉庫', () => {
     expect(equipmentIn(w.state, START_ZONE).crafter).toBe(false);
     expect(w.state.storedEquipment.crafter).toBe(1);
     expect(hasAnyEquipment(w.state)).toBe(true);
-    expect(placeFromStorage(w.state, UPPER, { kind: 'equipment', id: 'crafter' }).ok).toBe(true);
+    const spot = storageSpot(w.state, UPPER, { kind: 'equipment', id: 'crafter' })!;
+    expect(placeFromStorage(w.state, UPPER, { kind: 'equipment', id: 'crafter' }, spot).ok).toBe(true);
     expect(equipmentIn(w.state, UPPER).crafter).toBe(true);
     expect(w.state.storedEquipment.crafter).toBe(0);
     // 倉庫空了就擺不出第二台
-    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'crafter' }).ok).toBe(false);
+    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'crafter' }, spot).ok).toBe(false);
   });
 
   it('同一區已經裝了同一台，倉庫那台擺不進來', () => {
     const w = rich();
     buyEquipment(w.state, 'seller', sink);
     w.state.storedEquipment.seller = 1;
-    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }).ok).toBe(false);
+    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }, { x: 0.3, z: -0.3 }).ok).toBe(false);
     expect(w.state.storedEquipment.seller).toBe(1);
+  });
+
+  it('從倉庫擺到壓住別的家具的位置：擋下、倉庫那件還在', () => {
+    const w = rich();
+    buyEquipment(w.state, 'crafter', sink);
+    storeFurniture(w.state, START_ZONE, BASIN0);
+    const before = JSON.stringify(w.state);
+    expect(placeFromStorage(w.state, START_ZONE, BASIN0, EQUIPMENT_DEFAULT_POS.crafter).ok).toBe(false);
+    expect(JSON.stringify(w.state)).toBe(before);
   });
 
   it('澡盆擺出來會自己找空位，不壓到別的家具', () => {
@@ -228,7 +239,9 @@ describe('收進倉庫', () => {
     storeFurniture(w.state, START_ZONE, BASIN0);
     // 把販賣機搬到澡盆的老位置上，逼它另外找位置
     expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }, { x: -0.52, z: 0.12 }).ok).toBe(true);
-    expect(placeFromStorage(w.state, START_ZONE, BASIN0).ok).toBe(true);
+    const spot = storageSpot(w.state, START_ZONE, BASIN0);
+    expect(spot).not.toBeNull();
+    expect(placeFromStorage(w.state, START_ZONE, BASIN0, spot!).ok).toBe(true);
     const b = w.state.basins[0]!;
     expect(b.zone).toBe(START_ZONE);
     const s = equipmentPos(w.state, START_ZONE, 'seller');

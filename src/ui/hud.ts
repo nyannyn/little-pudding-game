@@ -8,7 +8,8 @@ import { LIQUID_SHORT, closeHintForGood, closedHint, dismissHints, hintsDismisse
 import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
 import { ShopView, type ShopPage } from './shop';
-import { placedRows, storageZoneLabel, storedRows, type StorageRow } from './storage';
+import { artHtml } from './shop';
+import { storageZoneLabel, storedRows, type StorageRow } from './storage';
 
 export interface HudActions {
   pour(liquid: LiquidId): void;
@@ -28,9 +29,12 @@ export interface HudActions {
   exportSave(): string;
   /** 用存檔碼還原；false＝這串碼不完整或根本不是存檔碼 */
   importSave(code: string): boolean;
-  /** 倉庫（D49）：`key` 是 `storage.refKey()` 的格式 */
-  storeFurniture(key: string): void;
+  /** 倉庫（D49）：點倉庫裡的一件拿出來擺；`key` 是 `storage.refKey()` 的格式 */
   placeFurniture(key: string): void;
+  /** 擺放模式下方那排按鈕 */
+  editOk(): void;
+  editCancel(): void;
+  editStore(): void;
 }
 
 const LIQUID_ICON: Record<LiquidId, CuteIconName> = {
@@ -113,9 +117,10 @@ export class Hud {
   private hintForever = closedHint();
   private hintDismissable = false;
   private readonly storeCard: HTMLElement;
-  /** 按了一次「收起來」、等第二次確認的那一件（倒掉液體前） */
-  private storeArmed = '';
   private storeSig = '';
+  private readonly editBar: HTMLElement;
+  private readonly confirmCard: HTMLElement;
+  private onConfirm: (() => void) | null = null;
   private zoneOrder: string[] = [];
   private activeZone = '';
   private pourKeys = '';
@@ -181,12 +186,28 @@ export class Hud {
         <div class="welcome storecard" hidden>
           <div class="card">
             <h2>倉庫</h2>
-            <p class="lead">長按櫥窗裡的家具可以拖到別的位置。收進倉庫的東西可以擺到任何一區。</p>
-            <h3 class="here"></h3>
-            <div class="rows placed"></div>
-            <h3>倉庫裡</h3>
-            <div class="rows stored"></div>
+            <p class="lead">點一件拿出來擺。想搬動或收回櫥窗裡的家具，長按它就好。</p>
+            <p class="where"></p>
+            <div class="sgrid"></div>
             <button data-a="closeStorage" class="ghost">關閉</button>
+          </div>
+        </div>
+        <div class="editbar" hidden>
+          <p class="tip">拖動來換位置</p>
+          <div class="row">
+            <button data-a="editStore" class="store">${icon('storage')}<span>收進倉庫</span></button>
+            <button data-a="editCancel" class="cancel" aria-label="取消">${icon('close')}<span>取消</span></button>
+            <button data-a="editOk" class="ok" aria-label="確定"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>確定</span></button>
+          </div>
+        </div>
+        <div class="welcome confirmcard" hidden>
+          <div class="card">
+            <h2>收進倉庫</h2>
+            <p></p>
+            <div class="row">
+              <button data-a="confirmNo" class="ghost">取消</button>
+              <button data-a="confirmYes" class="danger">倒掉並收起</button>
+            </div>
           </div>
         </div>
         <div class="welcome savecard" hidden>
@@ -228,8 +249,10 @@ export class Hud {
     this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
-    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard)');
+    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard)');
     this.storeCard = q('.storecard');
+    this.editBar = q('.editbar');
+    this.confirmCard = q('.confirmcard');
     this.glCard = q('.glcard');
     this.a2hs = q('.a2hs');
     this.saveCard = q('.savecard');
@@ -288,26 +311,28 @@ export class Hud {
       case 'closeSettings': this.saveCard.hidden = true; break;
       case 'storage':
         this.storeCard.hidden = false;
-        this.storeArmed = '';
         this.storeSig = '';
         this.lastRefresh = -1;
         break;
       case 'closeStorage': this.storeCard.hidden = true; break;
-      case 'storeItem': {
-        const row = placedRows(this.last!).find((r) => r.key === arg);
-        // 盆裡還有液體：第一次按只武裝（按鈕改成「再按一次：倒掉…」），第二次才收
-        if (row?.confirm && this.storeArmed !== arg) {
-          this.storeArmed = arg;
-          this.storeSig = '';
-          break;
-        }
-        this.storeArmed = '';
-        this.act.storeFurniture(arg);
+      case 'placeItem':
+        // 拿出來就進擺放模式：卡片先收掉，玩家要看得到櫥窗才擺得了
+        this.storeCard.hidden = true;
+        this.act.placeFurniture(arg);
+        break;
+      case 'editOk': this.act.editOk(); break;
+      case 'editCancel': this.act.editCancel(); break;
+      case 'editStore': this.act.editStore(); break;
+      case 'confirmYes': {
+        const yes = this.onConfirm;
+        this.onConfirm = null;
+        this.confirmCard.hidden = true;
+        yes?.();
         break;
       }
-      case 'placeItem':
-        this.storeArmed = '';
-        this.act.placeFurniture(arg);
+      case 'confirmNo':
+        this.onConfirm = null;
+        this.confirmCard.hidden = true;
         break;
       case 'copySave': void this.copyCode(); break;
       case 'restoreSave':
@@ -474,25 +499,52 @@ export class Hud {
     if (!this.storeCard.hidden) this.syncStorage(state);
   }
 
-  /** 倉庫卡的兩張清單；只在內容變了才重建 DOM（每幀重建會吃掉按到一半的點擊） */
+  /** 倉庫卡：一件一格（圖＋名字＋數量）；只在內容變了才重建 DOM（每幀重建會吃掉按到一半的點擊） */
   private syncStorage(state: GameState) {
-    const placed = placedRows(state);
     const stored = storedRows(state);
-    const sig = JSON.stringify([state.activeZone, this.storeArmed, placed, stored]);
+    const sig = JSON.stringify([state.activeZone, stored]);
     if (sig === this.storeSig) return;
     this.storeSig = sig;
-    const row = (r: StorageRow, action: string, label: string) => {
-      const armed = action === 'storeItem' && this.storeArmed === r.key && r.confirm;
-      return `<div class="srow" data-key="${r.key}">
-        <span class="nm"><b>${r.name}</b><small>${armed ? '' : r.sub}</small></span>
-        <button data-a="${action}" data-arg="${r.key}" class="${armed ? 'danger' : ''}"${r.disabled ? ' disabled' : ''}>${armed ? r.confirm : label}</button>
-      </div>`;
-    };
-    (this.storeCard.querySelector('.here') as HTMLElement).textContent = `擺在${storageZoneLabel(state)}的`;
-    (this.storeCard.querySelector('.placed') as HTMLElement).innerHTML =
-      placed.map((r) => row(r, 'storeItem', '收起來')).join('') || '<p class="empty">這一區沒有家具</p>';
-    (this.storeCard.querySelector('.stored') as HTMLElement).innerHTML =
-      stored.map((r) => row(r, 'placeItem', '擺出來')).join('') || '<p class="empty">倉庫是空的</p>';
+    const tile = (r: StorageRow) => `<button class="stile" data-a="placeItem" data-arg="${r.key}"${r.disabled ? ' disabled' : ''}>
+        ${artHtml(r.art, r.count && r.count > 1 ? `×${r.count}` : '')}
+        <b>${r.name}</b>${r.sub ? `<small>${r.sub}</small>` : ''}
+      </button>`;
+    const where = this.storeCard.querySelector('.where') as HTMLElement;
+    where.hidden = stored.length === 0;
+    where.textContent = `會擺到你正在看的${storageZoneLabel(state)}。`;
+    (this.storeCard.querySelector('.sgrid') as HTMLElement).innerHTML =
+      stored.map(tile).join('') || '<p class="empty">倉庫是空的</p>';
+  }
+
+  /**
+   * 擺放模式（D49）：動作列換成「收進倉庫／取消／確定」。
+   * `canStore`＝櫥窗裡的家具才收得回去（從倉庫拿出來的，取消就是放回去）；`movable`＝注液閥拖不動，提示改口。
+   */
+  showEditBar(o: { canStore: boolean; movable: boolean; ok: boolean }) {
+    this.editBar.hidden = false;
+    this.root.classList.add('editing');
+    (this.editBar.querySelector('.store') as HTMLElement).hidden = !o.canStore;
+    (this.editBar.querySelector('.tip') as HTMLElement).textContent = o.movable
+      ? '在畫面上拖動來換位置，按確定放好'
+      : '注液閥掛在澡盆上、跟著澡盆走，可以收進倉庫';
+    (this.editBar.querySelector('.ok') as HTMLElement).hidden = !o.movable && o.canStore;
+    this.setEditOk(o.ok);
+  }
+
+  setEditOk(ok: boolean) {
+    (this.editBar.querySelector('.ok') as HTMLButtonElement).disabled = !ok;
+  }
+
+  hideEditBar() {
+    this.editBar.hidden = true;
+    this.root.classList.remove('editing');
+  }
+
+  /** 收起來會倒掉液體時的確認卡（不用 confirm()：它會卡住 iOS 與測試） */
+  confirmStore(text: string, onYes: () => void) {
+    (this.confirmCard.querySelector('p') as HTMLElement).textContent = text;
+    this.onConfirm = onYes;
+    this.confirmCard.hidden = false;
   }
 
   private syncHint(state: GameState, nowMs: number) {

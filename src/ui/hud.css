@@ -676,25 +676,70 @@
 
 /* ── 倉庫卡（D49） ───────────────────────── */
 .storecard .card { box-sizing: border-box; width: 100%; max-width: 340px; max-height: 80vh; overflow-y: auto; }
-.storecard .lead { margin-bottom: 12px; }
-.hud .storecard h3 { align-self: stretch; margin: 10px 0 6px; font-size: 14px; font-weight: 700; text-align: left; }
-.storecard .rows { align-self: stretch; width: 100%; display: flex; flex-direction: column; gap: 6px; }
-.storecard .srow {
+.storecard .lead { margin-bottom: 8px; }
+.storecard .where { margin: 0 0 10px; font-size: 12px; color: var(--ink); }
+.storecard .where[hidden] { display: none; }
+/* 倉庫格子：跟商店卡同一套商品圖（.card .art），一列三格 */
+.storecard .sgrid { align-self: stretch; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.hud .storecard .stile {
+  width: auto;
+  min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 12px;
-  background: var(--paper-2);
-  text-align: left;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 16px;
+  font-size: 12px;
+  line-height: 1.25;
 }
-.storecard .srow .nm { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.storecard .srow .nm b { font-size: 13px; }
-.storecard .srow .nm small { color: var(--ink-soft); font-size: 11px; }
-.hud .storecard .srow button { width: auto; flex: none; min-height: 34px; padding: 4px 12px; font-size: 13px; }
-.hud .storecard .srow button.danger { background: var(--coral); border-color: var(--coral-dark); color: #fff; max-width: 150px; font-size: 12px; }
-.hud .storecard .srow button:disabled { opacity: 0.45; }
-.storecard .empty { margin: 0; font-size: 12px; color: var(--ink-faint); text-align: left; }
+.storecard .stile .art {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: radial-gradient(circle at 50% 35%, #fffaf0, var(--paper-3) 75%);
+}
+.storecard .stile .art .main { width: 44px; height: 44px; object-fit: contain; }
+.storecard .stile .art .corner { position: absolute; right: -4px; bottom: -4px; width: 24px; height: 24px; object-fit: contain; }
+.storecard .stile .art .badge {
+  position: absolute; top: -6px; right: -8px;
+  background: var(--yellow); color: var(--ink); border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 700;
+}
+.storecard .stile small { color: var(--ink-soft); font-size: 10px; font-weight: 400; }
+.hud .storecard .stile:disabled { opacity: 0.5; }
+.storecard .empty { grid-column: 1 / -1; margin: 6px 0; font-size: 13px; color: var(--ink-faint); text-align: center; }
+/* 擺放模式：動作列、倉庫鈕、小提示先收起來，畫面只剩「擺這一件」這件事 */
+.hud.editing .dock,
+.hud.editing .storebtn,
+.hud.editing .hint { visibility: hidden; }
+/* 擺放模式的按鈕列：放在動作列的位置 */
+.editbar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  padding: 10px 10px 12px;
+  border-radius: 24px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  box-shadow: 0 4px 0 var(--wood-light), var(--shadow);
+  pointer-events: auto;
+}
+.editbar[hidden] { display: none; }
+.editbar .tip { margin: 0 0 8px; text-align: center; font-size: 13px; color: var(--ink-soft); }
+.editbar .row { display: flex; gap: 8px; }
+.hud .editbar button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; font-size: 14px; }
+.hud .editbar button[hidden] { display: none; }
+.hud .editbar button svg { width: 20px; height: 20px; }
+.hud .editbar .ok { background: var(--green); border-color: var(--green-dark); color: #fff; }
+.hud .editbar .ok:disabled { background: var(--paper-3); border-color: var(--wood-light); color: var(--ink-faint); }
+.confirmcard .row { display: flex; gap: 8px; }
+.confirmcard .row button { flex: 1; }
+.hud .confirmcard button.danger { background: var(--coral); border-color: var(--coral-dark); color: #fff; }
+.hud .confirmcard button.ghost { background: var(--paper-2); box-shadow: none; }
 .hud .storecard button.ghost {
   background: none;
   box-shadow: none;

@@ -269,30 +269,52 @@ export function storageEmpty(state: GameState): boolean {
   return storedBasins(state).length === 0 && EQUIPMENT_IDS.every((id) => state.storedEquipment[id] <= 0);
 }
 
-/** 從倉庫擺到某一區：自動找一個空位，之後玩家再長按拖到想要的地方 */
-export function placeFromStorage(state: GameState, zone: string, ref: FurnitureRef, prefer?: Vec2): FurnitureResult {
+/**
+ * 從倉庫拿到這一區「行不行」（還沒談位置）：倉庫裡有沒有、這一區是不是已經裝了同一台。
+ * 擺放模式（UI 預覽）與 `placeFromStorage`（寫入）共用這一條，不然預覽說可以、按確定才被退。
+ */
+export function storageError(state: GameState, zone: string, ref: FurnitureRef): string | null {
   const bad = unlockedZone(state, zone);
-  if (bad) return fail(bad);
+  if (bad) return bad;
   if (ref.kind === 'basin') {
     const b = state.basins[ref.index];
-    if (!b || b.zone !== STORAGE_ZONE) return fail('倉庫裡沒有這個澡盆');
-    // 先暫時放進這一區再找位置會撞到自己；用一個不存在的索引找空位
-    const spot = findFreeSpot(state, zone, { kind: 'basin', index: -1 }, prefer ?? { x: -0.52, z: 0.12 });
-    if (!spot) return fail('這一區擺不下了，先把別的收起來');
-    b.zone = zone;
-    b.pos = spot;
-    b.occupantId = null;
-    return { ok: true, message: '澡盆擺出來了，長按可以拖到別的地方' };
+    return b && b.zone === STORAGE_ZONE ? null : '倉庫裡沒有這個澡盆';
   }
-  if (state.storedEquipment[ref.id] <= 0) return fail('倉庫裡沒有這台');
+  if (state.storedEquipment[ref.id] <= 0) return '倉庫裡沒有這台';
   const eq = state.equipment[zone];
-  if (!eq) return fail('沒有這個櫥窗');
-  if (eq[ref.id]) return fail('這一區已經裝了一台');
-  let spot: Vec2 | null = EQUIPMENT_DEFAULT_POS[ref.id];
-  if (footprint(ref)) spot = findFreeSpot(state, zone, ref, prefer ?? spot);
-  if (!spot) return fail('這一區擺不下了，先把別的收起來');
-  eq[ref.id] = true;
+  if (!eq) return '沒有這個櫥窗';
+  if (eq[ref.id]) return '這一區已經裝了一台';
+  return null;
+}
+
+/** 檢查位置時代表「倉庫裡那一件」的 ref：澡盆用不存在的索引，才不會跟自己比重疊 */
+function probe(ref: FurnitureRef): FurnitureRef {
+  return ref.kind === 'basin' ? { kind: 'basin', index: -1 } : ref;
+}
+
+/** 從倉庫拿出來的預設落點：先試老位置（澡盆＝第一個格位、設備＝改版前的位置），不行就找最近的空位 */
+export function storageSpot(state: GameState, zone: string, ref: FurnitureRef): Vec2 | null {
+  const prefer = ref.kind === 'basin' ? { x: -0.52, z: 0.12 } : EQUIPMENT_DEFAULT_POS[ref.id];
+  if (!footprint(ref)) return { ...prefer };
+  return findFreeSpot(state, zone, probe(ref), prefer);
+}
+
+/** 從倉庫擺到這一區的 `pos`（擺放模式按「確定」）；位置不合法就擋下，不自己挪到別處 */
+export function placeFromStorage(state: GameState, zone: string, ref: FurnitureRef, pos: Vec2): FurnitureResult {
+  const bad = storageError(state, zone, ref);
+  if (bad) return fail(bad);
+  const err = placementError(state, zone, probe(ref), pos);
+  if (err) return fail(err);
+  const to = { x: pos.x, z: pos.z };
+  if (ref.kind === 'basin') {
+    const b = state.basins[ref.index]!;
+    b.zone = zone;
+    b.pos = to;
+    b.occupantId = null;
+    return { ok: true, message: '澡盆擺好了' };
+  }
+  state.equipment[zone]![ref.id] = true;
   state.storedEquipment[ref.id] -= 1;
-  if (ref.id !== 'autoFill') (state.equipmentPos[zone] ??= {})[ref.id] = spot;
-  return { ok: true, message: `${EQUIPMENT[ref.id].name}擺出來了${isDraggable(ref) ? '，長按可以拖到別的地方' : ''}` };
+  if (ref.id !== 'autoFill') (state.equipmentPos[zone] ??= {})[ref.id] = to;
+  return { ok: true, message: `${EQUIPMENT[ref.id].name}擺好了` }
 }
