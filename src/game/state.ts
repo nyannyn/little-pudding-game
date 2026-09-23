@@ -20,8 +20,15 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * 6（2026-09-22）：設備改成每一區各買各的（D45）。`equipment` 由「設備 → 布林」變成
  * 「分區 → 設備 → 布林」；舊檔的旗標補給**當下所有已解鎖的區**（老玩家已經付過錢，
  * 只補起始區等於默默拔掉他第二區的自動化）。
+ * 7（2026-09-23）：家具擺放＋倉庫（D49）。新增 `storedEquipment`（倉庫裡的設備台數）與
+ * `equipmentPos`（玩家擺過的設備位置）；收起來的澡盆留在 `basins` 裡、`zone` 改成 `STORAGE_ZONE`
+ * （不從陣列刪：`Pudding.basinIndex`／`pour` 事件／液面動畫都以索引為鍵，刪了會全部錯位）。
+ * 舊檔補值：倉庫空、位置不補（沒存位置＝用改版前寫死的那組），畫面跟改版前一模一樣。
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
+
+/** 收進倉庫的澡盆的 `zone`。不是任何一個分區，所有「這一區的盆」查詢自然會略過它 */
+export const STORAGE_ZONE = 'storage';
 
 /** 布丁在地板上的行為狀態 */
 export type PuddingMode = 'hopping' | 'resting' | 'bathing';
@@ -143,6 +150,10 @@ export interface GameState {
    * 讀取走 `equipmentIn()`，不要直接索引——`noUncheckedIndexedAccess` 會在每個呼叫點逼你補 `?.`。
    */
   equipment: Record<string, Record<EquipmentId, boolean>>;
+  /** 倉庫裡的設備台數（D49）：全場共用，可以擺到任何一個已解鎖、還沒裝這台的區 */
+  storedEquipment: Record<EquipmentId, number>;
+  /** 玩家擺過的設備位置（區域座標）；沒有紀錄＝預設位置（`furniture.EQUIPMENT_DEFAULT_POS`） */
+  equipmentPos: Record<string, Partial<Record<EquipmentId, Vec2>>>;
   /** 下一張訂單卡的生成時間（遊戲秒） */
   nextOrderAt: number;
   /** 流水號，產生 id 用（不用亂數，存檔重開才不會撞號） */
@@ -168,6 +179,12 @@ function noEquipment(): Record<EquipmentId, boolean> {
   return out;
 }
 
+function zeroEquipment(): Record<EquipmentId, number> {
+  const out = {} as Record<EquipmentId, number>;
+  for (const id of EQUIPMENT_IDS) out[id] = 0;
+  return out;
+}
+
 function noEquipmentByZone(zones: Zone[]): Record<string, Record<EquipmentId, boolean>> {
   const out: Record<string, Record<EquipmentId, boolean>> = {};
   for (const z of zones) out[z.id] = noEquipment();
@@ -184,9 +201,12 @@ export function hasEquipmentAnywhere(state: GameState, id: EquipmentId): boolean
   return Object.values(state.equipment).some((eq) => eq[id]);
 }
 
-/** 全場有沒有任何一台設備（教學要不要繼續講的依據） */
+/** 全場有沒有任何一台設備（教學要不要繼續講的依據）。倉庫裡的也算：收起來不代表沒買過 */
 export function hasAnyEquipment(state: GameState): boolean {
-  return Object.values(state.equipment).some((eq) => Object.values(eq).some(Boolean));
+  return (
+    Object.values(state.equipment).some((eq) => Object.values(eq).some(Boolean)) ||
+    Object.values(state.storedEquipment).some((n) => n > 0)
+  );
 }
 
 export interface NewSaveOptions {
@@ -259,6 +279,8 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     drops: [],
     orders: [],
     equipment: noEquipmentByZone(zones),
+    storedEquipment: zeroEquipment(),
+    equipmentPos: {},
     nextOrderAt: BALANCE.orderIntervalMin,
     // 開局的住客叫 p1、p2，流水號要從它們之後開始：
     // 從 1 開始的話，解鎖第二區生出來的布丁會叫 p1 撞號，
@@ -356,6 +378,24 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     for (const id of EQUIPMENT_IDS) eq[id] = src?.[id] === true;
   }
 
+  // 倉庫與家具位置（D49）：v6 以前沒有，倉庫補空、位置不補（＝預設位置，畫面不變）
+  const rawStored = (r.storedEquipment ?? {}) as Record<string, unknown>;
+  out.storedEquipment = zeroEquipment();
+  for (const id of EQUIPMENT_IDS) out.storedEquipment[id] = Math.max(0, Math.floor(num(rawStored[id], 0)));
+  out.equipmentPos = {};
+  const rawPos = (r.equipmentPos ?? {}) as Record<string, unknown>;
+  for (const z of out.zones) {
+    const src = rawPos[z.id] as Record<string, Partial<Vec2> | undefined> | undefined;
+    if (!src || typeof src !== 'object') continue;
+    for (const id of EQUIPMENT_IDS) {
+      const v = src[id];
+      // 只收已安裝的：沒裝的設備留著位置，下次擺出來會用到一個可能已經被別的家具佔住的位置
+      if (!out.equipment[z.id]![id] || !v) continue;
+      if (typeof v.x !== 'number' || typeof v.z !== 'number' || !Number.isFinite(v.x) || !Number.isFinite(v.z)) continue;
+      (out.equipmentPos[z.id] ??= {})[id] = { x: v.x, z: v.z };
+    }
+  }
+
   out.puddings = r.puddings.map((p, i) => {
     const src = (p ?? {}) as Partial<Pudding>;
     const tpl = base.puddings[Math.min(i, base.puddings.length - 1)] as Pudding;
@@ -392,7 +432,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     out.basins = r.basins.map((b, i) => {
       const src = (b ?? {}) as Partial<Basin>;
       return {
-        zone: zoneOf(src.zone),
+        // 倉庫裡的盆要留在倉庫：`zoneOf` 會把不認得的區補成起始區，那等於讀檔就把盆擺回去
+        zone: src.zone === STORAGE_ZONE ? STORAGE_ZONE : zoneOf(src.zone),
         liquid: LIQUID_IDS.includes(src.liquid as LiquidId) ? (src.liquid as LiquidId) : null,
         units: Math.max(0, Math.min(BALANCE.basinCapacity, num(src.units, 0))),
         preferredLiquid: LIQUID_IDS.includes(src.preferredLiquid as LiquidId) ? (src.preferredLiquid as LiquidId) : null,

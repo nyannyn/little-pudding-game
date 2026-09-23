@@ -29,6 +29,14 @@ for (const device of ['iPhone 14', 'iPhone SE']) {
   if (nextHit !== 'zoneStep') problems.push(`「下一個櫥窗」被 ${nextHit} 蓋住`);
   if (covered.length) problems.push(`訂單卡蓋住 ${covered.map((c) => c.kind).join(',')}`);
   if (outOfBand.length) problems.push('布丁投影落在 HUD 帶外');
+  // 倉庫鈕（D49）：不疊其他 HUD、點得到、不蓋住布丁／原料
+  for (const [name, box] of [['頂列', h.topbar], ['切換列', h.zones], ['訂單欄', h.orders], ['提示泡泡', h.hint]]) {
+    if (overlap(h.store, box)) problems.push(`倉庫鈕與${name}重疊`);
+  }
+  const storeHit = await page.evaluate(() => { const b = document.querySelector('.storebtn').getBoundingClientRect(); return document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2)?.closest('[data-a]')?.dataset.a; });
+  if (storeHit !== 'storage') problems.push(`倉庫鈕被 ${storeHit} 蓋住`);
+  const underStore = pts.filter((q) => h.store && q.x >= h.store.l - 8 && q.x <= h.store.r + 8 && q.y >= h.store.t - 8 && q.y <= h.store.b + 8);
+  if (underStore.length) problems.push(`倉庫鈕蓋住 ${underStore.map((c) => c.kind).join(',')}`);
   console.log(`${device} (${h.vw}x${h.vh}) → ${problems.length ? '✗ ' + problems.join('；') : '✓ 無疊'}`);
   bad += problems.length;
   await shot(page, `layout-${device.replace(' ', '')}`);

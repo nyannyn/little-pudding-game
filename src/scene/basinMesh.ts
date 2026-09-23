@@ -120,16 +120,18 @@ export class BasinsView {
    * 只畫「玩家正在看的那一區」的澡盆。其他區照樣在模擬，只是不畫——
    * 鏡頭一次只框一層，多畫的東西看不到卻照吃 draw call（預算只有 35）。
    */
-  sync(state: GameState, zone: string, ox: number, oy: number, dt = 0) {
+  sync(state: GameState, zone: string, ox: number, oy: number, dt = 0, preview: { index: number; pos: { x: number; z: number } } | null = null) {
     this.oy = oy;
     const mine: Array<{ index: number; b: GameState['basins'][number] }> = [];
     state.basins.forEach((b, index) => {
-      if (b.zone === zone) mine.push({ index, b });
+      if (b.zone !== zone) return;
+      // 拖曳中（D49）：畫在手指底下的預覽位置，放手才由 `furniture.moveFurniture` 寫進 state
+      mine.push({ index, b: preview && preview.index === index ? { ...b, pos: preview.pos } : b });
     });
     this.step(mine, dt);
 
     // 第三項是「畫不畫液面」：state 有液體，或畫面上還有淡出中的液面
-    const sig = `${zone}|${ox.toFixed(2)}|` + mine.map(({ index, b }) => `${b.pos.x.toFixed(2)},${b.liquid ?? '-'},${b.units > 0 || (this.shown.get(index) ?? 0) > 0.02 ? 1 : 0}`).join('|');
+    const sig = `${zone}|${ox.toFixed(2)}|` + mine.map(({ index, b }) => `${b.pos.x.toFixed(2)},${b.pos.z.toFixed(2)},${b.liquid ?? '-'},${b.units > 0 || (this.shown.get(index) ?? 0) > 0.02 ? 1 : 0}`).join('|');
     if (sig !== this.signature) {
       this.signature = sig;
       const tubs: THREE.BufferGeometry[] = [];

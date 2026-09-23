@@ -1,7 +1,7 @@
 import { BALANCE, EQUIPMENT } from '../game/balance';
 import { puddingMood } from '../game/pudding';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
-import { equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
+import { STORAGE_ZONE, equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
 import { basinsIn, dropsIn, puddingsIn, unlockedZones } from '../game/zones';
 
 /**
@@ -17,6 +17,12 @@ export interface Hint {
   text: string;
   /** 警告類：不是教學，玩家按 × 關掉教學之後仍要顯示 */
   warning?: boolean;
+  /**
+   * 告知類警告（目前只有「櫥窗住滿了」）：農場沒有停，只是再泡牛乳生不出來。
+   * 跟「農場停住」不同，玩家知道之後就不需要一直被唸——按 × 就永久關掉（記在這台裝置上），
+   * 「不再顯示提示」也關得掉。`id` 帶著已解鎖區數，解鎖新的一區又住滿時才會再講一次。
+   */
+  dismissable?: boolean;
 }
 
 /** 動作列上那顆按鈕印的字。提示要叫玩家「按『倒焦糖』」，就得跟按鈕用同一個名字
@@ -35,6 +41,25 @@ export function hintsDismissed(): boolean {
     return globalThis.localStorage?.getItem(DISMISS_KEY) === '1';
   } catch {
     return false; // 無痕模式讀不到就當作沒關過，提示照顯示
+  }
+}
+
+const CLOSED_KEY = 'lpg.hints.closed';
+
+/** 按 × 永久關掉的告知類警告（`Hint.dismissable`），記的是當時的 `id` */
+export function closedHint(): string {
+  try {
+    return globalThis.localStorage?.getItem(CLOSED_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function closeHintForGood(id: string): void {
+  try {
+    globalThis.localStorage?.setItem(CLOSED_KEY, id);
+  } catch {
+    /* 存不進去就只關這一輪 */
   }
 }
 
@@ -85,7 +110,7 @@ function stalledHint(state: GameState): Hint | null {
 }
 
 /**
- * 住滿的警告：已解鎖的每一區都住滿了，再泡牛乳也只是把牛乳用掉。
+ * 住滿的警告（2026-09-23 使用者回報「這個提示沒辦法不再顯示」→ 改成可以永久關掉，見 `Hint.dismissable`）：已解鎖的每一區都住滿了，再泡牛乳也只是把牛乳用掉。
  *
  * 規則層在這個情況會 emit `{ type: 'error' }`（`pudding.finishBath`），但那個事件沒有人接——
  * 而且**也不該接成 toast**：離線結算八小時會把同一句話丟出上百次。
@@ -97,10 +122,11 @@ function zoneFullHint(state: GameState): Hint | null {
   // 沒在碰牛乳的玩家不需要被唸繁殖的事
   const milkInPlay =
     state.stock.milk > 0 ||
-    state.basins.some((b) => b.liquid === 'milk' || b.preferredLiquid === 'milk');
+    state.basins.some((b) => b.zone !== STORAGE_ZONE && (b.liquid === 'milk' || b.preferredLiquid === 'milk'));
   if (!milkInPlay) return null;
   return {
-    id: 'zonefull',
+    id: `zonefull:${unlockedZones(state).length}`,
+    dismissable: true,
     text: `櫥窗全住滿了（每一區 ${BALANCE.zoneCapacity} 隻）。再泡牛乳也生不出小布丁，只會把牛乳用掉——去商店解鎖下一區才有空位。`,
     warning: true,
   };

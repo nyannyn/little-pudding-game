@@ -98,7 +98,7 @@ export async function hudBoxes(page) {
     const box = (sel) => { const el = document.querySelector(sel); if (!el || el.hidden) return null; const b = el.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
     const col = box('.orders');
     const cards = col ? [...document.querySelectorAll('.order')].map((el) => { const b = el.getBoundingClientRect(); return { l: Math.max(b.left, col.l), t: Math.max(b.top, col.t), r: Math.min(b.right, col.r), b: Math.min(b.bottom, col.b) }; }).filter((c) => c.b > c.t) : [];
-    return { vh: innerHeight, vw: innerWidth, topbar: box('.topbar'), zones: box('.zones'), dock: box('.dock'), hint: box('.hint'), orders: col, cards };
+    return { vh: innerHeight, vw: innerWidth, topbar: box('.topbar'), zones: box('.zones'), dock: box('.dock'), hint: box('.hint'), store: box('.storebtn'), orders: col, cards };
   });
 }
 

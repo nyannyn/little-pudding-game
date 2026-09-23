@@ -18,6 +18,7 @@ export const ICONS = {
   gear: wrap('<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.5 12H2.1M21.9 12h-2.4M6.7 6.7 5 5M19 19l-1.7-1.7M6.7 17.3 5 19M19 5l-1.7 1.7"/>'),
   cart: wrap('<circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/><path d="M2.8 3.6h2.6l2.4 11h10l2-7.6H6.4"/>'),
   order: wrap('<path d="M5.6 3.6h12.8v16.8l-2.1-1.6-2.1 1.6-2.2-1.6-2.1 1.6-2.2-1.6-2.1 1.6Z"/><path d="M8.6 8.4h6.8M8.6 12h4.6"/>'),
+  storage: wrap('<path d="M3.6 9.6 12 4.2l8.4 5.4V20H3.6Z"/><path d="M7.4 20v-7.2h9.2V20M7.4 15.4h9.2M7.4 17.8h9.2"/>'),
   close: wrap('<path d="m6 6 12 12M18 6 6 18"/>'),
   sound: wrap('<path d="M4.8 9.4h3l4-3.2v11.6l-4-3.2h-3Z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/>'),
   mute: wrap('<path d="M4.8 9.4h3l4-3.2v11.6l-4-3.2h-3Z"/><path d="m15.4 9.6 4 4.8M19.4 9.6l-4 4.8"/>'),

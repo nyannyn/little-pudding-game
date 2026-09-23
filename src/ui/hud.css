@@ -659,6 +659,52 @@
 .welcome p { margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; }
 .welcome button { width: 100%; }
 
+/* 倉庫鈕：頂列已經滿了（加在頂列會蓋住數字），放左欄頂列下方；有分區切換列時往下讓一格 */
+.hud .storebtn {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  left: 8px;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 6px 8px;
+  font-size: 13px;
+  pointer-events: auto;
+}
+.hud .zones:not([hidden]) ~ .storebtn { top: calc(env(safe-area-inset-top, 0px) + 100px); }
+
+/* ── 倉庫卡（D49） ───────────────────────── */
+.storecard .card { box-sizing: border-box; width: 100%; max-width: 340px; max-height: 80vh; overflow-y: auto; }
+.storecard .lead { margin-bottom: 12px; }
+.hud .storecard h3 { align-self: stretch; margin: 10px 0 6px; font-size: 14px; font-weight: 700; text-align: left; }
+.storecard .rows { align-self: stretch; width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.storecard .srow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: var(--paper-2);
+  text-align: left;
+}
+.storecard .srow .nm { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.storecard .srow .nm b { font-size: 13px; }
+.storecard .srow .nm small { color: var(--ink-soft); font-size: 11px; }
+.hud .storecard .srow button { width: auto; flex: none; min-height: 34px; padding: 4px 12px; font-size: 13px; }
+.hud .storecard .srow button.danger { background: var(--coral); border-color: var(--coral-dark); color: #fff; max-width: 150px; font-size: 12px; }
+.hud .storecard .srow button:disabled { opacity: 0.45; }
+.storecard .empty { margin: 0; font-size: 12px; color: var(--ink-faint); text-align: left; }
+.hud .storecard button.ghost {
+  background: none;
+  box-shadow: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 12px;
+  min-height: 30px;
+  margin-top: 10px;
+}
+
 /* ── 存檔碼卡 ─────────────────────────────── */
 .savecard .code {
   width: 100%;

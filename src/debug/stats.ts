@@ -39,6 +39,8 @@ declare global {
       sfx?: { played: { splat: number; coin: number; pour: number }; isUnlocked: boolean; muted: boolean };
       /** 測試用：走遊戲自己的 grantXp（會丟 levelUp 事件），不是直接改欄位 */
       grantXp?: (amount: number) => void;
+      /** 測試用：啟用區的區域座標（x, 高度, z）投到螢幕上的 CSS 像素——e2e 拿來長按拖家具（D49） */
+      toScreen?: (x: number, y: number, z: number) => { x: number; y: number };
       three?: {
         scene: THREE.Scene;
         camera: THREE.PerspectiveCamera;

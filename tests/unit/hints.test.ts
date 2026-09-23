@@ -180,7 +180,8 @@ describe('2026-09-22 回報：住滿了還一直泡牛乳，21 次澡只生 1 �
 
   it('每一區都滿了又還在碰牛乳：要常駐警告，並指路去解鎖下一區', () => {
     const h = nextHint(fullSave());
-    expect(h?.id).toBe('zonefull');
+    expect(h?.id).toMatch(/^zonefull:/);
+    expect(h?.dismissable).toBe(true);
     expect(h?.warning).toBe(true);
     expect(h?.text).toContain('解鎖');
   });
@@ -188,19 +189,19 @@ describe('2026-09-22 回報：住滿了還一直泡牛乳，21 次澡只生 1 �
   it('還有空位就不要唸——新生兒會自己溢出到隔壁', () => {
     const s = fullSave();
     s.zones.find((z) => z.id === 'c0t2')!.unlocked = true;
-    expect(nextHint(s)?.id).not.toBe('zonefull');
+    expect(String(nextHint(s)?.id)).not.toMatch(/^zonefull/);
   });
 
   it('沒在碰牛乳的玩家不用被唸繁殖的事', () => {
     const s = fullSave();
     s.stock.milk = 0;
     s.basins[0]!.preferredLiquid = 'caramel';
-    expect(nextHint(s)?.id).not.toBe('zonefull');
+    expect(String(nextHint(s)?.id)).not.toMatch(/^zonefull/);
   });
 
   it('警告排在教學前面：買了設備讓教學停掉，這條仍然要出現', () => {
     const s = fullSave();
     s.equipment[s.activeZone]!.collector = true;
-    expect(nextHint(s)?.id).toBe('zonefull');
+    expect(nextHint(s)?.id).toMatch(/^zonefull:/);
   });
 });
