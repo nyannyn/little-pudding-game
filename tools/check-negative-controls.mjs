@@ -108,6 +108,63 @@ const CASES = [
     to: `      status: z.unlocked ? 'owned' : gate(1),`,
     test: '目錄狀態跟 action 守衛一致',
   },
+  // ── CP8 甜點工坊（D50–D54，2026-09-23）──
+  {
+    ac: 'AC8-1',
+    why: '拿掉「做完了沒」的判斷，還在工作的那一站也推得動',
+    file: 'src/game/bakery.ts',
+    from: 'if (state.time < st.doneAt) return fail',
+    to: 'if (false) return fail',
+    test: '還沒做完推不動',
+  },
+  {
+    ac: 'AC8-2',
+    why: '開工只驗蛋不驗原料，那一盤會卡在攪拌站',
+    file: 'src/game/bakery.ts',
+    from: 'if (state.ingredients[species] < ing) return fail',
+    to: 'if (false) return fail',
+    test: '蛋夠、原料不夠',
+  },
+  {
+    ac: 'AC8-3',
+    why: '時鐘直接用 time 算、不扣 epoch，老玩家開店第一天就不是 Day 1',
+    file: 'src/game/bakery.ts',
+    from: 'const t = state.time - state.bakery.epoch +',
+    to: 'const t = state.time +',
+    test: 'time 很大的 v7 舊檔升上來',
+  },
+  {
+    ac: 'AC8-4',
+    why: '上架不扣預訂單要的份數，散客買走之後訂單交不出去',
+    file: 'src/game/bakery.ts',
+    from: 'const spare = state.desserts[id] - reservedForOrders(state, id);',
+    to: 'const spare = state.desserts[id];',
+    test: '上架不會把預訂單要的份數擺出去',
+  },
+  {
+    ac: 'AC8-5',
+    why: '退款只算已安裝的、漏掉倉庫裡那幾台',
+    file: 'src/game/state.ts',
+    from: '    n += Math.max(0, Math.floor(num(rawStoredAll[id], 0)));',
+    to: '',
+    test: '兩區的加工機＋倉庫一台販賣機',
+  },
+  {
+    ac: 'AC8-7',
+    why: '拿掉「最後一隻」的檢查，玩家可以把農場賣空、再也生不出布丁',
+    file: 'src/game/actions.ts',
+    from: "  if (state.puddings.length <= 1) return '這是最後一隻了';",
+    to: '',
+    test: '最後一隻不能賣',
+  },
+  {
+    ac: 'AC8-8',
+    why: '領取不記錄，同一個成就可以一直領',
+    file: 'src/game/achievements.ts',
+    from: '  state.claimedAchievements.push(a.id);',
+    to: '',
+    test: '達成後要領才入帳',
+  },
 ];
 
 function runTest(filter) {

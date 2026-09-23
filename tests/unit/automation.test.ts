@@ -61,43 +61,6 @@ describe('自動注液閥', () => {
   });
 });
 
-describe('加工機與販售口', () => {
-  it('加工機把原料變甜點，販售口把甜點變錢', () => {
-    const w = makeWorld({ puddings: 1 });
-    w.state.ingredients.caramel = 2 * BALANCE.ingredientsPerDessert;
-    w.state.eggs = 2 * BALANCE.eggsPerDessert;
-    w.state.equipment[w.state.activeZone]!.crafter = true;
-    advance(w, 1);
-    expect(w.state.ingredients.caramel).toBe(0);
-    expect(w.state.eggs).toBe(0);
-    expect(w.state.desserts.caramel).toBe(2);
-
-    const coins = w.state.coins;
-    w.state.equipment[w.state.activeZone]!.seller = true;
-    advance(w, 1);
-    expect(w.state.desserts.caramel).toBe(0);
-    expect(w.state.coins).toBeGreaterThan(coins);
-  });
-
-  it('販售口會先留住訂單卡要的甜點，不會賤賣掉', () => {
-    const w = makeWorld({ puddings: 1 });
-    w.state.equipment[w.state.activeZone]!.seller = true;
-    w.state.orders.push({
-      id: 'o-test', species: 'matcha', qty: 2, price: 500,
-      createdAt: w.state.time, expiresAt: w.state.time + 999,
-    });
-    w.state.desserts.matcha = 1;
-    advance(w, 1);
-    expect(w.state.desserts.matcha).toBe(1); // 還湊不齊，先留著
-
-    w.state.desserts.matcha = 2;
-    const coins = w.state.coins;
-    advance(w, 1);
-    expect(w.state.coins).toBe(coins + 500);
-    expect(w.state.orders.length).toBe(0);
-  });
-});
-
 describe('補貨合約', () => {
   it('庫存見底就自動補到目標值，錢不夠就少買一點但不會透支', () => {
     const s = createNewSave({ seed: 5, now: 0 });
@@ -122,18 +85,19 @@ describe('補貨合約', () => {
   });
 });
 
-describe('全自動生產線：不碰一下也會賺錢', () => {
-  it('五台設備全裝，跑 10 分鐘後金幣淨增加', () => {
+describe('全自動生產線：不碰一下也會出貨到成品櫃', () => {
+  it('農場三台設備＋工坊五站自動化全裝，跑 10 分鐘後成品櫃有甜點、地上沒有掉落物', () => {
     const w = makeWorld({ seed: 2026 });
     const eq = w.state.equipment[w.state.activeZone]!;
     for (const k of Object.keys(eq)) eq[k as keyof typeof eq] = true;
+    for (const k of Object.keys(w.state.bakery.auto)) w.state.bakery.auto[k as keyof typeof w.state.bakery.auto] = true;
     w.state.coins = 200;
     w.state.stock.caramel = 10;
     fillBasinDirect(w.state, 'caramel');
-    const before = w.state.coins;
 
     advance(w, 600);
-    expect(w.state.coins).toBeGreaterThan(before);
+    expect(w.state.stats.baked).toBeGreaterThan(0);
+    expect(w.state.desserts.caramel).toBeGreaterThan(0);
     expect(w.state.drops.length).toBe(0);
     expect(w.state.stats.baths).toBeGreaterThan(0);
   });

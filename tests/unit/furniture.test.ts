@@ -61,7 +61,7 @@ describe('game 抄的尺寸跟 scene 一致', () => {
 
 describe('預設位置本身要合法（新規則不能判舊擺法違規）', () => {
   it('每台落地設備的預設位置、開局澡盆位置，在只有它自己的區裡都放得下', () => {
-    for (const id of ['crafter', 'seller', 'restock', 'collector'] as const) {
+    for (const id of ['restock', 'collector'] as const) {
       const w = rich();
       w.state.basins[0]!.zone = STORAGE_ZONE; // 清空這一區，只驗牆
       w.state.equipment[START_ZONE]![id] = true;
@@ -77,7 +77,7 @@ describe('預設位置本身要合法（新規則不能判舊擺法違規）', (
     const w = rich();
     for (const id of EQUIPMENT_IDS) buyEquipment(w.state, id, sink);
     w.state.basins[0]!.pos = { x: -0.52, z: 0.12 }; // 正式版的開局盆位（main.ts BASIN_SLOTS[0]）
-    for (const id of ['crafter', 'seller', 'restock', 'collector'] as const) {
+    for (const id of ['restock', 'collector'] as const) {
       expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id }, EQUIPMENT_DEFAULT_POS[id]).ok).toBe(true);
     }
   });
@@ -109,10 +109,10 @@ describe('搬家具', () => {
 
   it('壓到別的家具、或出了櫃子：擋下而且 state 一個欄位都不變', () => {
     const w = rich();
-    buyEquipment(w.state, 'crafter', sink);
+    buyEquipment(w.state, 'restock', sink);
     const before = JSON.stringify(w.state);
-    const crafter = EQUIPMENT_DEFAULT_POS.crafter;
-    expect(moveFurniture(w.state, START_ZONE, BASIN0, { x: crafter.x + 0.1, z: crafter.z }).ok).toBe(false);
+    const restock = EQUIPMENT_DEFAULT_POS.restock;
+    expect(moveFurniture(w.state, START_ZONE, BASIN0, { x: restock.x + 0.1, z: restock.z }).ok).toBe(false);
     expect(moveFurniture(w.state, START_ZONE, BASIN0, { x: 1.1, z: 0 }).ok).toBe(false);
     expect(moveFurniture(w.state, START_ZONE, BASIN0, { x: 0, z: 0.65 }).ok).toBe(false);
     expect(JSON.stringify(w.state)).toBe(before);
@@ -120,10 +120,10 @@ describe('搬家具', () => {
 
   it('設備可以搬，位置記在 equipmentPos；注液閥不能單獨搬、跟著第一個澡盆', () => {
     const w = rich();
-    buyEquipment(w.state, 'seller', sink);
+    buyEquipment(w.state, 'restock', sink);
     buyEquipment(w.state, 'autoFill', sink);
-    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }, { x: 0.1, z: -0.35 }).ok).toBe(true);
-    expect(equipmentPos(w.state, START_ZONE, 'seller')).toEqual({ x: 0.1, z: -0.35 });
+    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'restock' }, { x: 0.1, z: -0.35 }).ok).toBe(true);
+    expect(equipmentPos(w.state, START_ZONE, 'restock')).toEqual({ x: 0.1, z: -0.35 });
     expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'autoFill' }, { x: 0, z: 0 }).ok).toBe(false);
     moveFurniture(w.state, START_ZONE, BASIN0, { x: -0.5, z: -0.3 });
     expect(equipmentPos(w.state, START_ZONE, 'autoFill')).toEqual({ x: -0.5, z: -0.3 });
@@ -131,14 +131,14 @@ describe('搬家具', () => {
 
   it('布丁的落點會避開被拖到地板中央的機器', () => {
     const w = rich();
-    buyEquipment(w.state, 'crafter', sink);
-    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'crafter' }, { x: 0, z: 0 }).ok).toBe(true);
+    buyEquipment(w.state, 'restock', sink);
+    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'restock' }, { x: 0, z: 0 }).ok).toBe(true);
     let landedInside = 0;
     for (let i = 0; i < 3000; i++) {
       advance(w, 0.1);
       for (const p of w.state.puddings) {
-        // 落點在加工機佔地內（加工機在正中央 ±0.15／±0.12）
-        if (p.mode === 'hopping' && Math.abs(p.to.x) < 0.15 && Math.abs(p.to.z) < 0.12) landedInside++;
+        // 落點在補貨合約機佔地內（在正中央 ±0.11／±0.07）
+        if (p.mode === 'hopping' && Math.abs(p.to.x) < 0.11 && Math.abs(p.to.z) < 0.07) landedInside++;
       }
     }
     expect(landedInside).toBe(0);
@@ -201,35 +201,35 @@ describe('收進倉庫', () => {
 
   it('設備收起來還算「買過」（教學不會重新跳出來），可以擺到別區', () => {
     const w = rich();
-    buyEquipment(w.state, 'crafter', sink);
+    buyEquipment(w.state, 'restock', sink);
     unlockZone(w.state, UPPER, SPAWN, sink);
     w.state.activeZone = START_ZONE;
-    expect(storeFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'crafter' }).ok).toBe(true);
-    expect(equipmentIn(w.state, START_ZONE).crafter).toBe(false);
-    expect(w.state.storedEquipment.crafter).toBe(1);
+    expect(storeFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'restock' }).ok).toBe(true);
+    expect(equipmentIn(w.state, START_ZONE).restock).toBe(false);
+    expect(w.state.storedEquipment.restock).toBe(1);
     expect(hasAnyEquipment(w.state)).toBe(true);
-    const spot = storageSpot(w.state, UPPER, { kind: 'equipment', id: 'crafter' })!;
-    expect(placeFromStorage(w.state, UPPER, { kind: 'equipment', id: 'crafter' }, spot).ok).toBe(true);
-    expect(equipmentIn(w.state, UPPER).crafter).toBe(true);
-    expect(w.state.storedEquipment.crafter).toBe(0);
+    const spot = storageSpot(w.state, UPPER, { kind: 'equipment', id: 'restock' })!;
+    expect(placeFromStorage(w.state, UPPER, { kind: 'equipment', id: 'restock' }, spot).ok).toBe(true);
+    expect(equipmentIn(w.state, UPPER).restock).toBe(true);
+    expect(w.state.storedEquipment.restock).toBe(0);
     // 倉庫空了就擺不出第二台
-    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'crafter' }, spot).ok).toBe(false);
+    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'restock' }, spot).ok).toBe(false);
   });
 
   it('同一區已經裝了同一台，倉庫那台擺不進來', () => {
     const w = rich();
-    buyEquipment(w.state, 'seller', sink);
-    w.state.storedEquipment.seller = 1;
-    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }, { x: 0.3, z: -0.3 }).ok).toBe(false);
-    expect(w.state.storedEquipment.seller).toBe(1);
+    buyEquipment(w.state, 'restock', sink);
+    w.state.storedEquipment.restock = 1;
+    expect(placeFromStorage(w.state, START_ZONE, { kind: 'equipment', id: 'restock' }, { x: 0.3, z: -0.3 }).ok).toBe(false);
+    expect(w.state.storedEquipment.restock).toBe(1);
   });
 
   it('從倉庫擺到壓住別的家具的位置：擋下、倉庫那件還在', () => {
     const w = rich();
-    buyEquipment(w.state, 'crafter', sink);
+    buyEquipment(w.state, 'restock', sink);
     storeFurniture(w.state, START_ZONE, BASIN0);
     const before = JSON.stringify(w.state);
-    expect(placeFromStorage(w.state, START_ZONE, BASIN0, EQUIPMENT_DEFAULT_POS.crafter).ok).toBe(false);
+    expect(placeFromStorage(w.state, START_ZONE, BASIN0, EQUIPMENT_DEFAULT_POS.restock).ok).toBe(false);
     expect(JSON.stringify(w.state)).toBe(before);
   });
 
@@ -238,13 +238,13 @@ describe('收進倉庫', () => {
     for (const id of EQUIPMENT_IDS) buyEquipment(w.state, id, sink);
     storeFurniture(w.state, START_ZONE, BASIN0);
     // 把販賣機搬到澡盆的老位置上，逼它另外找位置
-    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }, { x: -0.52, z: 0.12 }).ok).toBe(true);
+    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'restock' }, { x: -0.52, z: 0.12 }).ok).toBe(true);
     const spot = storageSpot(w.state, START_ZONE, BASIN0);
     expect(spot).not.toBeNull();
     expect(placeFromStorage(w.state, START_ZONE, BASIN0, spot!).ok).toBe(true);
     const b = w.state.basins[0]!;
     expect(b.zone).toBe(START_ZONE);
-    const s = equipmentPos(w.state, START_ZONE, 'seller');
+    const s = equipmentPos(w.state, START_ZONE, 'restock');
     const overlap = Math.abs(b.pos.x - s.x) < BASIN_RADIUS + 0.17 && Math.abs(b.pos.z - s.z) < BASIN_RADIUS + 0.1;
     expect(overlap).toBe(false);
     expect(storedBasins(w.state)).toHaveLength(0);
@@ -254,7 +254,7 @@ describe('收進倉庫', () => {
 describe('存檔', () => {
   it('v6 舊檔：倉庫空、設備在原本的位置', () => {
     const w = rich();
-    buyEquipment(w.state, 'seller', sink);
+    buyEquipment(w.state, 'restock', sink);
     const old = JSON.parse(JSON.stringify(w.state)) as Record<string, unknown>;
     delete old.storedEquipment;
     delete old.equipmentPos;
@@ -262,21 +262,21 @@ describe('存檔', () => {
     const s = migrate(old);
     expect(s.schemaVersion).toBe(SCHEMA_VERSION);
     for (const id of EQUIPMENT_IDS) expect(s.storedEquipment[id]).toBe(0);
-    expect(equipmentPos(s, START_ZONE, 'seller')).toEqual(EQUIPMENT_DEFAULT_POS.seller);
+    expect(equipmentPos(s, START_ZONE, 'restock')).toEqual(EQUIPMENT_DEFAULT_POS.restock);
     expect(storedBasins(s)).toHaveLength(0);
   });
 
   it('倉庫內容與擺過的位置經過存檔碼來回都還在（倉庫的盆不會被補回起始區）', () => {
     const w = rich();
-    buyEquipment(w.state, 'seller', sink);
-    buyEquipment(w.state, 'crafter', sink);
-    moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'seller' }, { x: 0.1, z: -0.35 });
-    storeFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'crafter' });
+    buyEquipment(w.state, 'collector', sink);
+    buyEquipment(w.state, 'restock', sink);
+    expect(moveFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'collector' }, { x: 0.1, z: -0.35 }).ok).toBe(true);
+    storeFurniture(w.state, START_ZONE, { kind: 'equipment', id: 'restock' });
     storeFurniture(w.state, START_ZONE, BASIN0);
     const back = importCode(exportCode(w.state));
     expect(back).not.toBeNull();
     expect(back!.basins[0]!.zone).toBe(STORAGE_ZONE);
-    expect(back!.storedEquipment.crafter).toBe(1);
-    expect(equipmentPos(back!, START_ZONE, 'seller')).toEqual({ x: 0.1, z: -0.35 });
+    expect(back!.storedEquipment.restock).toBe(1);
+    expect(equipmentPos(back!, START_ZONE, 'collector')).toEqual({ x: 0.1, z: -0.35 });
   });
 });

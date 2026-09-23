@@ -1,3 +1,4 @@
+import { BALANCE } from './balance';
 /**
  * 四個物種與四種澡盆液體的資料表（計畫「遊戲設計」表）。
  *
@@ -141,6 +142,16 @@ export const LIQUID_IDS = Object.keys(LIQUIDS) as LiquidId[];
 /** 特殊澡盆（一次性購買）＝ needsBasin 的那兩種液體 */
 export const SPECIAL_LIQUIDS = LIQUID_IDS.filter((id) => LIQUIDS[id].needsBasin);
 
-export function dessertPrice(species: SpeciesId, mult: number): number {
-  return Math.round(SPECIES[species].ingredientPrice * mult);
+/**
+ * 甜點售價（D53）：這份甜點的材料（蛋 ×2 ＋ 該物種原料 ×1）直接賣的價錢 × `dessertMarkup`。
+ * 從材料價推，不另開一張價目表：調原料價時甜點跟著走，永遠不會出現「做成甜點反而虧」。
+ */
+export function dessertPrice(species: SpeciesId): number {
+  const materials = BALANCE.eggsPerDessert * BALANCE.eggPrice + BALANCE.ingredientsPerDessert * SPECIES[species].ingredientPrice;
+  return Math.round(materials * BALANCE.dessertMarkup);
+}
+
+/** 賣一隻成年布丁的價錢（D53）＝該物種原料價 × `puddingPriceMult` */
+export function puddingPrice(species: SpeciesId): number {
+  return Math.round(SPECIES[species].ingredientPrice * BALANCE.puddingPriceMult);
 }

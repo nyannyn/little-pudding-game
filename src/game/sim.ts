@@ -1,4 +1,5 @@
 import { BALANCE } from './balance';
+import { tickBakery } from './bakery';
 import { runAutomation } from './equipment';
 import type { EventSink, SimEvent } from './events';
 import { tickOrders } from './orders';
@@ -56,6 +57,13 @@ function step(w: World, dt: number, ctx: SimContext): void {
   for (const p of s.puddings) tickPudding(s, p, dt, ctx);
   runAutomation(s, w.emit);
   tickOrders(s, w.rng, w.emit);
+  tickBakery(s, w.rng, w.emit);
+  noteSpecies(s);
+}
+
+/** 「養過的物種」只增不減（成就用）。出生、突變都會換出新物種，在這裡統一記，不用每條路徑各記一次 */
+function noteSpecies(s: GameState): void {
+  for (const p of s.puddings) if (!s.speciesSeen.includes(p.species)) s.speciesSeen.push(p.species);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buyEquipment, buySpecialBasin, buyStock, craft, pickAllDrops, sellDessert, unlockZone } from '../../src/game/actions';
+import { buyEquipment, buySpecialBasin, buyStock, pickAllDrops, unlockZone } from '../../src/game/actions';
+import { STATION_IDS, advanceStation, startBatch } from '../../src/game/bakery';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
 import type { SimEvent } from '../../src/game/events';
 import { MAX_LEVEL, grantXp, levelFor, levelProgress, xpFromStats } from '../../src/game/level';
@@ -60,17 +61,20 @@ describe('D25 xp 來源', () => {
     expect(w.state.xp).toBe(BALANCE.xp.bath);
   });
 
-  it('撿、加工、賣各給對應的 xp', () => {
+  it('撿、工坊出爐、客人買走各給對應的 xp（D51 起加工在工坊）', () => {
     const s = createNewSave({ seed: 1, now: 0 });
     s.drops.push({ id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
     s.drops.push({ id: 'd2', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
     pickAllDrops(s, sink);
     expect(s.xp).toBe(BALANCE.xp.pick * 2);
-    s.eggs = BALANCE.eggsPerDessert; // D33：一份甜點還要蛋，不給蛋 craft 會失敗
-    craft(s, 'caramel', sink);
-    expect(s.xp).toBe(BALANCE.xp.pick * 2 + BALANCE.xp.craft);
-    sellDessert(s, 'caramel', 1, sink);
-    expect(s.xp).toBe(BALANCE.xp.pick * 2 + BALANCE.xp.craft + BALANCE.xp.sellDessert);
+    const q = BALANCE.bakery.batchSize;
+    s.eggs = q * BALANCE.eggsPerDessert;
+    expect(startBatch(s, 'caramel', sink).ok).toBe(true);
+    for (const id of STATION_IDS) {
+      s.time = s.bakery.stations[id].doneAt;
+      expect(advanceStation(s, id, sink).ok).toBe(true);
+    }
+    expect(s.xp).toBe(BALANCE.xp.pick * 2 + BALANCE.xp.craft * q);
   });
 
   it('自動化做的也算 xp（裝了設備等級不會停）', () => {

@@ -62,7 +62,7 @@ export function xpFromStats(stats: GameState['stats']): number {
   return (
     stats.baths * x.bath +
     stats.picked * x.pick +
-    stats.crafted * x.craft +
+    (stats.crafted + (stats.baked ?? 0)) * x.craft +
     stats.sold * x.sellDessert +
     stats.mutations * x.mutate +
     stats.births * x.birth

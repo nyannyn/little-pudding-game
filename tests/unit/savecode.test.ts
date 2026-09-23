@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { exportCode, importCode } from '../../src/game/savecode';
-import { SCHEMA_VERSION, createNewSave, type GameState } from '../../src/game/state';
+import { SCHEMA_VERSION, createNewSave, zeroStats, type GameState } from '../../src/game/state';
 
 /** 一份「玩過一陣子」的存檔：匯出入要一個欄位都不掉 */
 function played(): GameState {
@@ -11,7 +11,7 @@ function played(): GameState {
   s.stock.caramel = 42;
   s.ingredients.matcha = 3;
   s.desserts.strawberry = 2;
-  s.stats = { baths: 11, sold: 9, mutations: 1, picked: 30, crafted: 6, births: 2 };
+  s.stats = { ...zeroStats(), baths: 11, sold: 9, mutations: 1, picked: 30, crafted: 6, births: 2, baked: 4, served: 3 };
   s.time = 3600;
   return s;
 }

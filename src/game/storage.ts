@@ -103,7 +103,7 @@ export function isDurable(): boolean {
  */
 export function progressScore(s: GameState): number {
   const st = s.stats;
-  return s.xp + st.baths + st.sold + st.mutations + st.picked + st.crafted + st.births;
+  return s.xp + st.baths + st.sold + st.mutations + st.picked + st.crafted + st.births + st.baked + st.served;
 }
 
 function readRaw(k: string): string | null {

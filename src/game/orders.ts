@@ -22,7 +22,7 @@ export function generateOrder(state: GameState, rng: Rng): Order {
   const species = pick(rng, fromOwned ? owned : BASE_SPECIES_IDS);
   const qty = intRange(rng, 1, 3);
   const mult = range(rng, BALANCE.orderPriceMultMin, BALANCE.orderPriceMultMax);
-  const unit = dessertPrice(species, BALANCE.dessertPriceMult);
+  const unit = dessertPrice(species);
   return {
     id: `o${state.nextId++}`,
     species,

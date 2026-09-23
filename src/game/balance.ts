@@ -81,12 +81,22 @@ export const BALANCE = {
   /** 掉落是「蛋」的機率；其餘是該布丁自己物種的原料。配方吃 2 蛋 1 原料，所以偏向蛋 */
   eggChance: 0.65,
 
-  /** 加工：幾份「該物種原料」換一份甜點 */
+  /** 一份甜點要幾份「該物種原料」（D33；D51 起在工坊的攪拌站扣） */
   ingredientsPerDessert: 1,
-  /** 加工：幾顆蛋換一份甜點 */
+  /** 一份甜點要幾顆蛋（D33；D51 起在工坊的打蛋站扣） */
   eggsPerDessert: 2,
-  /** 甜點售價＝原料售價 × 此倍率 */
-  dessertPriceMult: 4,
+  /**
+   * 甜點售價＝(蛋 × eggsPerDessert × eggPrice ＋ 該物種原料價) × 此倍率（D53）。
+   * 材料直接賣 12 元的焦糖布丁塔賣 26：多走一趟 64 秒的流水線、佔展示架，
+   * 約 2.2 倍是「值得進工坊、但直接賣原料也不虧」的中間值。
+   */
+  dessertMarkup: 2.2,
+  /**
+   * 賣布丁＝該物種原料價 × 此倍率（D53）。牛奶澡 2 元就生一隻（D34），
+   * 訂太高會變成「生了就賣」的印鈔機、壓過整座農場的原料收入；3.5 倍讓一隻焦糖布丁
+   * 約等於它自己一分鐘的產出，混種（原料價高）才值得專門培育來賣。
+   */
+  puddingPriceMult: 3.5,
   /** 訂單卡出價＝甜點售價 × [min, max] 之間 */
   orderPriceMultMin: 2,
   orderPriceMultMax: 3,
@@ -133,7 +143,7 @@ export const BALANCE = {
    */
   levelXp: [0, 30, 80, 150, 260, 420, 650, 950, 1350, 1900],
   /** 各動作給多少 xp（自動化做的也算——生產就是生產，不然裝了設備等級就停了） */
-  xp: { bath: 2, pick: 1, craft: 3, sellDessert: 2, sellIngredient: 1, order: 10, mutate: 40, birth: 30 },
+  xp: { bath: 2, pick: 1, craft: 3, sellDessert: 2, sellIngredient: 1, order: 10, mutate: 40, birth: 30, sellPudding: 2 },
 
   // ── 繁殖與配種（D28–D30，2026-09-22）───────────────
   /**
@@ -161,12 +171,39 @@ export const BALANCE = {
    */
   milkPannaShiftChance: 0.35,
 
+  // ── 甜點工坊（D51／D52，2026-09-23）──────────────────
+  bakery: {
+    /** 一盤做幾份（同一物種） */
+    batchSize: 2,
+    /** 每一站幾秒（遊戲秒）。烘烤最久：這就是「烘焙甜點需要時間」 */
+    stepSec: { crack: 4, mix: 6, mold: 4, bake: 45, decorate: 5 } as Record<string, number>,
+    /** 展示架總共放得下幾份 */
+    shelfCap: 12,
+    /** 遊戲內一天幾秒（20 分鐘） */
+    dayLengthSec: 1200,
+    /** 營業時間（24 小時制，含開不含關） */
+    openHour: 7,
+    closeHour: 21,
+    /** 營業中客人上門的間隔（遊戲秒） */
+    customerIntervalMin: 8,
+    customerIntervalMax: 16,
+    /** 客人一次買兩份的機率（架上夠的話） */
+    customerDoubleChance: 0.2,
+  },
+
   /** 開局 */
   startCoins: 30,
   startStock: { caramel: 6, milk: 2 } as Record<string, number>,
 } as const;
 
-export type EquipmentId = 'autoFill' | 'collector' | 'crafter' | 'seller' | 'restock';
+/**
+ * D50（2026-09-23）起農場不再加工甜點：「甜點加工機」與「自動販售口」退款拆掉，
+ * 退款價寫在 `RETIRED_EQUIPMENT_PRICE`（`migrate()` 用）。
+ */
+export type EquipmentId = 'autoFill' | 'collector' | 'restock';
+
+/** 已退役的設備與它們當初的售價（舊存檔升上來時照原價退款，D50） */
+export const RETIRED_EQUIPMENT_PRICE: Record<string, number> = { crafter: 120, seller: 180 };
 
 export interface EquipmentInfo {
   id: EquipmentId;
@@ -187,8 +224,6 @@ const BATH_INCOME = 10;
 export const EQUIPMENT: Record<EquipmentId, EquipmentInfo> = {
   autoFill: { id: 'autoFill', name: '自動注液閥', replaces: '倒澡盆', desc: '澡盆低於一份就自動從庫存補滿', price: 8 * BATH_INCOME, tier: 1, level: 1 },
   collector: { id: 'collector', name: '原料收集手', replaces: '撿原料', desc: '掉落的原料直接進庫存', price: 6 * BATH_INCOME, tier: 1, level: 1 },
-  crafter: { id: 'crafter', name: '甜點加工機', replaces: '按加工', desc: '原料夠就自動加工成甜點', price: 12 * BATH_INCOME, tier: 2, level: 2 },
-  seller: { id: 'seller', name: '自動販售口', replaces: '按賣', desc: '自動賣甜點、自動交訂單', price: 18 * BATH_INCOME, tier: 2, level: 3 },
   restock: { id: 'restock', name: '補貨合約', replaces: '去商店補貨', desc: '焦糖與牛乳庫存見底就自動補貨', price: 40 * BATH_INCOME, tier: 3, level: 6 },
 };
 
