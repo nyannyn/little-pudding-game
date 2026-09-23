@@ -126,3 +126,32 @@ test('警告類提示被 × 關掉只安靜一下就回來（農場停住不可�
   await expect(hint).toBeVisible({ timeout: 60_000 });
   await expect(hint).toHaveAttribute('data-hint', 'stalled');
 });
+
+/**
+ * 2026-09-23 使用者回報「不再顯示按鈕還是沒有作用」：警告類（農場停住）原本刻意無視這顆鈕，
+ * 結果是一顆按了沒反應的按鈕。改成「不再顯示提示」＝全部都不顯示，包含警告；× 的 45 秒冷卻不變。
+ */
+test('「不再顯示提示」對警告也有效：農場停住的警告按了就消失，重新整理也不再出現', async ({ page }) => {
+  const stall = async () => {
+    await page.evaluate(() => {
+      const s = window.__lpg.state as GameState;
+      s.basins[0]!.units = 0;
+      s.basins[0]!.liquid = null;
+      s.stock.caramel = 0;
+      s.stock.milk = 0;
+      for (const p of s.puddings) p.caramel = 0;
+    });
+  };
+  await boot(page, '/?fresh=1&seed=5');
+  await stall();
+  const hint = page.locator('.hint');
+  await expect(hint).toHaveAttribute('data-hint', 'stalled', { timeout: 10_000 });
+  await hint.locator('[data-a="hintOff"]').click();
+  await page.waitForTimeout(1500); // 原本的 bug：按下去藏一幀，下一次 HUD 更新（160ms）又冒出來
+  await expect(hint).toBeHidden();
+
+  await boot(page, '/?fresh=1&seed=5');
+  await stall();
+  await page.waitForTimeout(1500);
+  await expect(page.locator('.hint')).toBeHidden();
+});
