@@ -40,6 +40,7 @@
 - 證據：單元 227 綠（新 `tests/unit/achievements.test.ts` 9 條，四個突變各紅過：改舊 id／系列永遠停第一階／全部領取逐條發事件／隱藏不看狀態）；e2e 新 D55 兩條＋改 AC8-8，**負向對照**：把 `.achsheet .arow .act { width:100% }` 塞回去→文字欄寬 0 紅；把進度值放回 sig→按鈕 detached 紅；拿掉就地更新→進度停在 1／100 紅。全套 e2e 67／68（`cp5-savecode`「舊分頁不洗掉新進度」全套跑時紅、單獨重跑兩次綠＝機率性，toast 只亮 2.6 秒）；`npm run test:negative` 只剩 AC2-9（舊問題）；`tools/playtest/opening.mjs` 跑過、開局照常領到成就；`npm run build` 綠；iPhone 14／SE 截圖看過（說明字 11.5px）。
 - 節奏（`npm run pacing` 改前→改後）：前 20 分鐘成就收入 1740→2110；上層不變；下層早 0.2–0.8 分；二號櫥窗早 1.5–9.6 分（equip-first seed 7：41.3→31.7）；3 小時成就總額 4540→8560（多出來的是後段系列）。都在 D24 目標內，**要不要再收斂由使用者決定**。
 - **使用者簽核（2026-09-24）**：看過 PDF（iPhone 14／SE 截圖＋36 條一覽）後回「好」——分類名、文案、獎章外觀照現版，節奏不收斂。
+- **PR #24 已 squash merge 上線（2026-09-24，merge commit `60edaa8`）**：Pages build＋deploy 皆綠；`ls-remote` master＝`60edaa8`；線上 bundle `index-DvKQufir.js` 含「撿拾永動機」「門可羅雀」「全部領取」`achsheet`；`npm run smoke:live` 全過。
 
 ## 【重點】甜點工坊改版需求（2026-09-23 使用者提出，分支 `feat/bakery`，worktree `../lpg-wt-bakery`，D50–D54）
 
