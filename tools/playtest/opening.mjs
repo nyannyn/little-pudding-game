@@ -1,6 +1,6 @@
 // 新手流程：只按 HUD 按鈕、照引導做（不改 state），記錄引導句／toast／購買的時間線。
 // 看什麼：引導有沒有卡在同一句、第一次出爐／第一位客人／第一台設備在第幾分鐘、成就領了多少、有沒有 console error。
-// D50 起農場沒有加工／出貨：引導叫你去甜點店就過去，把做好的站往下推、開新的一盤、上架，沒事做了再回農場。
+// D50 起農場沒有加工／出貨；D57 起工坊的機器要買、放上線自己走完：存夠錢就去甜點店照引導買機器，從菜單開一盤、上架，沒事做了再回農場。
 // 用法：node tools/playtest/opening.mjs   （FAST=倍速，預設 4；MIN=要玩幾分鐘遊戲時間，預設 8）
 import { boot, launch, newPage, report, shopTab, shot, tap } from './lib.mjs';
 
@@ -20,11 +20,13 @@ while (Date.now() < endAt) {
   const s = await page.evaluate(() => {
     const st = window.__lpg.state;
     const hint = document.querySelector('.hint');
-    return { t: st.time, coins: st.coins, hint: hint && !hint.hidden ? hint.querySelector('.t').textContent : '', toasts: [...document.querySelectorAll('.toast')].map((x) => x.textContent), basinEmpty: st.basins.every((b) => b.units === 0), drops: st.drops.length };
+    return { t: st.time, coins: st.coins, machines: Object.values(st.bakery.machines).filter((v) => v > 0).length, startable: Number(document.querySelector('[data-a="openMenu"] .n')?.textContent || 0), shelvable: Number(document.querySelector('[data-a="goBakery"] .n')?.textContent || 0), hint: hint && !hint.hidden ? hint.querySelector('.t').textContent : '', toasts: [...document.querySelectorAll('.toast')].map((x) => x.textContent), basinEmpty: st.basins.every((b) => b.units === 0), drops: st.drops.length };
   });
   if (s.hint !== lastHint) { log(s.t, `[hint] ${s.hint || '(隱藏)'}`); lastHint = s.hint; if (shotCount < 8) await shot(page, `opening-hint-${++shotCount}`); }
   for (const t of s.toasts) if (!seen.has(t)) { seen.add(t); log(s.t, `[toast] ${t}  (coins ${Math.floor(s.coins)})`); }
   if (s.basinEmpty) await tap(page, '倒焦糖');
+  // 停擺警告叫你手動換口味（注液閥只補上次倒的那一種）：照做
+  if (s.hint.includes('「倒牛乳」')) await tap(page, '倒牛乳');
   if (s.drops > 0) await tap(page, '撿原料');
   // 成就（D54／D55）：徽章亮了就全部領掉
   const claimed = await page.evaluate(() => {
@@ -44,27 +46,42 @@ while (Date.now() < endAt) {
     if (got.length) log(s.t, `[achievement] ${got.join('、')}`);
     await page.evaluate(() => document.querySelector('[data-a="closeAch"]').click());
   }
-  // 甜點工坊（D51）
-  const view = await page.evaluate(() => document.querySelector('.hud').dataset.view);
-  if (view === 'farm' && s.hint.includes('甜點店')) await tap(page, '甜點店');
-  if (view === 'bakery') {
-    const busy = await page.evaluate(() => {
-      for (const b of [...document.querySelectorAll('[data-a="station"][data-status="ready"]')].reverse()) b.click();
-      const st = [...document.querySelectorAll('[data-a="station"]')].map((b) => b.dataset.status);
-      return st.some((x) => x !== 'idle');
+  // 甜點工坊（D51 → D57：機器要買、放上線自己走完，玩家只挑菜單與上架）
+  if (s.hint.includes('工坊') || (s.coins >= 200 && s.machines < 6)) {
+    // 引導叫去商店「工坊」頁買機器：照焦糖布丁塔那條線買（冷藏櫃它用不到）
+    await tap(page, '商店');
+    await page.waitForTimeout(150);
+    await shopTab(page, 'bakery');
+    const bought = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('[data-a="buyMachine"]:not([disabled])')].find((x) => x.dataset.arg !== 'chill' && !/Lv\./.test(x.closest('.card').querySelector('.name').textContent));
+      if (!b) return null;
+      const name = b.closest('.card').querySelector('.name').textContent;
+      b.click();
+      return name;
     });
-    const crackIdle = await page.evaluate(() => document.querySelector('[data-a="station"][data-arg="crack"]').dataset.status === 'idle');
-    let started = false;
-    if (crackIdle) {
-      await page.evaluate(() => document.querySelector('[data-a="station"][data-arg="crack"]').click());
-      await page.waitForTimeout(200);
-      started = await page.evaluate(() => { const b = document.querySelector('.batchcard [data-a="startBatch"]:not([disabled])'); if (b) { b.click(); return true; } document.querySelector('[data-a="closeBatch"]').click(); return false; });
-    }
+    if (bought) log(s.t, `[buy] ${bought}`);
+    await page.evaluate(() => document.querySelector('[data-a="closeShop"]').click());
+  }
+  const view = await page.evaluate(() => document.querySelector('.hud').dataset.view);
+  // D57：教學在買下第一台農場設備就結束，農場不會叫你去買機器——存到錢就自己去商店工坊頁買（上面那段）；
+  // 菜單有做得起的（甜點店鈕旁的菜單徽章）或有東西可上架就過去
+  if (view === 'farm' && (s.hint.includes('甜點店') || s.startable > 0 || s.shelvable > 0)) await tap(page, '甜點店');
+  if (view === 'bakery') {
+    const busy = await page.evaluate(() => (document.querySelector('.daybar .onl')?.textContent ?? '') !== '');
+    await page.evaluate(() => document.querySelector('[data-a="openMenu"]').click());
+    await page.waitForTimeout(200);
+    const started = await page.evaluate(() => {
+      const b = document.querySelector('.menucard [data-a="startBatch"]:not([disabled])');
+      if (b) { const n = b.closest('.rcard').querySelector('.txt b').textContent; b.click(); return n; }
+      document.querySelector('[data-a="closeMenu"]').click();
+      return null;
+    });
+    if (started) log(s.t, `[bake] ${started}`);
     await page.evaluate(() => { const b = document.querySelector('[data-a="stockShelf"]'); if (b && !b.disabled) b.click(); });
-    // 工坊沒事做（沒在做、也開不了新的一盤）就回農場撿原料
+    // 工坊沒事做（線上沒東西、也開不了新的一盤）就回農場撿原料
     if (!busy && !started) await tap(page, '回農場');
   }
-  if (s.hint.includes('商店') || s.hint.includes('存到')) {
+  if (!s.hint.includes('工坊') && (s.hint.includes('商店') || s.hint.includes('存到'))) {
     await tap(page, '商店');
     await page.waitForTimeout(150);
     // 引導叫你補貨就買液體，否則買第一台買得起的設備（querySelector 是文件順序，不能把兩個 selector 混在一起）

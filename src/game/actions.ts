@@ -2,7 +2,8 @@ import { BALANCE, EQUIPMENT, type EquipmentId } from './balance';
 import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
 import { grantXp, levelFor } from './level';
-import { basinLevel, stockCost, stockLevel } from './shop';
+import { PANTRY, PANTRY_IDS, type PantryId } from './recipes';
+import { basinLevel, pantryCost, stockCost, stockLevel } from './shop';
 import { LIQUIDS, SPECIES, puddingPrice, type LiquidId, type SpeciesId } from './species';
 import type { GameState, Vec2 } from './state';
 import { findZone } from './zones';
@@ -103,6 +104,21 @@ export function buyStock(state: GameState, liquid: LiquidId, qty: number, emit: 
   state.coins -= cost;
   state.stock[liquid] += n;
   emit({ type: 'buy', what: info.name, cost, auto });
+  return OK;
+}
+
+/** 買基礎材料（D58）：麵粉、糯米粉 */
+export function buyPantry(state: GameState, id: PantryId, qty: number, emit: EventSink, auto = false): ActionResult {
+  const n = Math.floor(qty);
+  if (n <= 0) return fail('數量要大於 0');
+  if (!PANTRY_IDS.includes(id)) return fail('沒有這種材料');
+  const gate = levelGate(state, stockLevel(n));
+  if (gate) return gate;
+  const cost = pantryCost(id, n);
+  if (state.coins < cost) return fail('焦糖幣不夠');
+  state.coins -= cost;
+  state.pantry[id] += n;
+  emit({ type: 'buy', what: PANTRY[id].name, cost, auto });
   return OK;
 }
 

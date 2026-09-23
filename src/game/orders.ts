@@ -1,7 +1,8 @@
 import { BALANCE } from './balance';
 import type { EventSink } from './events';
 import { intRange, pick, range, type Rng } from './rng';
-import { BASE_SPECIES_IDS, SPECIES_IDS, dessertPrice } from './species';
+import { anyLineReady, dessertPrice } from './recipes';
+import { BASE_SPECIES_IDS, SPECIES_IDS } from './species';
 import type { GameState, Order } from './state';
 
 /** 訂單物種有多少比例從「目前住客的物種」抽；其餘從四種純種抽（D25／D28） */
@@ -43,6 +44,11 @@ export function tickOrders(state: GameState, rng: Rng, emit: EventSink): void {
   }
 
   if (state.time < state.nextOrderAt) return;
+  // 還沒湊齊任何一道甜點的整條線：接了單也做不出來，註定過期（D57）
+  if (!anyLineReady(state)) {
+    state.nextOrderAt = state.time + BALANCE.orderIntervalMin;
+    return;
+  }
   if (state.orders.length >= BALANCE.orderMaxActive) {
     // 桌上已經排滿了就往後延，不要偷偷累積一堆待生成的訂單
     state.nextOrderAt = state.time + BALANCE.orderIntervalMin;

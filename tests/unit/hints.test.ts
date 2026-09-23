@@ -4,7 +4,8 @@ import { fillBasin } from '../../src/game/actions';
 import { advance, createWorld } from '../../src/game/sim';
 import { createNewSave } from '../../src/game/state';
 import { START_ZONE } from '../../src/game/zones';
-import { nextHint } from '../../src/ui/hints';
+import { RECIPES, STATIONS, lineCost } from '../../src/game/recipes';
+import { bakeryHint, nextHint } from '../../src/ui/hints';
 
 function fresh() {
   return createNewSave({ seed: 1, now: 0 });
@@ -72,16 +73,38 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).toBe('pick');
   });
 
-  it('蛋與原料湊得齊一盤就帶去甜點店，做過一盤之後不再講（D50）', () => {
+  it('機器與材料都齊了就帶去甜點店，做過一盤之後不再講（D50／D57）', () => {
     const s = fresh();
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
-    s.eggs = BALANCE.bakery.batchSize * BALANCE.eggsPerDessert;
-    s.ingredients.caramel = BALANCE.bakery.batchSize * BALANCE.ingredientsPerDessert;
+    for (const id of RECIPES.caramel.route) s.bakery.machines[id] = 1;
+    s.eggs = 2;
+    s.ingredients.caramel = 1;
+    s.stock.milk = 1;
+    s.pantry.flour = 1;
     expect(nextHint(s)?.id).toBe('bakery');
 
     s.stats.baked = 2;
     expect(nextHint(s)?.id).not.toBe('bakery');
+  });
+
+  it('材料齊了但沒機器：不叫他去甜點店開工（去了也開不了）', () => {
+    const s = fresh();
+    s.basins[0]!.liquid = 'caramel';
+    s.basins[0]!.units = 1;
+    s.eggs = 2;
+    s.ingredients.caramel = 1;
+    s.stock.milk = 1;
+    s.coins = 0;
+    expect(nextHint(s)?.id).not.toBe('bakery');
+  });
+
+  it('工坊裡沒機器：第一句就是去商店工坊頁買，並列出焦糖布丁塔要的機器與總價', () => {
+    const s = fresh();
+    const h = bakeryHint(s);
+    expect(h?.id).toBe('bk-buy');
+    for (const id of RECIPES.caramel.route) expect(h?.text).toContain(STATIONS[id].name);
+    expect(h?.text).toContain(String(lineCost(s, 'caramel')));
   });
 
   it('只有原料沒有蛋：不叫他去甜點店（去了也開不了工）', () => {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { BALANCE } from '../../src/game/balance';
+import { exportCode } from '../../src/game/savecode';
 import type { GameState } from '../../src/game/state';
 import { DRAW_CALL_BUDGET } from './helpers';
 
@@ -11,7 +12,11 @@ import { DRAW_CALL_BUDGET } from './helpers';
  */
 async function boot(page: Page, query: string) {
   // 新手提示泡泡會蓋住工坊中段（點 3D 機器會點到泡泡），這裡測的不是它；載入前就關，HUD 建構時才讀得到
-  await page.addInitScript(() => localStorage.setItem('lpg.hints.off', '1'));
+  await page.addInitScript(() => {
+    localStorage.setItem('lpg.hints.off', '1');
+    // 非 ?fresh 的頁面第一次開會跳「加到主畫面」卡，蓋住設定鈕
+    localStorage.setItem('lpg.a2hs.off', '1');
+  });
   await page.goto(query);
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
 }
@@ -38,45 +43,55 @@ test('農場的動作列沒有加工／出貨，按「甜點店」切到工坊�
   await expect(page.locator('.hud')).toHaveAttribute('data-view', 'farm');
 });
 
-test('AC8-1：點按鈕走完五站，一盤甜點進成品櫃、上架、客人買走', async ({ page }) => {
+test('AC9-8／9-9／9-3：商店買機器 → 菜單開工 → 線上自己走完 → 上架 → 客人買走', async ({ page }) => {
   test.setTimeout(120_000);
-  await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
-  const q = BALANCE.bakery.batchSize;
-  await page.evaluate((n) => {
+  // 鮮奶酪杯每份 3% 失敗（D56）：`?pause=1` 下模擬是確定性的，seed 8 在這串操作下剛好擲到失敗、每次都一樣。
+  // 換一顆會成功的種子，讓後半段「上架→客人買走」測得到；失敗那條路在單元測試 AC9-5 驗
+  await boot(page, '/?fresh=1&seed=11&view=bakery&pause=1');
+  await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.eggs = n * 2;
-    s.ingredients.caramel = n;
-  }, q);
+    s.coins = 1000;
+    s.stock.milk = 2;
+    s.ingredients.panna = 1;
+  });
   await step(page, 0.3);
 
-  // 空的打蛋機 → 開工選單 → 焦糖那一列「開工」
-  await page.locator('[data-a="station"][data-arg="crack"]').click();
-  await expect(page.locator('.batchcard')).toBeVisible();
-  await page.locator('.batchcard .brow[data-id="caramel"] [data-a="startBatch"]').click();
+  // 沒機器時菜單卡不能按、下面寫缺哪幾台
+  await page.getByRole('button', { name: /菜單/ }).click();
+  const panna = page.locator('.menucard .rcard[data-id="panna"]');
+  await expect(panna.locator('[data-a="startBatch"]')).toBeDisabled();
+  await expect(panna.locator('.miss')).toContainText('缺機器：爐台、裝模機、冷藏櫃');
+  await page.locator('[data-a="closeMenu"]').click();
+
+  // 商店的「工坊」頁把鮮奶酪杯那條線買齊（真的點價格鈕）
+  await page.getByRole('button', { name: '商店' }).click();
+  await page.locator('[data-a="shopTab"][data-arg="bakery"]').click();
+  for (const id of ['stove', 'mold', 'chill']) await page.locator(`[data-a="buyMachine"][data-arg="${id}"]`).click();
   let s = await S(page);
-  expect(s.bakery.stations.crack.batch).toEqual({ species: 'caramel', qty: q });
-  expect(s.eggs).toBe(0);
+  expect(s.bakery.machines).toMatchObject({ stove: 1, mold: 1, chill: 1, bake: 0 });
+  expect(s.coins).toBe(1000 - 40 - 60 - 180);
+  await page.locator('[data-a="closeShop"]').click();
 
-  // 還沒做完點下去：不動，而且要講出原因（不可以按了沒反應）
-  await page.locator('[data-a="station"][data-arg="crack"]').click();
-  await expect(page.locator('.toast').last()).toContainText('還在打蛋');
-
-  for (const id of ['crack', 'mix', 'mold', 'bake', 'decorate']) {
-    const secs = (BALANCE.bakery.stepSec as Record<string, number>)[id]! + 0.3;
-    await step(page, secs);
-    const btn = page.locator(`[data-a="station"][data-arg="${id}"]`);
-    await expect(btn).toHaveAttribute('data-status', 'ready');
-    await btn.click();
-  }
+  // 菜單：鮮奶酪杯可按、焦糖布丁塔還缺
+  await page.getByRole('button', { name: /菜單/ }).click();
+  await expect(panna.locator('[data-a="startBatch"]')).toBeEnabled();
+  await expect(page.locator('.menucard .rcard[data-id="caramel"] [data-a="startBatch"]')).toBeDisabled();
+  await panna.locator('[data-a="startBatch"]').click();
   s = await S(page);
-  expect(s.desserts.caramel).toBe(q);
-  expect(s.stats.baked).toBe(q);
-  expect(s.ingredients.caramel).toBe(0);
+  expect(s.bakery.stations.stove.batch).toEqual({ species: 'panna', qty: 1 });
+  expect(s.stock.milk).toBe(0);
+  expect(s.ingredients.panna).toBe(0);
 
-  // 上架 → 展示架有貨 → 營業中客人買走
+  // 不用再點任何東西：爐台 → 裝模 → 冷藏自己走完（10＋5＋40 秒）
+  await step(page, 60);
+  s = await S(page);
+  for (const id of ['stove', 'mold', 'chill'] as const) expect(s.bakery.stations[id].batch).toBeNull();
+  expect(s.desserts.panna + s.bakery.shelf.panna).toBe(1);
+
+  // 上架 → 營業中客人買走
   await page.getByRole('button', { name: /上架/ }).click();
   s = await S(page);
-  expect(s.bakery.shelf.caramel).toBe(q);
+  expect(s.bakery.shelf.panna).toBe(1);
   const coins = s.coins;
   await step(page, BALANCE.bakery.customerIntervalMax * 3);
   s = await S(page);
@@ -85,23 +100,92 @@ test('AC8-1：點按鈕走完五站，一盤甜點進成品櫃、上架、客人
   await expect(page.locator('.daybar .today')).not.toHaveText('今日 +0');
 });
 
-test('點 3D 的機器等於點那一站（烤箱做完點機身就推到裝飾台）', async ({ page }) => {
+test('商店工坊頁：買了變升級、滿級顯示已滿級；320px 分頁列不溢出', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
+  await page.evaluate(() => { (window.__lpg.state as GameState).coins = 99999; });
+  await step(page, 0.3);
+  await page.getByRole('button', { name: '商店' }).click();
+  // 六個分頁都在畫面裡、沒有橫向捲動
+  const tabs = await page.$$eval('[data-a="shopTab"]', (els) => els.map((e) => e.getBoundingClientRect().right));
+  expect(tabs).toHaveLength(6);
+  for (const r of tabs) expect(r).toBeLessThanOrEqual(320);
+  await page.locator('[data-a="shopTab"][data-arg="bakery"]').click();
+  const btn = page.locator('[data-a="buyMachine"][data-arg="bake"]');
+  await expect(btn).toHaveText('150');
+  await btn.click();
+  await expect(btn).toHaveText('1200');
+  await btn.click();
+  await btn.click();
+  await expect(page.locator('.card[data-id="machine:bake"] .owned')).toHaveText('已滿級');
+  expect((await S(page)).bakery.machines.bake).toBe(3);
+});
+
+test('點 3D 的機器：沒買開商店工坊頁、空著開菜單、有一盤講它在做什麼', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
+  await step(page, 0.3);
+  const tapAt = async (x: number, y: number, z: number) => {
+    const at = await page.evaluate(([px, py, pz]) => {
+      const cam = window.__lpg.bakery!.camera;
+      const v = window.__lpg.three!.camera.position.clone().set(px!, py!, pz!).project(cam);
+      return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight };
+    }, [x, y, z]);
+    await page.mouse.click(at.x, at.y);
+  };
+  // 隧道烤箱（右側那段帶子中段）
+  const oven = [0.98, 0.8, -1.2] as const;
+  await tapAt(...oven);
+  await expect(page.locator('.sheet')).toBeVisible();
+  await expect(page.locator('[data-a="shopTab"][data-arg="bakery"]')).toHaveAttribute('aria-selected', 'true');
+  await page.locator('[data-a="closeShop"]').click();
+
+  await page.evaluate(() => { (window.__lpg.state as GameState).bakery.machines.bake = 1; });
+  await step(page, 0.3);
+  await tapAt(...oven);
+  await expect(page.locator('.menucard')).toBeVisible();
+  await page.locator('[data-a="closeMenu"]').click();
+
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.bakery.stations.bake = { batch: { species: 'caramel', qty: 2 }, doneAt: s.time };
+    s.bakery.stations.bake = { batch: { species: 'hojicha', qty: 1 }, doneAt: s.time + 30 };
   });
   await step(page, 0.3);
-  // 烤箱中心投到螢幕上點下去
-  const at = await page.evaluate(() => {
-    const cam = window.__lpg.bakery!.camera;
-    const v = window.__lpg.three!.camera.position.clone().set(-0.62, 0.8, -0.4).project(cam);
-    return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight };
+  await tapAt(...oven);
+  await expect(page.locator('.toast').last()).toContainText('烤箱正在烘烤焙茶布丁燒');
+});
+
+test('AC9-7：v8 存檔（五站線上有一盤）還原後機器全無、材料退回', async ({ page }) => {
+  await boot(page, '/?seed=8&pause=1');
+  const raw = await page.evaluate(() => {
+    const s = JSON.parse(JSON.stringify(window.__lpg.state)) as Record<string, unknown> & GameState;
+    s.schemaVersion = 8;
+    delete (s as Record<string, unknown>).pantry;
+    const bk = s.bakery as unknown as Record<string, unknown>;
+    delete bk.machines;
+    bk.auto = { crack: false, mix: false, mold: false, bake: false, decorate: false };
+    bk.stations = {
+      crack: { batch: null, doneAt: 0 },
+      mix: { batch: { species: 'caramel', qty: 2 }, doneAt: 1 },
+      mold: { batch: null, doneAt: 0 },
+      bake: { batch: null, doneAt: 0 },
+      decorate: { batch: null, doneAt: 0 },
+    };
+    s.eggs = 0;
+    s.ingredients.caramel = 0;
+    return s;
   });
-  await page.mouse.click(at.x, at.y);
+  const code = exportCode(raw as GameState);
+  // 走產品自己的「還原」流程（不是手刻 localStorage）
+  await page.getByRole('button', { name: '設定' }).click();
+  await page.locator('.savecard .code').fill(code);
+  await Promise.all([page.waitForEvent('load'), page.locator('[data-a="restoreSave"]').click()]);
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
   const s = await S(page);
-  expect(s.bakery.stations.bake.batch).toBeNull();
-  expect(s.bakery.stations.decorate.batch?.species).toBe('caramel');
+  expect(s.schemaVersion).toBeGreaterThanOrEqual(9);
+  for (const v of Object.values(s.bakery.machines)) expect(v).toBe(0);
+  expect(s.eggs).toBe(4);
+  expect(s.ingredients.caramel).toBe(2);
+  expect(s.pantry.flour).toBe(BALANCE.startPantry.flour);
 });
 
 test('預訂單在工坊交：成品櫃不夠時從展示架補，交貨鈕按得下去', async ({ page }) => {
@@ -213,12 +297,13 @@ test('D55：抽屜開著、進度一直在漲，「領取」鈕不會在手指�
   expect(await btn!.evaluate((b) => b.isConnected)).toBe(true);
 });
 
-test('AC8-9：工坊畫面五站全開、客人在店裡，draw calls 仍在預算內', async ({ page }) => {
+test('AC9-10：七台全買、每一站都有一盤、客人在店裡，draw calls 仍在預算內', async ({ page }) => {
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1&debug=1');
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    for (const [i, id] of ['crack', 'mix', 'mold', 'bake', 'decorate'].entries()) {
-      s.bakery.stations[id as 'crack'] = { batch: { species: 'caramel', qty: 2 }, doneAt: s.time + 5 + i };
+    for (const [i, id] of ['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'].entries()) {
+      s.bakery.machines[id as 'stove'] = 3;
+      s.bakery.stations[id as 'stove'] = { batch: { species: 'brulee', qty: 4 }, doneAt: s.time + 5 + i };
     }
     s.bakery.shelf.caramel = 12;
     s.desserts.matcha = 9;

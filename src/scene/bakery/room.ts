@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Parts } from './build';
-import { CAFE, COUNTER, DECOR, DOOR, DOOR_Z0, DOOR_Z1, EGG_BASKET, OVEN, RACK, REGISTER, ROOM, SHOWCASE, STATION_ANCHOR } from './layout';
+import { BELT, BELT_PATH, CAFE, DOOR, DOOR_Z0, DOOR_Z1, RACK, REGISTER, ROOM, SHOWCASE } from './layout';
 
 /** 甜點店配色：粉彩、奶油、薄荷（主流甜點經營遊戲的那種糖果感） */
 export const PAL = {
@@ -28,8 +28,9 @@ export const PAL = {
 } as const;
 
 /**
- * 整間店所有**不會動**的東西：房間、家具、五台機器的機身。全部併成一個 mesh（一個 draw call）。
- * 會動的部件（打蛋臂上的蛋、攪拌器、注模嘴、轉台、烤箱的光）在 `bakeryView.ts` 各自一個 mesh。
+ * 整間店所有**不會動、也不會因為購買而變**的東西：房間、家具、輸送帶骨架。全部併成一個 mesh（一個 draw call）。
+ * 七台機器要買（D57），機身另外一個 mesh（`machines.ts`，買了才重建）；
+ * 會動的部件（帶面、打蛋臂上的蛋、攪拌器、注模嘴、擠花袋、烤箱與冷藏櫃的光）在 `bakeryView.ts` 各自一個 mesh。
  */
 export function buildRoom(): THREE.BufferGeometry {
   const p = new Parts();
@@ -94,20 +95,7 @@ export function buildRoom(): THREE.BufferGeometry {
   p.cyl(PAL.trim, 0.16, 0.16, 0.03, 0.95, 1.8, backZ + 0.03, 24, { x: Math.PI / 2, y: 0, z: 0 });
   p.torus(PAL.pinkDark, 0.16, 0.018, 0.95, 1.8, backZ + 0.05);
 
-  // ── 後排工作檯 ──
-  p.rbox(PAL.cream, halfW * 2 - 0.06, COUNTER.top - 0.06, COUNTER.depth, 0, (COUNTER.top - 0.06) / 2, COUNTER.z, 0.03);
-  p.rbox(PAL.wood, halfW * 2, 0.06, COUNTER.depth + 0.04, 0, COUNTER.top - 0.03, COUNTER.z, 0.02);
-  // 櫃門與把手
-  for (const x of [-0.8, 0, 0.8]) {
-    p.rbox(PAL.floorB, 0.56, 0.5, 0.02, x, 0.36, COUNTER.z + COUNTER.depth / 2 + 0.005, 0.01);
-    p.sphere(PAL.woodDark, 0.018, x + 0.2, 0.42, COUNTER.z + COUNTER.depth / 2 + 0.02);
-  }
-
-  crackMachine(p);
-  mixer(p);
-  moldMachine(p);
-  oven(p);
-  decorTable(p);
+  beltFrame(p);
   showcase(p);
   rack(p);
   register(p);
@@ -117,105 +105,49 @@ export function buildRoom(): THREE.BufferGeometry {
   return p.merge();
 }
 
-/** 打蛋機：薄荷色底座＋白碗＋上方的打蛋臂（臂上的蛋在 view 裡動）＋左邊一籃蛋 */
-function crackMachine(p: Parts) {
-  const a = STATION_ANCHOR.crack;
-  const y0 = COUNTER.top;
-  p.rbox(PAL.mint, 0.5, 0.1, 0.44, a.x + 0.04, y0 + 0.05, a.z - 0.08, 0.04);
-  p.cyl(PAL.cream, 0.13, 0.09, 0.09, a.x, y0 + 0.14, a.z, 20); // 碗
-  p.cyl(0xf4ecdc, 0.115, 0.115, 0.012, a.x, y0 + 0.18, a.z, 20); // 碗裡的蛋液底
-  // 背後的柱子＋頂上的臂
-  p.rbox(PAL.mintDark, 0.1, 0.52, 0.1, a.x + 0.18, y0 + 0.36, a.z - 0.22, 0.03);
-  p.rbox(PAL.mint, 0.1, 0.08, 0.34, a.x + 0.18, y0 + 0.62, a.z - 0.08, 0.03);
-  p.rbox(PAL.mint, 0.22, 0.07, 0.08, a.x + 0.08, y0 + 0.62, a.z + 0.06, 0.03);
-  p.sphere(PAL.pink, 0.035, a.x + 0.18, y0 + 0.68, a.z - 0.22); // 頂上的小按鈕
-  // 蛋籃
-  const b = EGG_BASKET;
-  p.cyl(PAL.basket, 0.13, 0.1, 0.1, b.x + 0.1, b.y, b.z + 0.1, 16);
-  p.torus(PAL.woodDark, 0.13, 0.012, b.x + 0.1, b.y + 0.05, b.z + 0.1, { x: Math.PI / 2, y: 0, z: 0 });
-  for (const [dx, dz] of [[-0.04, -0.03], [0.05, 0], [-0.01, 0.05]] as const) {
-    p.sphere(PAL.egg, 0.045, b.x + 0.1 + dx, b.y + 0.08, b.z + 0.1 + dz, { x: 1, y: 1.25, z: 1 });
+/**
+ * 輸送帶骨架（D57）：每一段一條深色帶床＋兩側金屬護欄＋落地腳，轉角放圓盤，出口一段小斜坡。
+ * 會捲動的帶面在 view 裡另一個 mesh（捲動的條紋讀起來才像「在動的流水線」）。
+ */
+function beltFrame(p: Parts) {
+  const { y, w } = BELT;
+  for (let i = 0; i < BELT_PATH.length - 1; i++) {
+    const a = BELT_PATH[i]!;
+    const b = BELT_PATH[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const ang = -Math.atan2(b.z - a.z, b.x - a.x);
+    const cx = (a.x + b.x) / 2;
+    const cz = (a.z + b.z) / 2;
+    const rot = { x: 0, y: ang, z: 0 };
+    // 帶床
+    p.box(PAL.dark, len + w, 0.07, w, cx, y - 0.045, cz, rot);
+    // 兩側護欄（沿行進方向的左右各一條）
+    const nx = -(b.z - a.z) / len;
+    const nz = (b.x - a.x) / len;
+    for (const side of [-1, 1]) {
+      p.box(PAL.metal, len + w, 0.05, 0.03, cx + nx * side * (w / 2 + 0.01), y + 0.005, cz + nz * side * (w / 2 + 0.01), rot);
+    }
+    // 落地腳：每 0.5 一對
+    const n = Math.max(1, Math.round(len / 0.5));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      const lx = a.x + (b.x - a.x) * t;
+      const lz = a.z + (b.z - a.z) * t;
+      for (const side of [-1, 1]) {
+        p.cyl(PAL.metal, 0.018, 0.022, y - 0.08, lx + nx * side * (w / 2 - 0.03), (y - 0.08) / 2, lz + nz * side * (w / 2 - 0.03), 8);
+      }
+    }
   }
-}
-
-/** 桌上型攪拌機（粉紅）：底座＋後柱＋往前伸的機頭；攪拌頭與碗裡的麵糊在 view 裡 */
-function mixer(p: Parts) {
-  const a = STATION_ANCHOR.mix;
-  const y0 = COUNTER.top;
-  p.rbox(PAL.pink, 0.46, 0.08, 0.46, a.x, y0 + 0.04, a.z - 0.06, 0.04);
-  p.rbox(PAL.pink, 0.16, 0.52, 0.16, a.x, y0 + 0.32, a.z - 0.24, 0.06);
-  p.rbox(PAL.pink, 0.2, 0.18, 0.44, a.x, y0 + 0.62, a.z - 0.1, 0.08);
-  p.sphere(PAL.pinkDark, 0.05, a.x, y0 + 0.62, a.z + 0.13); // 機頭前端的圓
-  p.cyl(PAL.metal, 0.018, 0.018, 0.06, a.x, y0 + 0.51, a.z, 10); // 攪拌軸座
-  // 不鏽鋼碗
-  p.cyl(PAL.metal, 0.17, 0.11, 0.2, a.x, y0 + 0.18, a.z, 24);
-  p.torus(0xe8eef3, 0.17, 0.012, a.x, y0 + 0.28, a.z, { x: Math.PI / 2, y: 0, z: 0 });
-  p.cyl(PAL.cream, 0.035, 0.035, 0.03, a.x + 0.19, y0 + 0.62, a.z - 0.16, 10, { x: 0, y: 0, z: Math.PI / 2 }); // 旋鈕
-}
-
-/** 裝模機（奶油黃）：底板上兩個杯位、上方漏斗；注模嘴在 view 裡左右移動 */
-function moldMachine(p: Parts) {
-  const a = STATION_ANCHOR.mold;
-  const y0 = COUNTER.top;
-  p.rbox(PAL.butter, 0.52, 0.06, 0.4, a.x, y0 + 0.03, a.z - 0.02, 0.03);
-  // 兩根柱＋橫樑
-  p.rbox(PAL.butterDark, 0.06, 0.6, 0.06, a.x - 0.23, y0 + 0.33, a.z - 0.18, 0.02);
-  p.rbox(PAL.butterDark, 0.06, 0.6, 0.06, a.x + 0.23, y0 + 0.33, a.z - 0.18, 0.02);
-  p.rbox(PAL.butter, 0.54, 0.08, 0.1, a.x, y0 + 0.6, a.z - 0.16, 0.03);
-  // 漏斗
-  p.cone(PAL.cream, 0.13, 0.2, a.x, y0 + 0.78, a.z - 0.16, 20, { x: Math.PI, y: 0, z: 0 });
-  p.cyl(PAL.butterDark, 0.14, 0.14, 0.04, a.x, y0 + 0.89, a.z - 0.16, 20);
-  // 杯位（兩個凹槽的圈）
-  for (const dx of [-0.1, 0.1]) p.torus(PAL.butterDark, 0.065, 0.01, a.x + dx, y0 + 0.065, a.z, { x: Math.PI / 2, y: 0, z: 0 });
-}
-
-/** 烤箱（薰衣草紫）：中間挖一個窗洞，洞裡的背板與玻璃在 view 裡（會發光） */
-function oven(p: Parts) {
-  const { x, z, w, h, d } = OVEN;
-  const front = z + d / 2;
-  const winW = 0.62, winH = 0.42, winY = 0.52;
-  // 窗洞四周的框（左右＋上下），後面整塊背殼
-  p.rbox(PAL.lavender, w, h, d - 0.2, x, h / 2 + 0.06, z - 0.1, 0.06);
-  p.rbox(PAL.lavender, (w - winW) / 2, h, 0.22, x - (w + winW) / 4, h / 2 + 0.06, front - 0.11, 0.04);
-  p.rbox(PAL.lavender, (w - winW) / 2, h, 0.22, x + (w + winW) / 4, h / 2 + 0.06, front - 0.11, 0.04);
-  p.rbox(PAL.lavender, winW + 0.02, winY - winH / 2 + 0.06, 0.22, x, (winY - winH / 2 + 0.06) / 2, front - 0.11, 0.03);
-  const topH = h + 0.06 - (winY + winH / 2);
-  p.rbox(PAL.lavender, winW + 0.02, topH, 0.22, x, winY + winH / 2 + topH / 2, front - 0.11, 0.03);
-  // 窗框（白）＋把手＋旋鈕＋腳
-  p.box(PAL.trim, winW + 0.04, 0.03, 0.03, x, winY + winH / 2, front + 0.005);
-  p.box(PAL.trim, winW + 0.04, 0.03, 0.03, x, winY - winH / 2, front + 0.005);
-  p.box(PAL.trim, 0.03, winH, 0.03, x - winW / 2, winY, front + 0.005);
-  p.box(PAL.trim, 0.03, winH, 0.03, x + winW / 2, winY, front + 0.005);
-  p.cyl(PAL.metal, 0.02, 0.02, winW - 0.1, x, winY + winH / 2 + 0.08, front + 0.05, 10, { x: 0, y: 0, z: Math.PI / 2 });
-  for (const dx of [-0.26, -0.12, 0.12, 0.26]) p.cyl(PAL.lavenderDark, 0.035, 0.035, 0.03, x + dx, h - 0.06, front + 0.005, 14, { x: Math.PI / 2, y: 0, z: 0 });
-  for (const dx of [-w / 2 + 0.1, w / 2 - 0.1]) p.cyl(PAL.dark, 0.035, 0.03, 0.06, x + dx, 0.03, front - 0.1, 10);
-  // 頂上的煙囪＋可愛的蝴蝶結
-  p.cyl(PAL.metal, 0.06, 0.06, 0.3, x + 0.28, h + 0.2, z - 0.15, 14);
-  p.sphere(PAL.pink, 0.05, x - 0.3, h + 0.1, front - 0.12);
-  p.cone(PAL.pink, 0.05, 0.1, x - 0.37, h + 0.1, front - 0.12, 10, { x: 0, y: 0, z: Math.PI / 2 });
-  p.cone(PAL.pink, 0.05, 0.1, x - 0.23, h + 0.1, front - 0.12, 10, { x: 0, y: 0, z: -Math.PI / 2 });
-}
-
-/** 裝飾台：木桌＋粉彩桌巾；轉台與擠花袋的動作在 view 裡 */
-function decorTable(p: Parts) {
-  const { x, z, top, w, d } = DECOR;
-  p.rbox(PAL.wood, w, 0.06, d, x, top - 0.03, z, 0.02);
-  p.rbox(PAL.mint, w + 0.02, 0.1, d + 0.02, x, top - 0.08, z, 0.02); // 桌巾垂邊
-  for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
-    p.cyl(PAL.woodDark, 0.03, 0.025, top - 0.1, x + dx * (w / 2 - 0.06), (top - 0.1) / 2, z + dz * (d / 2 - 0.06), 10);
+  // 轉角的圓盤（兩段帶子在這裡接起來）
+  for (const c of BELT_PATH.slice(1, -1)) {
+    p.cyl(PAL.dark, w / 2 + 0.02, w / 2 + 0.02, 0.07, c.x, y - 0.045, c.z, 24);
+    p.torus(PAL.metal, w / 2 + 0.02, 0.018, c.x, y + 0.005, c.z, { x: Math.PI / 2, y: 0, z: 0 });
   }
-  // 轉台底座
-  const a = STATION_ANCHOR.decorate;
-  p.cyl(PAL.metal, 0.05, 0.07, 0.06, a.x, top + 0.03, a.z, 16);
-  // 擠花袋的支架（袋子本體在 view 裡下壓）
-  p.rbox(PAL.pinkDark, 0.05, 0.5, 0.05, a.x + 0.3, top + 0.25, a.z - 0.18, 0.02);
-  p.rbox(PAL.pinkDark, 0.3, 0.05, 0.05, a.x + 0.16, top + 0.48, a.z - 0.18, 0.02);
-  // 糖珠罐＋小碗
-  const jar = [PAL.pink, PAL.butter, PAL.lavender];
-  jar.forEach((c, i) => {
-    p.cyl(0xe9f2f6, 0.04, 0.04, 0.1, x - 0.28 + i * 0.1, top + 0.05, z + 0.2, 12);
-    p.cyl(c, 0.035, 0.035, 0.06, x - 0.28 + i * 0.1, top + 0.035, z + 0.2, 12);
-  });
+  // 起點的端蓋、出口往成品櫃的小滑道
+  const s0 = BELT_PATH[0]!;
+  p.rbox(PAL.metal, 0.06, 0.1, w + 0.06, s0.x - w / 2, y - 0.02, s0.z, 0.02);
+  const end = BELT_PATH[BELT_PATH.length - 1]!;
+  p.box(PAL.metal, w, 0.03, 0.26, end.x, y - 0.1, end.z + 0.2 + w / 2, { x: 0.45, y: 0, z: 0 });
 }
 
 /** 展示櫃：木底座＋玻璃（玻璃在 view 裡半透明）＋階梯層板 */

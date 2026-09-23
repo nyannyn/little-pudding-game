@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buyEquipment, buySpecialBasin, buyStock, pickAllDrops, unlockZone } from '../../src/game/actions';
-import { STATION_IDS, advanceStation, startBatch } from '../../src/game/bakery';
+import { buyEquipment, buyPantry, buySpecialBasin, buyStock, pickAllDrops, unlockZone } from '../../src/game/actions';
+import { buyMachine, startBatch, tickBakery } from '../../src/game/bakery';
+import { RECIPES, recipeSeconds } from '../../src/game/recipes';
+import { createRng } from '../../src/game/rng';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
 import type { SimEvent } from '../../src/game/events';
 import { MAX_LEVEL, grantXp, levelFor, levelProgress, xpFromStats } from '../../src/game/level';
@@ -67,14 +69,18 @@ describe('D25 xp 來源', () => {
     s.drops.push({ id: 'd2', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
     pickAllDrops(s, sink);
     expect(s.xp).toBe(BALANCE.xp.pick * 2);
-    const q = BALANCE.bakery.batchSize;
-    s.eggs = q * BALANCE.eggsPerDessert;
-    expect(startBatch(s, 'caramel', sink).ok).toBe(true);
-    for (const id of STATION_IDS) {
-      s.time = s.bakery.stations[id].doneAt;
-      expect(advanceStation(s, id, sink).ok).toBe(true);
+    // 鮮奶酪杯三站、失敗率 3%：換一顆不會失敗的種子逐秒推完（D57 起線上自己走）
+    for (const id of RECIPES.panna.route) s.bakery.machines[id] = 2;
+    s.ingredients.panna = 2;
+    s.stock.milk = 4;
+    expect(startBatch(s, 'panna', sink).ok).toBe(true);
+    const rng = createRng(4);
+    for (let i = 0; i < recipeSeconds('panna') + 3; i++) {
+      s.time += 1;
+      tickBakery(s, rng, sink);
     }
-    expect(s.xp).toBe(BALANCE.xp.pick * 2 + BALANCE.xp.craft * q);
+    expect(s.desserts.panna).toBe(2);
+    expect(s.xp).toBe(BALANCE.xp.pick * 2 + BALANCE.xp.craft * 2);
   });
 
   it('自動化做的也算 xp（裝了設備等級不會停）', () => {
@@ -148,6 +154,8 @@ describe('D25 商店等級門檻（規則在 game 層，不只是 UI 鎖著）',
     s.xp = atLevel(3);
     const act = (st: typeof s, e: { action: string; arg: string; qty?: number }) =>
       e.action === 'buyStock' ? buyStock(st, e.arg as 'caramel', e.qty as number, sink)
+      : e.action === 'buyPantry' ? buyPantry(st, e.arg as 'flour', e.qty as number, sink)
+      : e.action === 'buyMachine' ? buyMachine(st, e.arg as 'bake', sink)
       : e.action === 'buyEquip' ? buyEquipment(st, e.arg as 'restock', sink)
       : e.action === 'buyBasin' ? buySpecialBasin(st, e.arg as 'matcha', { x: 0, z: 0 }, START_ZONE, sink)
       : unlockZone(st, e.arg, SPAWN, sink);

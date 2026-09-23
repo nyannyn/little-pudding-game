@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 裝模機（D57）：奶油黃門架＋頂上漏斗，注模嘴往下面兩個杯子注麵糊 -->
+  <ellipse cx="80" cy="146" rx="52" ry="8" fill="#5a3d28" opacity=".14"/>
+  <rect x="24" y="126" width="112" height="16" rx="8" fill="#ffd66e"/>
+  <rect x="30" y="52" width="12" height="78" rx="5" fill="#f2c25c"/>
+  <rect x="118" y="52" width="12" height="78" rx="5" fill="#f2c25c"/>
+  <rect x="26" y="48" width="108" height="14" rx="6" fill="#ffd66e"/>
+  <path d="M60 16 h40 l-14 30 h-12 Z" fill="#fff8ee" stroke="#e8dccb" stroke-width="3"/>
+  <rect x="74" y="44" width="12" height="18" rx="3" fill="#f2c25c"/>
+  <path d="M80 62 v26" stroke="#ffc857" stroke-width="5" stroke-linecap="round"/>
+  <!-- 兩個杯子 -->
+  <path d="M60 98 h40 l-5 26 h-30 Z" fill="#ffc4d2"/>
+  <rect x="62" y="98" width="36" height="8" rx="3" fill="#ffc857"/>
+  <path d="M104 102 h24 l-3 22 h-18 Z" fill="#c9ecdf"/>
+  <path d="M32 102 h24 l-3 22 h-18 Z" fill="#e1d6fb"/>
+</svg>

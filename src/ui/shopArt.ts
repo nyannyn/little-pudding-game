@@ -16,6 +16,7 @@ import egg from '../assets/shop/egg.svg';
 import eqAutoFill from '../assets/shop/eqAutoFill.svg';
 import eqCollector from '../assets/shop/eqCollector.svg';
 import eqRestock from '../assets/shop/eqRestock.svg';
+import flour from '../assets/shop/flour.svg';
 import hojicha from '../assets/shop/hojicha.webp';
 import honeyJar from '../assets/shop/honeyJar.svg';
 import ingCaramel from '../assets/shop/ingCaramel.webp';
@@ -24,13 +25,22 @@ import jam from '../assets/shop/jam.svg';
 import jar from '../assets/shop/jar.webp';
 import lock from '../assets/shop/lock.webp';
 import matcha from '../assets/shop/matcha.webp';
+import mcChill from '../assets/shop/mcChill.svg';
+import mcCrack from '../assets/shop/mcCrack.svg';
+import mcDecorate from '../assets/shop/mcDecorate.svg';
+import mcMix from '../assets/shop/mcMix.svg';
+import mcMold from '../assets/shop/mcMold.svg';
+import mcOven from '../assets/shop/mcOven.svg';
+import mcStove from '../assets/shop/mcStove.svg';
 import milkCarton from '../assets/shop/milkCarton.svg';
+import riceFlour from '../assets/shop/riceFlour.svg';
 import sakura from '../assets/shop/sakura.webp';
 import star from '../assets/shop/star.webp';
 import store from '../assets/shop/store.webp';
 import strawberry from '../assets/shop/strawberry.webp';
 import window from '../assets/shop/window.webp';
 import type { EquipmentId } from '../game/balance';
+import type { PantryId, StationId } from '../game/recipes';
 import type { ShopEntry } from '../game/shop';
 import type { LiquidId, SpeciesId } from '../game/species';
 
@@ -39,6 +49,7 @@ export const ART = {
   eqAutoFill, eqCollector, eqRestock,
   bathtub, window, store,
   ingCaramel, ingPanna, jar, custard, hojicha, candy, sakura, lock, star, egg,
+  mcStove, mcCrack, mcMix, mcMold, mcOven, mcChill, mcDecorate, flour, riceFlour,
 } as const;
 
 export type ArtKey = keyof typeof ART;
@@ -53,6 +64,14 @@ const LIQUID_ART: Record<LiquidId, ArtKey> = { caramel: 'honeyJar', milk: 'milkC
 const EQUIPMENT_ART: Record<EquipmentId, ArtKey> = {
   autoFill: 'eqAutoFill', collector: 'eqCollector', restock: 'eqRestock',
 };
+
+/** 工坊七台機器（D57）：自己畫的，配色對齊 `scene/bakery/room.ts` 的 PAL */
+export const MACHINE_ART: Record<StationId, ArtKey> = {
+  stove: 'mcStove', crack: 'mcCrack', mix: 'mcMix', mold: 'mcMold', bake: 'mcOven', chill: 'mcChill', decorate: 'mcDecorate',
+};
+
+/** 基礎材料（D58） */
+export const PANTRY_ART: Record<PantryId, ArtKey> = { flour: 'flour', rice: 'riceFlour' };
 
 /** 蛋（D33 的通用原料，不屬於任何物種，所以不在 INGREDIENT_ART 裡） */
 export const EGG_ART: ArtSpec = { main: 'egg' };
@@ -74,6 +93,8 @@ export const INGREDIENT_ART: Record<SpeciesId, ArtSpec> = {
 export function artFor(e: ShopEntry): ArtSpec {
   switch (e.action) {
     case 'buyStock': return { main: LIQUID_ART[e.arg as LiquidId] };
+    case 'buyPantry': return { main: PANTRY_ART[e.arg as PantryId] };
+    case 'buyMachine': return { main: MACHINE_ART[e.arg as StationId] };
     case 'buyEquip': return { main: EQUIPMENT_ART[e.arg as EquipmentId] };
     case 'buyBasin': return { main: 'bathtub', corner: LIQUID_ART[e.arg as LiquidId] };
     case 'unlockZone': return { main: e.arg.startsWith('c0') ? 'window' : 'store' };

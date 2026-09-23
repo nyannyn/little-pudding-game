@@ -1,20 +1,25 @@
 import './hud.css';
 import { claimableCount, type AchievementCategory } from '../game/achievements';
 import { AchievementSheet } from './achievements';
-import {
-  STATIONS,
-  STATION_IDS,
-  canStartBatch,
-  clockText,
-  dayClock,
-  reservedForOrders,
-  shelfCount,
-  stationStatus,
-  type StationId,
-} from '../game/bakery';
+import { batchesOnLine, clockText, dayClock, reservedForOrders, shelfCount, type StationId } from '../game/bakery';
 import { BALANCE, type EquipmentId } from '../game/balance';
 import { levelFor } from '../game/level';
-import { SPECIES, SPECIES_IDS, dessertPrice, type LiquidId, type SpeciesId } from '../game/species';
+import {
+  RECIPES,
+  STATIONS,
+  blockerLines,
+  canStartRecipe,
+  dessertPrice,
+  lineFailRate,
+  linePortions,
+  materialHave,
+  materialName,
+  recipeBlockers,
+  recipeMaterials,
+  recipeSeconds,
+  type PantryId,
+} from '../game/recipes';
+import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { puddingsIn, unlockedZones } from '../game/zones';
 import { LIQUID_SHORT, bakeryHint, closeHintForGood, closedHint, dismissHints, hintsDismissed, nextHint } from './hints';
@@ -32,9 +37,12 @@ export interface HudActions {
   pickAll(): void;
   /** 切換農場／甜點工坊（D51：兩個獨立場景） */
   setView(view: GameView): void;
-  /** 點工坊的某一站：空的打蛋站＝開選單、做完的＝推到下一站（規則在 game/bakery.ts） */
-  station(id: StationId): void;
+  /** 從菜單把一盤放上流水線（D56；之後自己一站一站走完） */
   startBatch(species: SpeciesId): void;
+  /** 買工坊機器或升一級（D57） */
+  buyMachine(id: StationId): void;
+  /** 買基礎材料（D58） */
+  buyPantry(id: PantryId, qty: number): void;
   stockShelf(): void;
   claimAchievement(id: string): void;
   claimAllAchievements(): void;
@@ -74,14 +82,6 @@ const el = (html: string): HTMLElement => {
   return t.content.firstElementChild as HTMLElement;
 };
 
-const STATION_ICON: Record<StationId, CuteIconName> = {
-  crack: 'crack',
-  mix: 'mix',
-  mold: 'mold',
-  bake: 'oven',
-  decorate: 'decorate',
-};
-
 /** 成品櫃裡「可以上架」的份數：扣掉預訂單要留的，再受展示架剩餘空位限制 */
 function shelvable(s: GameState): number {
   const spare = SPECIES_IDS.reduce((n, id) => n + Math.max(0, s.desserts[id] - reservedForOrders(s, id)), 0);
@@ -119,11 +119,12 @@ export class Hud {
   private readonly dayBar: HTMLElement;
   private readonly achBadge: HTMLElement;
   private readonly ach = new AchievementSheet();
-  private readonly batchCard: HTMLElement;
+  /** 菜單卡（D56）：十道食譜，缺什麼寫在各自下面 */
+  private readonly menuCard: HTMLElement;
   /** 預訂單卡（工坊的右欄只放一顆鈕：卡片直接疊在畫面上會蓋掉半間店，2026-09-23 iPhone SE 截圖） */
   private readonly orderCard: HTMLElement;
   private readonly ordBadge: HTMLElement;
-  private batchSig = '';
+  private menuSig = '';
   private view: GameView = 'farm';
   private readonly shop = new ShopView();
   private readonly shopLvl: HTMLElement;
@@ -181,6 +182,7 @@ export class Hud {
         <div class="daybar bakery-only">
           <span class="when"><b class="day"></b><b class="clock"></b><span class="open"></span></span>
           <span class="money"><span class="today"></span><span class="yday"></span></span>
+          <span class="onl"></span>
         </div>
         <button class="iconbtn storebtn farm-only" data-a="storage" aria-label="倉庫">${icon('storage')}<span class="lbl">倉庫</span></button>
         <div class="rightcol">
@@ -193,10 +195,8 @@ export class Hud {
             <button data-a="pick" class="tilebtn t-pick">${cuteIcon('hand', 'tile')}<span class="label">撿原料</span><span class="n"></span></button>
             <button data-a="goBakery" class="tilebtn primary t-bakery">${cuteIcon('bakery', 'tile')}<span class="label">甜點店</span><span class="n"></span></button>
           </div>
-          <div class="line bakery-only stations">
-            ${STATION_IDS.map((id) => `<button data-a="station" data-arg="${id}" class="tilebtn st t-${id}" data-status="idle">${cuteIcon(STATION_ICON[id], 'tile')}<span class="label">${STATIONS[id].verb}</span><span class="n"></span><i class="prog"><b></b></i></button>`).join('')}
-          </div>
           <div class="line bakery-only">
+            <button data-a="openMenu" class="tilebtn t-menu">${cuteIcon('book', 'tile')}<span class="label">菜單</span><span class="n"></span></button>
             <button data-a="stockShelf" class="tilebtn t-shelf">${cuteIcon('shelf', 'tile')}<span class="label">上架</span><span class="n"></span></button>
             <button data-a="goFarm" class="tilebtn primary t-farm">${cuteIcon('farm', 'tile')}<span class="label">回農場</span><span class="n"></span></button>
           </div>
@@ -256,12 +256,12 @@ export class Hud {
             </div>
           </div>
         </div>
-        <div class="welcome batchcard" hidden>
+        <div class="welcome menucard" hidden>
           <div class="card">
-            <h2>開一盤甜點</h2>
-            <p class="lead"></p>
-            <div class="blist"></div>
-            <button data-a="closeBatch" class="ghost">關閉</button>
+            <h2>菜單</h2>
+            <p class="lead">挑一道甜點放上流水線，機器會自己一站一站做完。</p>
+            <div class="rlist"></div>
+            <button data-a="closeMenu" class="ghost">關閉</button>
           </div>
         </div>
         <div class="welcome ordercard" hidden>
@@ -311,11 +311,11 @@ export class Hud {
     this.btnShelf = q('[data-a="stockShelf"]');
     this.dayBar = q('.daybar');
     this.achBadge = q('.achbtn .badge');
-    this.batchCard = q('.batchcard');
+    this.menuCard = q('.menucard');
     this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
-    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard):not(.batchcard):not(.ordercard)');
+    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard):not(.menucard):not(.ordercard)');
     this.orderCard = q('.ordercard');
     this.ordBadge = q('.ordbtn .badge');
     this.storeCard = q('.storecard');
@@ -350,12 +350,14 @@ export class Hud {
       case 'pick': this.act.pickAll(); break;
       case 'goBakery': this.act.setView('bakery'); break;
       case 'goFarm': this.act.setView('farm'); break;
-      case 'station': this.act.station(arg as StationId); break;
+      case 'openMenu': this.openMenu(); break;
       case 'startBatch':
-        this.batchCard.hidden = true;
+        this.menuCard.hidden = true;
         this.act.startBatch(arg as SpeciesId);
         break;
-      case 'closeBatch': this.batchCard.hidden = true; break;
+      case 'closeMenu': this.menuCard.hidden = true; break;
+      case 'buyMachine': this.act.buyMachine(arg as StationId); break;
+      case 'buyPantry': this.act.buyPantry(arg as PantryId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
       case 'stockShelf': this.act.stockShelf(); break;
       case 'achievements':
         // 兩張底部抽屜疊在一起會只看得到上面那張：開成就就把商店收起來
@@ -387,7 +389,7 @@ export class Hud {
       case 'unlockZone': this.act.unlockZone(arg); break;
       case 'zoneStep': this.stepZone(Number(arg)); break;
       // 引導正說「去商店買原料收集手」時，直接開在設備頁——開在補貨頁玩家找不到
-      case 'shop': this.toggleShop(true, !this.hintOff && this.hintId === 'buy' ? 'equipment' : undefined); break;
+      case 'shop': this.toggleShop(true, this.hintOff ? undefined : this.hintId === 'buy' ? 'equipment' : this.hintId === 'bk-buy' ? 'bakery' : undefined); break;
       case 'closeShop': this.toggleShop(false); break;
       case 'shopTab':
         this.shop.setPage(arg as ShopPage);
@@ -583,8 +585,8 @@ export class Hud {
     this.btnPick.disabled = drops === 0;
     (this.btnPick.querySelector('.n') as HTMLElement).textContent = drops ? String(drops) : '';
 
-    // 甜點店鈕的徽章：工坊裡「做完、等你推」的站數——人在農場也看得到那邊在等你
-    const waiting = STATION_IDS.filter((id) => stationStatus(state, id) === 'ready').length;
+    // 甜點店鈕的徽章：做好、等你上架的份數（D57 起線上自己走，玩家要做的只剩上架）——人在農場也看得到
+    const waiting = shelvable(state);
     (this.root.querySelector('[data-a="goBakery"] .n') as HTMLElement).textContent = waiting ? String(waiting) : '';
     this.syncBakery(state);
 
@@ -592,7 +594,7 @@ export class Hud {
     this.achBadge.hidden = claimable === 0;
     this.achBadge.textContent = String(claimable);
     if (this.ach.open) this.ach.render(state);
-    if (!this.batchCard.hidden) this.syncBatchCard(state);
+    if (!this.menuCard.hidden) this.syncMenu(state);
 
     this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
     this.syncHint(state, nowMs);
@@ -604,15 +606,15 @@ export class Hud {
   setView(view: GameView) {
     this.view = view;
     this.root.dataset.view = view;
-    this.batchCard.hidden = true;
+    this.menuCard.hidden = true;
     this.orderCard.hidden = true;
     this.lastRefresh = -1;
   }
 
-  /** 開「開一盤甜點」選單（點空的打蛋站） */
-  openBatchPicker() {
-    this.batchCard.hidden = false;
-    this.batchSig = '';
+  /** 開菜單（工坊的「菜單」鈕、點空著的機器都走這裡） */
+  openMenu() {
+    this.menuCard.hidden = false;
+    this.menuSig = '';
     this.lastRefresh = -1;
   }
 
@@ -627,50 +629,64 @@ export class Hud {
     (this.dayBar.querySelector('.today') as HTMLElement).textContent = `今日 +${Math.floor(bk.today.revenue)}`;
     const yday = this.dayBar.querySelector('.yday') as HTMLElement;
     yday.textContent = bk.lastDay ? `昨日 +${Math.floor(bk.lastDay.revenue)}・客 ${bk.lastDay.served}` : '';
+    const onLine = batchesOnLine(state);
+    (this.dayBar.querySelector('.onl') as HTMLElement).textContent = onLine ? `流水線上 ${onLine} 盤` : '';
 
-    for (const id of STATION_IDS) {
-      const btn = this.root.querySelector<HTMLButtonElement>(`[data-a="station"][data-arg="${id}"]`);
-      if (!btn) continue;
-      const st = bk.stations[id];
-      const status = stationStatus(state, id);
-      btn.dataset.status = status;
-      const n = btn.querySelector('.n') as HTMLElement;
-      const total = BALANCE.bakery.stepSec[id] ?? 1;
-      const left = Math.max(0, st.doneAt - state.time);
-      n.textContent = status === 'working' ? `${Math.ceil(left)}s` : status === 'ready' ? '好了' : '';
-      const bar = btn.querySelector('.prog > b') as HTMLElement;
-      bar.style.width = status === 'idle' ? '0%' : `${Math.round((1 - left / total) * 100)}%`;
-    }
+    // 菜單鈕的徽章：現在就能開工的甜點有幾道
+    const startable = SPECIES_IDS.filter((id) => canStartRecipe(state, id)).length;
+    (this.root.querySelector('[data-a="openMenu"] .n') as HTMLElement).textContent = startable ? String(startable) : '';
     const shelf = shelvable(state);
     this.btnShelf.disabled = shelf <= 0;
     (this.btnShelf.querySelector('.n') as HTMLElement).textContent = shelf > 0 ? String(shelf) : '';
   }
 
-  /** 開一盤的選單：列出每一種有原料的物種，湊得齊一盤的才有「開工」鈕 */
-  private syncBatchCard(state: GameState) {
-    const q = BALANCE.bakery.batchSize;
-    const needEggs = q * BALANCE.eggsPerDessert;
-    const needIng = q * BALANCE.ingredientsPerDessert;
-    const rows = SPECIES_IDS.filter((id) => state.ingredients[id] > 0 || state.puddings.some((p) => p.species === id));
-    const busy = state.bakery.stations.crack.batch !== null;
-    const sig = JSON.stringify([state.eggs, busy, rows.map((id) => [id, state.ingredients[id]])]);
-    if (sig === this.batchSig) return;
-    this.batchSig = sig;
-    (this.batchCard.querySelector('.lead') as HTMLElement).textContent = busy
-      ? '打蛋機上還有一盤，先把它推到下一站。'
-      : `一盤做 ${q} 份：要蛋 ${needEggs} 顆（手上 ${state.eggs}）＋同一種原料 ${needIng} 份。`;
-    (this.batchCard.querySelector('.blist') as HTMLElement).innerHTML =
-      rows
-        .map((id) => {
+  /**
+   * 菜單（D56）：十道食譜一道一張卡——原料有／需、總時長、失敗率、售價、這條線一盤幾份；
+   * 機器與原料都齊、起始站空著才能按「開始製作」，不然卡片下面逐條寫缺什麼。
+   *
+   * 結構（能不能開工、缺哪幾樣、份數）變了才重建；持有數每 160ms 就地改字——
+   * 收集手一直在撿，把持有數放進 sig 等於一兩秒重建一次，手指底下的按鈕會被換掉（D55 的教訓）。
+   */
+  private syncMenu(state: GameState) {
+    const rows = SPECIES_IDS.map((id) => {
+      const b = recipeBlockers(state, id);
+      return { id, ok: canStartRecipe(state, id), lines: blockerLines(b), qty: linePortions(state, id), fail: lineFailRate(state, id) };
+    });
+    const sig = JSON.stringify(rows);
+    if (sig !== this.menuSig) {
+      this.menuSig = sig;
+      const list = this.menuCard.querySelector('.rlist') as HTMLElement;
+      const scroll = list.scrollTop;
+      list.innerHTML = rows
+        .map(({ id, ok, lines, qty, fail }) => {
           const info = SPECIES[id];
-          const ok = canStartBatch(state, id) && !busy;
-          return `<div class="brow" data-id="${id}">
-            ${artHtml(INGREDIENT_ART[id])}
-            <div class="txt"><b>${info.dessert}</b><small>${info.ingredient} ${state.ingredients[id]}／${needIng}・一份賣 ${dessertPrice(id)}</small></div>
-            <button class="buy" data-a="startBatch" data-arg="${id}"${ok ? '' : ' disabled'}>開工</button>
+          const r = RECIPES[id];
+          const secs = recipeSeconds(id);
+          const time = secs >= 60 ? `${Math.floor(secs / 60)} 分 ${secs % 60} 秒` : `${secs} 秒`;
+          const per = Math.max(1, qty);
+          const mats = recipeMaterials(id)
+            .map(([k, n]) => `<span class="mat" data-k="${k}" data-need="${n * per}">${materialName(k)} <b>0</b>/${n * per}</span>`)
+            .join('');
+          return `<div class="rcard" data-id="${id}" data-ok="${ok}">
+            <div class="rhead">
+              ${artHtml(INGREDIENT_ART[id])}
+              <div class="txt"><b>${info.dessert}</b><small>${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
+              <span class="price">${dessertPrice(id)}</span>
+            </div>
+            <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>一盤 ${per} 份</span></div>
+            <div class="mats">${mats}</div>
+            ${lines.map((t) => `<p class="miss">${t}</p>`).join('')}
+            <button class="buy" data-a="startBatch" data-arg="${id}"${ok ? '' : ' disabled'}>開始製作</button>
           </div>`;
         })
-        .join('') || '<p class="empty">還沒有原料。回農場撿布丁掉的東西再來。</p>';
+        .join('');
+      list.scrollTop = scroll;
+    }
+    for (const m of this.menuCard.querySelectorAll<HTMLElement>('.mat')) {
+      const have = materialHave(state, m.dataset.k as never);
+      (m.querySelector('b') as HTMLElement).textContent = String(have);
+      m.classList.toggle('short', have < Number(m.dataset.need));
+    }
   }
 
   /** 倉庫卡：一件一格（圖＋名字＋數量）；只在內容變了才重建 DOM（每幀重建會吃掉按到一半的點擊） */

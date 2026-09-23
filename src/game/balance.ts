@@ -81,13 +81,9 @@ export const BALANCE = {
   /** 掉落是「蛋」的機率；其餘是該布丁自己物種的原料。配方吃 2 蛋 1 原料，所以偏向蛋 */
   eggChance: 0.65,
 
-  /** 一份甜點要幾份「該物種原料」（D33；D51 起在工坊的攪拌站扣） */
-  ingredientsPerDessert: 1,
-  /** 一份甜點要幾顆蛋（D33；D51 起在工坊的打蛋站扣） */
-  eggsPerDessert: 2,
   /**
-   * 甜點售價＝(蛋 × eggsPerDessert × eggPrice ＋ 該物種原料價) × 此倍率（D53）。
-   * 材料直接賣 12 元的焦糖布丁塔賣 26：多走一趟 64 秒的流水線、佔展示架，
+   * 甜點售價＝這一份的材料直接賣／買的價錢 × 此倍率（D53 → D56 食譜制，`recipes.dessertPrice`）。
+   * 食譜的原料種類與份數在 `recipes.ts`；步驟多的甜點材料多、自然較貴。
    * 約 2.2 倍是「值得進工坊、但直接賣原料也不虧」的中間值。
    */
   dessertMarkup: 2.2,
@@ -171,12 +167,8 @@ export const BALANCE = {
    */
   milkPannaShiftChance: 0.35,
 
-  // ── 甜點工坊（D51／D52，2026-09-23）──────────────────
+  // ── 甜點工坊（D51／D52，2026-09-23；站、秒數、機器價錢與份數在 `recipes.ts`，D56／D57）──
   bakery: {
-    /** 一盤做幾份（同一物種） */
-    batchSize: 2,
-    /** 每一站幾秒（遊戲秒）。烘烤最久：這就是「烘焙甜點需要時間」 */
-    stepSec: { crack: 4, mix: 6, mold: 4, bake: 45, decorate: 5 } as Record<string, number>,
     /** 展示架總共放得下幾份 */
     shelfCap: 12,
     /** 遊戲內一天幾秒（20 分鐘） */
@@ -194,6 +186,8 @@ export const BALANCE = {
   /** 開局 */
   startCoins: 30,
   startStock: { caramel: 6, milk: 2 } as Record<string, number>,
+  /** 開局送的基礎材料（D58）：焦糖布丁塔一份要 1 份麵粉 */
+  startPantry: { flour: 4, rice: 0 } as Record<string, number>,
 } as const;
 
 /**
@@ -224,7 +218,7 @@ const BATH_INCOME = 10;
 export const EQUIPMENT: Record<EquipmentId, EquipmentInfo> = {
   autoFill: { id: 'autoFill', name: '自動注液閥', replaces: '倒澡盆', desc: '澡盆低於一份就自動從庫存補滿', price: 8 * BATH_INCOME, tier: 1, level: 1 },
   collector: { id: 'collector', name: '原料收集手', replaces: '撿原料', desc: '掉落的原料直接進庫存', price: 6 * BATH_INCOME, tier: 1, level: 1 },
-  restock: { id: 'restock', name: '補貨合約', replaces: '去商店補貨', desc: '焦糖與牛乳庫存見底就自動補貨', price: 40 * BATH_INCOME, tier: 3, level: 6 },
+  restock: { id: 'restock', name: '補貨合約', replaces: '去商店補貨', desc: '焦糖、牛乳、麵粉見底就自動補貨', price: 40 * BATH_INCOME, tier: 3, level: 6 },
 };
 
 export const EQUIPMENT_IDS = Object.keys(EQUIPMENT) as EquipmentId[];

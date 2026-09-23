@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { STATION_IDS, startBatch } from '../../src/game/bakery';
 import { BALANCE } from '../../src/game/balance';
+import type { SimEvent } from '../../src/game/events';
+import { RECIPES } from '../../src/game/recipes';
 import { advance } from '../../src/game/sim';
 import { LIQUIDS } from '../../src/game/species';
 import { createNewSave } from '../../src/game/state';
@@ -86,18 +89,25 @@ describe('補貨合約', () => {
 });
 
 describe('全自動生產線：不碰一下也會出貨到成品櫃', () => {
-  it('農場三台設備＋工坊五站自動化全裝，跑 10 分鐘後成品櫃有甜點、地上沒有掉落物', () => {
+  it('農場三台設備全裝＋工坊放一盤上線（D57 起線上自己走），跑 10 分鐘後那一盤走完、地上沒有掉落物', () => {
     const w = makeWorld({ seed: 2026 });
     const eq = w.state.equipment[w.state.activeZone]!;
     for (const k of Object.keys(eq)) eq[k as keyof typeof eq] = true;
-    for (const k of Object.keys(w.state.bakery.auto)) w.state.bakery.auto[k as keyof typeof w.state.bakery.auto] = true;
+    for (const id of RECIPES.caramel.route) w.state.bakery.machines[id] = 1;
     w.state.coins = 200;
     w.state.stock.caramel = 10;
+    Object.assign(w.state, { eggs: 2 });
+    w.state.ingredients.caramel = 1;
+    w.state.stock.milk = 1;
     fillBasinDirect(w.state, 'caramel');
+    const events: SimEvent[] = [];
+    expect(startBatch(w.state, 'caramel', (e) => events.push(e)).ok).toBe(true);
+    const emit = w.emit;
+    w.emit = (e) => { events.push(e); emit(e); };
 
     advance(w, 600);
-    expect(w.state.stats.baked).toBeGreaterThan(0);
-    expect(w.state.desserts.caramel).toBeGreaterThan(0);
+    for (const id of STATION_IDS) expect(w.state.bakery.stations[id].batch).toBeNull();
+    expect(events.some((e) => e.type === 'bakeDone' || e.type === 'bakeFailed')).toBe(true);
     expect(w.state.drops.length).toBe(0);
     expect(w.state.stats.baths).toBeGreaterThan(0);
   });

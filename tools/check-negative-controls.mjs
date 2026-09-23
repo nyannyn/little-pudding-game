@@ -109,22 +109,7 @@ const CASES = [
     test: '目錄狀態跟 action 守衛一致',
   },
   // ── CP8 甜點工坊（D50–D54，2026-09-23）──
-  {
-    ac: 'AC8-1',
-    why: '拿掉「做完了沒」的判斷，還在工作的那一站也推得動',
-    file: 'src/game/bakery.ts',
-    from: 'if (state.time < st.doneAt) return fail',
-    to: 'if (false) return fail',
-    test: '還沒做完推不動',
-  },
-  {
-    ac: 'AC8-2',
-    why: '開工只驗蛋不驗原料，那一盤會卡在攪拌站',
-    file: 'src/game/bakery.ts',
-    from: 'if (state.ingredients[species] < ing) return fail',
-    to: 'if (false) return fail',
-    test: '蛋夠、原料不夠',
-  },
+  // AC8-1／AC8-2（手動推站、開工只驗蛋）在 D56／D57 食譜制全自動流水線後不存在了，換成下面 AC9-*
   {
     ac: 'AC8-3',
     why: '時鐘直接用 time 算、不扣 epoch，老玩家開店第一天就不是 Day 1',
@@ -164,6 +149,55 @@ const CASES = [
     from: '  state.claimedAchievements.push(a.id);',
     to: '',
     test: '達成後要領才入帳',
+  },
+  // ── CP9 食譜制流水線（D56–D58，2026-09-24）──
+  {
+    ac: 'AC9-2',
+    why: '拿掉「路線上的機器買了沒」，沒機器也開得了工',
+    file: 'src/game/recipes.ts',
+    from: 'const machines = r.route.filter((id) => machineLevel(state, id) === 0);',
+    to: 'const machines: StationId[] = [];',
+    test: '沒機器：列出路線上還沒買的機器',
+  },
+  {
+    ac: 'AC9-3',
+    why: '下一站還有一盤也照推，兩盤疊在同一站、前一盤憑空消失',
+    file: 'src/game/bakery.ts',
+    from: '    if (st[next].batch) continue;',
+    to: '',
+    test: '下一站還有一盤就在原站等',
+  },
+  {
+    ac: 'AC9-4',
+    why: '份數改成取路線上最高那台，只升烤箱就整條線變 4 份',
+    file: 'src/game/recipes.ts',
+    from: 'return Math.min(...RECIPES[species].route.map((id) => machineLevel(state, id)));',
+    to: 'return Math.max(...RECIPES[species].route.map((id) => machineLevel(state, id)));',
+    test: '混級取低',
+  },
+  {
+    ac: 'AC9-5',
+    why: '升級不再降低失敗率',
+    file: 'src/game/recipes.ts',
+    from: 'return RECIPES[species].failRate * (MACHINE_FAIL_MULT[lv] ?? 1);',
+    to: 'return RECIPES[species].failRate * 1;',
+    test: 'Lv3 打到',
+  },
+  {
+    ac: 'AC9-6',
+    why: '沒湊齊任何一條線也照樣來客，新玩家開局一直有撲空的客人',
+    file: 'src/game/bakery.ts',
+    from: 'if (!c.open || !anyLineReady(state)) {',
+    to: 'if (!c.open) {',
+    test: '開局 30 分鐘：沒有撲空的客人',
+  },
+  {
+    ac: 'AC9-7',
+    why: 'v8 線上做到一半的那一盤只退蛋、漏退原料',
+    file: 'src/game/bakery.ts',
+    from: "    if (id !== 'crack') state.ingredients[b.species as SpeciesId] += qty * LEGACY_ING_PER;",
+    to: '',
+    test: '打蛋站那盤只退蛋',
   },
 ];
 
