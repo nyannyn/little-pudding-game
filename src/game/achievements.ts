@@ -10,7 +10,7 @@ import type { GameState } from './state';
  * 用 `coins` 或「現在養幾隻」判定的話，花掉／賣掉就會「失去」成就，而且領過的獎金會跟條件對不上。
  * 達成不會自動入帳，要玩家按「領取」——領的那一下才是回饋，自動入帳玩家根本不會注意到錢從哪來。
  *
- * 前七條（撿、賣、泡澡、生寶寶、出爐、第一位客人、第一天打烊）約前 20 分鐘就拿得到，
+ * 前七條（撿、賣、泡澡、生寶寶、出爐、第一位客人、第一天打烊）約前 15 分鐘就拿得到，
  * 合計 640 元＝開局資金（`npm run pacing` 的 achievements 情境量這個數）。
  * 老玩家的舊 stats 算數：他們在舊規則下確實撿過、泡過、生過。
  */
@@ -36,16 +36,19 @@ export const ACHIEVEMENTS: AchievementInfo[] = [
   { id: 'firstCustomer', name: '第一位客人', desc: '展示架上的甜點被買走', reward: 100, value: (s) => s.stats.served, target: 1 },
   { id: 'firstDay', name: '打烊囉', desc: '甜點店營業完第一天', reward: 200, value: (s) => s.stats.daysClosed, target: 1 },
   { id: 'firstPuddingSale', name: '布丁出嫁', desc: '賣出一隻布丁', reward: 50, value: (s) => s.stats.puddingsSold, target: 1 },
-  { id: 'pick100', name: '撿拾達人', desc: '累計撿 100 份', reward: 150, value: (s) => s.stats.picked, target: 100 },
-  { id: 'births10', name: '大家庭', desc: '累計生 10 隻小布丁', reward: 300, value: (s) => s.stats.births, target: 10 },
-  { id: 'zone2', name: '擴建', desc: '解鎖第二個櫥窗區', reward: 300, value: zonesUnlocked, target: 2 },
-  { id: 'ingredients100', name: '原料批發商', desc: '累計賣 100 份原料', reward: 200, value: (s) => s.stats.ingredientsSold, target: 100 },
+  { id: 'pick100', name: '撿拾達人', desc: '累計撿 100 份', reward: 100, value: (s) => s.stats.picked, target: 100 },
+  { id: 'births10', name: '大家庭', desc: '累計生 10 隻小布丁', reward: 150, value: (s) => s.stats.births, target: 10 },
+  { id: 'zone2', name: '擴建', desc: '解鎖第二個櫥窗區', reward: 200, value: zonesUnlocked, target: 2 },
+  { id: 'ingredients100', name: '原料批發商', desc: '累計賣 100 份原料', reward: 150, value: (s) => s.stats.ingredientsSold, target: 100 },
   { id: 'orders10', name: '預訂達人', desc: '交 10 張預訂單', reward: 400, value: (s) => s.stats.ordersDone, target: 10 },
   { id: 'baked50', name: '烘焙學徒', desc: '累計出爐 50 份甜點', reward: 400, value: (s) => s.stats.baked, target: 50 },
   { id: 'served100', name: '熟客滿門', desc: '招待 100 位客人', reward: 500, value: (s) => s.stats.served, target: 100 },
   { id: 'day500', name: '日進斗金', desc: '單日營收達 500', reward: 500, value: (s) => s.stats.bestDayRevenue, target: 500 },
-  { id: 'species3', name: '三種口味', desc: '養過三種不同的布丁', reward: 500, value: (s) => s.speciesSeen.length, target: 3 },
-  { id: 'hybrid', name: '混種誕生', desc: '養出第一隻混種布丁', reward: 800, value: (s) => (s.speciesSeen.some((id) => !BASE_SPECIES_IDS.includes(id as AlleleId)) ? 1 : 0), target: 1 },
+  // 牛奶澡開局幾分鐘就會生出鮮奶酪與卡士達（D34 的配子偏移），所以「三種口味」「第一隻混種」
+  // 是白送的——2026-09-23 量表實測兩條在第 1 分鐘就領走 1300 元、上層 1.4 分鐘就解鎖。
+  // 門檻改成要真的去買風味澡盆才拿得到的量
+  { id: 'species5', name: '五種口味', desc: '養過五種不同的布丁', reward: 500, value: (s) => s.speciesSeen.length, target: 5 },
+  { id: 'hybrid3', name: '混種收藏家', desc: '養出三種不同的混種布丁', reward: 800, value: (s) => s.speciesSeen.filter((id) => !BASE_SPECIES_IDS.includes(id as AlleleId)).length, target: 3 },
   { id: 'week', name: '開店一週', desc: '甜點店營業滿 7 天', reward: 1500, value: (s) => s.stats.daysClosed, target: 7 },
   { id: 'baked500', name: '甜點大師', desc: '累計出爐 500 份甜點', reward: 3000, value: (s) => s.stats.baked, target: 500 },
 ];

@@ -346,13 +346,13 @@ describe('AC8-8 成就', () => {
   it('花光錢、賣掉布丁都不會讓已達成的成就退回去（只看單調欄位）', () => {
     const s = createNewSave({ seed: 1, now: 0 });
     s.stats.births = 1;
-    s.speciesSeen.push('panna', 'custard');
+    s.speciesSeen.push('panna', 'custard', 'matcha', 'hojicha', 'sakura');
     s.coins = 0;
     s.puddings = s.puddings.slice(0, 1);
     const a = (id: string) => achievementStatus(s, ACHIEVEMENTS.find((x) => x.id === id)!);
     expect(a('firstBirth')).toBe('claimable');
-    expect(a('species3')).toBe('claimable');
-    expect(a('hybrid')).toBe('claimable');
+    expect(a('species5')).toBe('claimable');
+    expect(a('hybrid3')).toBe('claimable');
   });
 
   it('前七條（開局資金）合計 640 元；id 不重複', () => {
