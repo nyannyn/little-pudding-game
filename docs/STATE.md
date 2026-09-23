@@ -223,10 +223,23 @@
 - **已知、非本次造成**：iPhone SE（320 寬）上「小提示」泡泡（`.hint` top 206px）會蓋住整個中層的布丁；以前被狀態卡擋在下面，現在左欄空了，可以考慮把泡泡往上移，但要避開右欄訂單卡，未做。
 - **PR #14 已 squash merge 上線（2026-09-23，merge commit `9db224e`）**：Pages deploy 綠，線上 bundle `index-DPSFOwlH.js` 含 `Pudding_MoodIcons`、不再有「悠閒彈跳」，`npm run smoke:live` 全過。待使用者在手機上視覺簽核（圖示大小／樣式、垂眼幅度）。
 
+## 家具擺放＋倉庫（2026-09-23，使用者要求「所有家具都要可以重新擺放 所以你要做一個倉庫選單；澡盆內的東西也可以清除（放進倉庫就是清除）」，分支 `feat/furniture-storage`，worktree `../lpg-wt-storage`，D49）
+
+- **使用者四題選定**：長按拖曳（不是點選再點地板／固定格位）、倉庫全場共用可跨區、收澡盆時液體直接倒掉（不退庫存）、允許一區沒有澡盆。另外追加：「櫥窗全部住滿了」提示關不掉 → 一起改。
+- **資料模型**：`SCHEMA_VERSION` 6→**7**；`state.storedEquipment`（倉庫台數）、`state.equipmentPos`（擺過的設備位置，沒存＝改版前寫死的位置，所以舊檔畫面完全不變）。**收起來的澡盆不從 `basins` 刪**，`zone` 改成 `STORAGE_ZONE`——`Pudding.basinIndex`／`pour` 事件／液面動畫全以索引為鍵，splice 會讓水流畫到別的盆。`migrate` 的 `zoneOf` 會把不認得的區補成起始區，倉庫盆要特判（有測試、突變紅過）。
+- **規則全在 `game/furniture.ts`**：佔地、`placementError`（出界／壓到別的落地家具）、`moveFurniture`／`storeFurniture`／`placeFromStorage`、`findFreeSpot`。`TANK_INNER`／`BASIN_RADIUS` 是抄 scene 的數字，單元測試比對 `scene/cabinet.TANK`、`basinMesh.BASIN`。布丁落點改用 `blockedByFurniture` 避開所有落地家具（原本只避澡盆）。注液閥掛在該區第一個澡盆上方、不能單獨拖；收集手掛頂板、可拖（拖的平面設在夾爪高度，不然透視會偏）。
+- **手勢（`main.ts`）**：按住家具 450ms 不動 → `controls.enabled=false`、設備拆成單獨的 `EquipmentDrag` mesh 只改 position（不每幀 merge）、腳下綠／紅圈；放手才 `moveFurniture`，放不下就 toast「…，放回原位」。長按的放手不算點擊（不會順手倒液體）。`window.__lpg.toScreen(x,y,z)` 給 e2e 把區域座標投到螢幕。
+- **倉庫鈕放左欄頂列下方**：第一版加在頂列，蓋住甜點數字，`cp5-tips` 點 chip 被 intercept 而紅——頂列在 390 寬就已經滿了。有分區切換列時往下讓（`.zones:not([hidden]) ~ .storebtn`）。`tools/playtest/layout.mjs` 已加倉庫鈕的四項判準（不疊頂列／切換列／訂單欄／提示、點得到、不蓋布丁），負向對照（top 改 60px）兩個視口都紅過。
+- **住滿提示**：`Hint.dismissable`——它是告知不是停擺，按 × 永久關（`localStorage` `lpg.hints.closed`，id 帶已解鎖區數，解鎖新區又住滿才再講），「不再顯示提示」也蓋得到。停擺類警告維持 45 秒後再講。
+- **commit 後顧問抓到兩個 e2e 結構上測不到的 bug（都先寫測試跑紅再修）**：①**抓起來一動就跳位**——拖曳平面用地板，手指按的是機身（高 0.3），俯視鏡頭下射線打到地板的點在機器後方 0.51 遠；原本的 e2e 終點本身就是「目標的地板投影」，所以最後位置對得上、中途跳位量不到。修法：拖曳平面取抓取點的高度、保留「家具中心－抓取點」偏移。②**販賣機預設位置照新規則是違規的**（z 上限 0.58、預設 0.60）：原地長按放手會被退回。佔地改成前後不對稱（`cz`），貼玻璃間隙 0.02→0.004——**新規則不可以把舊擺法判成違規**，單元測試逐台驗預設位置合法。
+- **證據**：單元 200 綠（新 `furniture.test.ts` 17 條；突變紅過：migrate 不特判倉庫盆、拿掉布丁避家具；預設位置那兩條在修之前紅過）；e2e 新 `cp7-furniture.spec.ts` 5 條（突變紅過：拖曳時不關 controls〔修跳位後改由鏡頭角度斷言抓到〕、放手不寫入、× 不寫 localStorage；跳位那條在修之前紅過，偏 0.51）；`npm run test:negative` 只有 AC2-9 紅（master 上本來就紅）；`npm run build` 綠；pacing 四情境里程碑都在原範圍（最後一個情境 10.3／19.4／33.9 → 10.8／17.4／33.4 分，亂數序列因避障改變）；截圖兩個視口（拖曳中、倉庫卡武裝狀態）看過。**視覺待使用者手機簽核**：長按手感（450ms）、綠紅圈、倉庫卡。
+
 ## 風味與焦糖離開澡盆 → 手動保養＋三台自動機（2026-09-22 第十二場，使用者要求「抹茶澡盆要改成撒抹茶粉的機器」）
 
 **狀態：設計問完、計畫寫好、`src/` 一個字都沒動。使用者說「紀錄進 STATE.md，我之後做」。**
 完整工作計畫（現況盤點／派工拆解 W0–W10／遷移補值表／九條驗收條件含負向對照）在 [plans/care-machines-v1.md](plans/care-machines-v1.md)。
+
+**2026-09-23 家具倉庫（D49）上線後要一併改的兩件**：①D 編號 D49 已被家具倉庫用掉，本改版從 D50 起；②遷移補值「自動機裝在 `Basin.zone` 那一區」——收進倉庫的盆 `zone === STORAGE_ZONE`，照原寫法會把設備裝進不存在的區；倉庫盆的特殊液體改成送進 `storedEquipment`（倉庫）。
 
 **使用者已定案的七件事**（逐題選項式問過）
 1. 抹茶**與草莓一起改**，並帶上已決定沒實作的 D40（焦糖離開澡盆）→ **澡盆只剩「倒牛乳＝繁殖」**，`needsBasin`／`ownedBasins`／`SPECIAL_LIQUIDS`／商店「澡盆」分頁整組收掉。

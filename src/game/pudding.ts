@@ -2,6 +2,7 @@ import { BALANCE } from './balance';
 import { basinAvailable, consumeBathUnit, findBasinFor } from './basin';
 import type { EventSink } from './events';
 import { breedFromBath } from './breeding';
+import { blockedByFurniture } from './furniture';
 import { applySpeciesAsPure } from './genetics';
 import { grantXp } from './level';
 import { range, type Rng } from './rng';
@@ -22,7 +23,7 @@ function dist(a: Vec2, b: Vec2): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
 
-/** 在地板內挑一個落點，盡量避開其他布丁與澡盆；挑不到就用最後一次的候選 */
+/** 在地板內挑一個落點，盡量避開其他布丁與家具；挑不到就用最後一次的候選 */
 function randomFloorPoint(state: GameState, self: Pudding, ctx: SimContext): Vec2 {
   const { floor, rng } = ctx;
   let fallback: Vec2 = { x: self.pos.x, z: self.pos.z };
@@ -35,10 +36,8 @@ function randomFloorPoint(state: GameState, self: Pudding, ctx: SimContext): Vec
       if (other.id === self.id || other.zone !== self.zone) continue;
       if (dist(p, other.pos) < BALANCE.puddingSpacing) { clear = false; break; }
     }
-    if (clear) for (const b of state.basins) {
-      if (b.zone !== self.zone) continue;
-      if (dist(p, b.pos) < 0.26) { clear = false; break; }
-    }
+    // 澡盆與落地設備都要避開（D49：家具可以被拖到地板中央，不避開布丁會直接跳進機器裡）
+    if (clear && blockedByFurniture(state, self.zone, p, 0.05)) clear = false;
     if (clear) return p;
   }
   return fallback;

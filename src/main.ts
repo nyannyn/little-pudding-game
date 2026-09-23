@@ -22,6 +22,20 @@ import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
 import { puddingMood } from './game/pudding';
+import {
+  BASIN_RADIUS,
+  clampToTank,
+  equipmentPos,
+  findFreeSpot,
+  furnitureIn,
+  isDraggable,
+  moveFurniture,
+  placeFromStorage,
+  placementError,
+  storeFurniture,
+  type FurnitureRef,
+} from './game/furniture';
+import { parseRefKey } from './ui/storage';
 import { unlockedAtLevel } from './game/shop';
 import { advance, createWorld, drainEvents, settleOffline, syncForSave } from './game/sim';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
@@ -49,7 +63,7 @@ import {
 import { createCabinetRow } from './scene/cabinetRow';
 import { BASIN_SINK, BasinsView } from './scene/basinMesh';
 import { DropsView } from './scene/dropMesh';
-import { EquipmentView, SELLER_SPOUT } from './scene/equipmentMesh';
+import { EquipmentView, sellerSpout } from './scene/equipmentMesh';
 import { Particles } from './scene/particles';
 import { ENTER as POUR_ENTER, PourView, THICKNESS, flowSeconds } from './scene/pourView';
 import { PuddingView } from './scene/puddingView';
@@ -372,7 +386,23 @@ const hud = new Hud(document.body, {
   buyBasin: (liquid) => {
     const used = basinsIn(state, state.activeZone).length;
     const slot = BASIN_SLOTS[Math.min(used, BASIN_SLOTS.length - 1)] as Vec2;
-    report(buySpecialBasin(state, liquid, slot, state.activeZone, world.emit));
+    // 家具可以被拖到任何地方（D49），預設格位可能已經被佔了：從那附近找一個空位
+    const spot = findFreeSpot(state, state.activeZone, { kind: 'basin', index: -1 }, slot) ?? slot;
+    report(buySpecialBasin(state, liquid, spot, state.activeZone, world.emit));
+  },
+  storeFurniture: (key) => {
+    const ref = parseRefKey(key);
+    if (!ref) return;
+    const r = storeFurniture(state, state.activeZone, ref);
+    if (r.ok && r.message) hud.toast(r.message);
+    report(r);
+  },
+  placeFurniture: (key) => {
+    const ref = parseRefKey(key);
+    if (!ref) return;
+    const r = placeFromStorage(state, state.activeZone, ref);
+    if (r.ok && r.message) hud.toast(r.message);
+    report(r);
   },
   unlockZone: (id) => {
     if (!report(unlockZone(state, id, spawnFor(), world.emit))) return;
@@ -477,15 +507,16 @@ function handle(e: SimEvent) {
 /**
  * 賣出的金幣從販賣機彈出來、撒在地板上、消失（D42）。
  *
- * 買了販售口：從販賣機**頂上**（`SELLER_SPOUT`）冒出來——機身有半公尺高，從機身裡生
+ * 買了販售口：從販賣機**頂上**（`sellerSpout()`，跟著販賣機的位置走，D49）冒出來——機身有半公尺高，從機身裡生
  * 第一幀就被擋住；往 −z 拋會越過機身落到地板上。沒買（手動出貨）：從前緣帶 z=0.6 正中央生，
  * 布丁地板是 ±0.4，落在 0.42–0.60 這條帶才不會蓋住布丁。
  */
 function spawnCoins(earned: number, ox: number, oy: number) {
   const hasWindow = equipmentIn(state, state.activeZone).seller; // 販賣機只畫在裝了它的那一區
-  const x = ox + (hasWindow ? SELLER_SPOUT.x : 0);
-  const z = hasWindow ? SELLER_SPOUT.z : 0.6;
-  const y = oy + (hasWindow ? SELLER_SPOUT.y : 0.28);
+  const spout = sellerSpout(equipmentPos(state, state.activeZone, 'seller')); // 販賣機可以被搬走（D49）
+  const x = ox + (hasWindow ? spout.x : 0);
+  const z = hasWindow ? spout.z : 0.6;
+  const y = oy + (hasWindow ? spout.y : 0.28);
   // 金額越大越多枚，但看得清楚比例更重要：2–6 枚
   const n = Math.max(2, Math.min(6, 2 + Math.floor(earned / 40)));
   coins.burst(x, y, z, n, oy, Math.random, hasWindow ? 'right' : 'both');
@@ -499,8 +530,12 @@ let downAt = { x: 0, y: 0, t: 0 };
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   downAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+  armLongPress(ev);
 });
 renderer.domElement.addEventListener('pointerup', (ev) => {
+  // 長按拖家具（D49）的放手不是點擊：不然放在澡盆上會順手倒一份液體
+  if (endDrag(true)) return;
+  cancelLongPress();
   // 只有「短按而且幾乎沒移動」才算點擊，否則那是在環繞鏡頭
   const moved = Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y);
   if (moved > 10 || performance.now() - downAt.t > 400) return;
@@ -531,6 +566,156 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   const hitTier = raycaster.intersectObjects(tierTargets(), false)[0];
   if (hitTier) tapZone(hitTier.point);
 });
+
+// ── 長按拖家具（D49） ────────────────────────────────
+/**
+ * 按住家具 `LONG_PRESS_MS` 不動 → 進入拖曳：鏡頭停止環繞、家具跟著手指走、腳下一圈
+ * 綠（放得下）／紅（壓到別的或出界）。放手才呼叫 `furniture.moveFurniture` 寫進 state——
+ * 拖的過程只是預覽，合不合法的判定全在 `game/`，這裡不自己算。
+ */
+const LONG_PRESS_MS = 450;
+let pressTimer = 0;
+let pressRef: FurnitureRef | null = null;
+/** 長按時手指打到家具的那一點（世界座標）：拖曳平面取它的高度，否則按機身一拖就跳到後牆 */
+const pressHit = new THREE.Vector3();
+interface Drag {
+  ref: FurnitureRef;
+  pos: Vec2;
+  valid: boolean;
+  /** 拖設備時單獨的那一台（澡盆直接用 BasinsView 的預覽） */
+  mesh: THREE.Mesh | null;
+  /** 拖曳平面的世界高度＝抓的那一點的高度 */
+  planeY: number;
+  /** 家具中心－抓取點（區域座標）：放手時家具中心要停在「手指＋這個偏移」，不是手指底下 */
+  dx: number;
+  dz: number;
+}
+let drag: Drag | null = null;
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const dragHit = new THREE.Vector3();
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x7cb85c, transparent: true, opacity: 0.85, depthTest: false });
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 32), ringMat);
+ring.rotation.x = -Math.PI / 2;
+ring.renderOrder = 12;
+ring.visible = false;
+ring.name = 'DragRing';
+scene.add(ring);
+// iOS 長按會跳放大鏡／選字選單，會把長按手勢吃掉
+renderer.domElement.style.setProperty('-webkit-touch-callout', 'none');
+renderer.domElement.style.setProperty('-webkit-user-select', 'none');
+renderer.domElement.style.userSelect = 'none';
+
+function setPointer(ev: { clientX: number; clientY: number }) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+}
+
+/** 手指底下是哪一件家具：打到澡盆或設備的 mesh，再挑離打點最近的那件 */
+function furnitureUnder(ev: PointerEvent): FurnitureRef | null {
+  setPointer(ev);
+  const hit = raycaster.intersectObjects([...basins.group.children, ...equipment.group.children], false)[0];
+  if (!hit) return null;
+  pressHit.copy(hit.point);
+  const { ox } = activeOrigin();
+  const lx = hit.point.x - ox, lz = hit.point.z;
+  let best: FurnitureRef | null = null, bestD = Infinity;
+  for (const f of furnitureIn(state, state.activeZone)) {
+    if (!isDraggable(f.ref)) continue;
+    const d = Math.hypot(f.pos.x - lx, f.pos.z - lz);
+    if (d < bestD) { bestD = d; best = f.ref; }
+  }
+  return bestD < 0.45 ? best : null;
+}
+
+function armLongPress(ev: PointerEvent) {
+  cancelLongPress();
+  if (!ev.isPrimary) return;
+  pressRef = furnitureUnder(ev);
+  if (!pressRef) return;
+  pressTimer = window.setTimeout(() => {
+    if (pressRef) beginDrag(pressRef);
+    pressRef = null;
+  }, LONG_PRESS_MS);
+}
+
+function cancelLongPress() {
+  if (pressTimer) window.clearTimeout(pressTimer);
+  pressTimer = 0;
+  pressRef = null;
+}
+
+function currentPos(ref: FurnitureRef): Vec2 {
+  if (ref.kind === 'basin') return { ...(state.basins[ref.index]?.pos ?? { x: 0, z: 0 }) };
+  return { ...equipmentPos(state, state.activeZone, ref.id) };
+}
+
+function footprintRadius(ref: FurnitureRef): number {
+  if (ref.kind === 'basin') return BASIN_RADIUS + 0.03;
+  return ref.id === 'seller' ? 0.22 : ref.id === 'crafter' ? 0.2 : ref.id === 'collector' ? 0.09 : 0.14;
+}
+
+function beginDrag(ref: FurnitureRef) {
+  const { oy, ceilY } = activeOrigin();
+  controls.enabled = false; // 拖曳中手指不轉鏡頭
+  const { ox } = activeOrigin();
+  const pos = currentPos(ref);
+  drag = { ref, pos, valid: true, mesh: null, planeY: pressHit.y, dx: pos.x - (pressHit.x - ox), dz: pos.z - pressHit.z };
+  if (ref.kind === 'equipment') {
+    drag.mesh = equipment.buildDragMesh(ref.id, oy, ceilY);
+    scene.add(drag.mesh);
+  }
+  const r = footprintRadius(ref);
+  ring.scale.set(r, r, 1);
+  ring.visible = true;
+  placeDragVisuals();
+  navigator.vibrate?.(12);
+}
+
+function placeDragVisuals() {
+  if (!drag) return;
+  const { ox, oy } = activeOrigin();
+  drag.mesh?.position.set(ox + drag.pos.x, 0, drag.pos.z);
+  ring.position.set(ox + drag.pos.x, oy + 0.006, drag.pos.z);
+  ringMat.color.setHex(drag.valid ? 0x7cb85c : 0xe5704f);
+}
+
+renderer.domElement.addEventListener('pointermove', (ev) => {
+  if (pressRef && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) > 10) cancelLongPress();
+  if (!drag) return;
+  const { ox } = activeOrigin();
+  setPointer(ev);
+  // 平面高度＝當初抓的那一點（機身中段、夾爪…），投到地板上會有透視偏差，一動就跳位
+  dragPlane.constant = -drag.planeY;
+  if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
+  drag.pos = clampToTank(drag.ref, { x: dragHit.x - ox + drag.dx, z: dragHit.z + drag.dz });
+  drag.valid = placementError(state, state.activeZone, drag.ref, drag.pos) === null;
+  placeDragVisuals();
+});
+renderer.domElement.addEventListener('pointercancel', () => {
+  cancelLongPress();
+  endDrag(false);
+});
+
+/** 結束拖曳；`commit` 才寫進 state。回傳剛才是不是在拖 */
+function endDrag(commit: boolean): boolean {
+  if (!drag) return false;
+  const d = drag;
+  drag = null;
+  if (d.mesh) {
+    scene.remove(d.mesh);
+    d.mesh.geometry.dispose();
+  }
+  ring.visible = false;
+  controls.enabled = true;
+  if (commit) {
+    const r = moveFurniture(state, state.activeZone, d.ref, d.pos);
+    // 放不下就留在原地，並說明為什麼（壓到別的／出界）
+    if (!r.ok) hud.toast(`${r.error}，放回原位`, true);
+    hud.update(state, performance.now(), true);
+  }
+  return true;
+}
 
 const TIER_TARGET_NAMES = new Set(['TankPlates', 'TankLocks', 'TankGlass', 'TankFloors', 'NeighbourLock', 'NeighbourGlass', 'NeighbourWood']);
 function tierTargets(): THREE.Object3D[] {
@@ -645,6 +830,12 @@ window.__lpg.three = { scene, camera, renderer, controls, raycaster };
 window.__lpg.state = state;
 window.__lpg.sfx = sfx;
 window.__lpg.grantXp = (n) => grantXp(state, n, world.emit);
+window.__lpg.toScreen = (x, y, z) => {
+  const { ox, oy } = activeOrigin();
+  const v = new THREE.Vector3(ox + x, oy + y, z).project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+};
 
 let last = performance.now();
 let bubbleT = 0;
@@ -710,10 +901,11 @@ function frame(dt: number, now: number) {
     }
   }
 
-  basins.sync(state, state.activeZone, ox, oy, dt);
+  const dg = drag; // 拖曳中的預覽位置（放手前不進 state）
+  basins.sync(state, state.activeZone, ox, oy, dt, dg && dg.ref.kind === 'basin' ? { index: dg.ref.index, pos: dg.pos } : null);
   pours.update(state, dt, ox, oy); // 要在 basins.sync 之後：水流的落點讀的是這一幀顯示中的液面
   drops.sync(state, state.activeZone, ox, oy, dt);
-  equipment.sync(state, state.activeZone, ox, oy, ceilY);
+  equipment.sync(state, state.activeZone, ox, oy, ceilY, dg && dg.ref.kind === 'equipment' ? dg.ref.id : null);
   particles.update(dt);
   coins.update(dt);
 

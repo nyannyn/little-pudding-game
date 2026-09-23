@@ -4,10 +4,11 @@ import { levelFor } from '../game/level';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { puddingsIn, unlockedZones } from '../game/zones';
-import { LIQUID_SHORT, dismissHints, hintsDismissed, nextHint } from './hints';
+import { LIQUID_SHORT, closeHintForGood, closedHint, dismissHints, hintsDismissed, nextHint } from './hints';
 import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
 import { ShopView, type ShopPage } from './shop';
+import { placedRows, storageZoneLabel, storedRows, type StorageRow } from './storage';
 
 export interface HudActions {
   pour(liquid: LiquidId): void;
@@ -27,6 +28,9 @@ export interface HudActions {
   exportSave(): string;
   /** 用存檔碼還原；false＝這串碼不完整或根本不是存檔碼 */
   importSave(code: string): boolean;
+  /** 倉庫（D49）：`key` 是 `storage.refKey()` 的格式 */
+  storeFurniture(key: string): void;
+  placeFurniture(key: string): void;
 }
 
 const LIQUID_ICON: Record<LiquidId, CuteIconName> = {
@@ -105,6 +109,13 @@ export class Hud {
   /** 被 × 關掉的那一則（只在這一次開著的頁面裡有效，不進 localStorage） */
   private hintClosed = '';
   private hintClosedAt = 0;
+  /** 按 × 永久關掉的告知類警告 id（`Hint.dismissable`），存在 localStorage */
+  private hintForever = closedHint();
+  private hintDismissable = false;
+  private readonly storeCard: HTMLElement;
+  /** 按了一次「收起來」、等第二次確認的那一件（倒掉液體前） */
+  private storeArmed = '';
+  private storeSig = '';
   private zoneOrder: string[] = [];
   private activeZone = '';
   private pourKeys = '';
@@ -129,6 +140,7 @@ export class Hud {
           <span class="name"></span>
           <button data-a="zoneStep" data-arg="1" aria-label="下一個櫥窗">&#8250;</button>
         </div>
+        <button class="iconbtn storebtn" data-a="storage" aria-label="倉庫">${icon('storage')}<span class="lbl">倉庫</span></button>
         <div class="orders"></div>
         <div class="dock">
           <div class="line" data-k="pour"></div>
@@ -164,6 +176,17 @@ export class Hud {
             <h2>把農場加到主畫面</h2>
             <p>按 Safari 下方的分享鈕，選「加入主畫面」。從主畫面開才存得住進度——留在 Safari 分頁裡，七天沒回來就會被清掉。</p>
             <button data-a="closeA2hs">知道了</button>
+          </div>
+        </div>
+        <div class="welcome storecard" hidden>
+          <div class="card">
+            <h2>倉庫</h2>
+            <p class="lead">長按櫥窗裡的家具可以拖到別的位置。收進倉庫的東西可以擺到任何一區。</p>
+            <h3 class="here"></h3>
+            <div class="rows placed"></div>
+            <h3>倉庫裡</h3>
+            <div class="rows stored"></div>
+            <button data-a="closeStorage" class="ghost">關閉</button>
           </div>
         </div>
         <div class="welcome savecard" hidden>
@@ -205,7 +228,8 @@ export class Hud {
     this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
-    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard)');
+    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard)');
+    this.storeCard = q('.storecard');
     this.glCard = q('.glcard');
     this.a2hs = q('.a2hs');
     this.saveCard = q('.savecard');
@@ -262,6 +286,29 @@ export class Hud {
         this.saveCard.hidden = false;
         break;
       case 'closeSettings': this.saveCard.hidden = true; break;
+      case 'storage':
+        this.storeCard.hidden = false;
+        this.storeArmed = '';
+        this.storeSig = '';
+        this.lastRefresh = -1;
+        break;
+      case 'closeStorage': this.storeCard.hidden = true; break;
+      case 'storeItem': {
+        const row = placedRows(this.last!).find((r) => r.key === arg);
+        // 盆裡還有液體：第一次按只武裝（按鈕改成「再按一次：倒掉…」），第二次才收
+        if (row?.confirm && this.storeArmed !== arg) {
+          this.storeArmed = arg;
+          this.storeSig = '';
+          break;
+        }
+        this.storeArmed = '';
+        this.act.storeFurniture(arg);
+        break;
+      }
+      case 'placeItem':
+        this.storeArmed = '';
+        this.act.placeFurniture(arg);
+        break;
       case 'copySave': void this.copyCode(); break;
       case 'restoreSave':
         // 還原成功之後由 main.ts 重新載入整頁：把讀檔那條路徑跑一次，
@@ -269,6 +316,10 @@ export class Hud {
         if (!this.act.importSave(this.saveText.value)) this.toast('這串碼看起來不完整，請整串重貼一次', true);
         break;
       case 'hintClose':
+        if (this.hintDismissable) {
+          this.hintForever = this.hintId;
+          closeHintForGood(this.hintId);
+        }
         this.hintClosed = this.hintId;
         this.hintClosedAt = performance.now();
         this.hint.hidden = true;
@@ -420,11 +471,33 @@ export class Hud {
     this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
     this.syncHint(state, nowMs);
     if (this.shop.open) this.shop.render(state);
+    if (!this.storeCard.hidden) this.syncStorage(state);
+  }
+
+  /** 倉庫卡的兩張清單；只在內容變了才重建 DOM（每幀重建會吃掉按到一半的點擊） */
+  private syncStorage(state: GameState) {
+    const placed = placedRows(state);
+    const stored = storedRows(state);
+    const sig = JSON.stringify([state.activeZone, this.storeArmed, placed, stored]);
+    if (sig === this.storeSig) return;
+    this.storeSig = sig;
+    const row = (r: StorageRow, action: string, label: string) => {
+      const armed = action === 'storeItem' && this.storeArmed === r.key && r.confirm;
+      return `<div class="srow" data-key="${r.key}">
+        <span class="nm"><b>${r.name}</b><small>${armed ? '' : r.sub}</small></span>
+        <button data-a="${action}" data-arg="${r.key}" class="${armed ? 'danger' : ''}"${r.disabled ? ' disabled' : ''}>${armed ? r.confirm : label}</button>
+      </div>`;
+    };
+    (this.storeCard.querySelector('.here') as HTMLElement).textContent = `擺在${storageZoneLabel(state)}的`;
+    (this.storeCard.querySelector('.placed') as HTMLElement).innerHTML =
+      placed.map((r) => row(r, 'storeItem', '收起來')).join('') || '<p class="empty">這一區沒有家具</p>';
+    (this.storeCard.querySelector('.stored') as HTMLElement).innerHTML =
+      stored.map((r) => row(r, 'placeItem', '擺出來')).join('') || '<p class="empty">倉庫是空的</p>';
   }
 
   private syncHint(state: GameState, nowMs: number) {
     const h = nextHint(state);
-    if (this.hintOff && !h?.warning) {
+    if (this.hintOff && (!h?.warning || h.dismissable)) {
       this.hint.hidden = true;
       return;
     }
@@ -439,6 +512,7 @@ export class Hud {
       this.hint.dataset.hint = h.id;
       (this.hint.querySelector('.t') as HTMLElement).textContent = h.text;
     }
+    this.hintDismissable = h.dismissable === true;
     this.hint.hidden = this.isClosed(h, nowMs);
   }
 
@@ -451,7 +525,8 @@ export class Hud {
    * 那個沒人告訴他農場已經死掉的狀態（2026-09-22 修好的正是這個洞）。
    * 要真的永久安靜，按「不再顯示提示」。
    */
-  private isClosed(h: { id: string; warning?: boolean }, nowMs: number): boolean {
+  private isClosed(h: { id: string; warning?: boolean; dismissable?: boolean }, nowMs: number): boolean {
+    if (h.dismissable && h.id === this.hintForever) return true;
     if (h.id !== this.hintClosed) return false;
     if (!h.warning) return true;
     return nowMs - this.hintClosedAt < Hud.WARNING_SNOOZE_MS;
