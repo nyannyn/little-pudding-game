@@ -80,7 +80,7 @@ export const STATION_ANCHOR: Record<StationId, { x: number; y: number; z: number
  * 名牌：貼在那一站正前方的輸送帶側板上（掛牆上會被頂列與罐子架擋住，2026-09-24 截圖）；
  * 烤箱那段帶子是直的，名牌立在隧道頂上。
  */
-const SKIRT = BELT.y - 0.12;
+const SKIRT = BELT.y - 0.13;
 export const STATION_LABEL: Record<StationId, { x: number; y: number; z: number }> = {
   stove: { x: STATION_ANCHOR.stove.x, y: SKIRT, z: STATION_ANCHOR.stove.z + BELT.w / 2 + 0.04 },
   crack: { x: STATION_ANCHOR.crack.x, y: SKIRT, z: STATION_ANCHOR.crack.z + BELT.w / 2 + 0.04 },

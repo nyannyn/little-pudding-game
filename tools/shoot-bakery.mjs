@@ -88,5 +88,16 @@ await page.locator('[data-a="shop"]').click();
 await page.locator('[data-a="shopTab"][data-arg="bakery"]').click();
 await shot('shop-bakery');
 
+// ⑦ 農場：錢夠買整條線、還沒有任何機器 → 甜點店鈕掛「!」
+await page.locator('[data-a="closeShop"]').click();
+await page.evaluate(() => {
+  const s = window.__lpg.state;
+  for (const id of Object.keys(s.bakery.machines)) s.bakery.machines[id] = 0;
+  s.coins = 300;
+  window.__lpg.setView('farm');
+});
+await step(4);
+await shot('farm-alert');
+
 console.log('errors', errors.length ? errors : 'none');
 await browser.close();

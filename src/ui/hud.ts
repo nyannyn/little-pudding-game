@@ -10,6 +10,8 @@ import {
   blockerLines,
   canStartRecipe,
   dessertPrice,
+  anyLineReady,
+  lineCost,
   lineFailRate,
   linePortions,
   materialHave,
@@ -585,9 +587,13 @@ export class Hud {
     this.btnPick.disabled = drops === 0;
     (this.btnPick.querySelector('.n') as HTMLElement).textContent = drops ? String(drops) : '';
 
-    // 甜點店鈕的徽章：做好、等你上架的份數（D57 起線上自己走，玩家要做的只剩上架）——人在農場也看得到
+    // 甜點店鈕的徽章：做好、等你上架的份數（D57 起線上自己走，玩家要做的只剩上架）——人在農場也看得到。
+    // 錢夠買焦糖布丁塔整條線、卻一台機器都沒有：換成「!」提醒去工坊（教學在買完收集手就結束了）
     const waiting = shelvable(state);
-    (this.root.querySelector('[data-a="goBakery"] .n') as HTMLElement).textContent = waiting ? String(waiting) : '';
+    const needLine = !anyLineReady(state) && state.coins >= lineCost(state, 'caramel');
+    const goBakery = this.root.querySelector('[data-a="goBakery"]') as HTMLElement;
+    goBakery.classList.toggle('alert', needLine);
+    (goBakery.querySelector('.n') as HTMLElement).textContent = needLine ? '!' : waiting ? String(waiting) : '';
     this.syncBakery(state);
 
     const claimable = claimableCount(state);

@@ -300,6 +300,8 @@
 .dock .n.zero { background: var(--coral); color: #fff; }
 .dock button:disabled .n { background: #d3c6ae; color: #fff; }
 .dock .primary .n { background: #fff; border-color: var(--green-deep); color: var(--green-deep); }
+/* 甜點店鈕：錢夠買整條線、卻還沒有任何機器（D57）——教學買完收集手就結束，沒有這個記號玩家不知道工坊要先買機器 */
+.dock .primary.alert .n { background: var(--coral); border-color: #fff; color: #fff; }
 
 /* 右上角商店鈕：彩色小店招 */
 .hud .shopbtn { padding: 5px; }

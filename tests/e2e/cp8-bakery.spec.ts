@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { BALANCE } from '../../src/game/balance';
+import { STATIONS } from '../../src/game/recipes';
 import { exportCode } from '../../src/game/savecode';
 import type { GameState } from '../../src/game/state';
 import { DRAW_CALL_BUDGET } from './helpers';
@@ -69,7 +70,7 @@ test('AC9-8／9-9／9-3：商店買機器 → 菜單開工 → 線上自己走�
   for (const id of ['stove', 'mold', 'chill']) await page.locator(`[data-a="buyMachine"][data-arg="${id}"]`).click();
   let s = await S(page);
   expect(s.bakery.machines).toMatchObject({ stove: 1, mold: 1, chill: 1, bake: 0 });
-  expect(s.coins).toBe(1000 - 40 - 60 - 180);
+  expect(s.coins).toBe(1000 - STATIONS.stove.prices[0] - STATIONS.mold.prices[0] - STATIONS.chill.prices[0]);
   await page.locator('[data-a="closeShop"]').click();
 
   // 菜單：鮮奶酪杯可按、焦糖布丁塔還缺
@@ -122,6 +123,22 @@ test('菜單開著、收集手一直在撿：可以按的「開始製作」不�
   expect(await btn!.evaluate((b) => b.isConnected)).toBe(true);
 });
 
+test('錢夠買整條線、卻沒有任何機器：「甜點店」鈕掛「!」；買齊一條線就拿掉', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&pause=1');
+  const go = page.locator('[data-a="goBakery"]');
+  await expect(go).not.toHaveClass(/alert/);
+  await page.evaluate(() => { (window.__lpg.state as GameState).coins = 999; });
+  await step(page, 0.3);
+  await expect(go).toHaveClass(/alert/);
+  await expect(go.locator('.n')).toHaveText('!');
+  await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    Object.assign(s.bakery.machines, { stove: 1, mold: 1, chill: 1 });
+  });
+  await step(page, 0.3);
+  await expect(go).not.toHaveClass(/alert/);
+});
+
 test('商店工坊頁：買了變升級、滿級顯示已滿級；320px 分頁列不溢出', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
@@ -134,9 +151,9 @@ test('商店工坊頁：買了變升級、滿級顯示已滿級；320px 分頁�
   for (const r of tabs) expect(r).toBeLessThanOrEqual(320);
   await page.locator('[data-a="shopTab"][data-arg="bakery"]').click();
   const btn = page.locator('[data-a="buyMachine"][data-arg="bake"]');
-  await expect(btn).toHaveText('150');
+  await expect(btn).toHaveText(String(STATIONS.bake.prices[0]));
   await btn.click();
-  await expect(btn).toHaveText('1200');
+  await expect(btn).toHaveText(String(STATIONS.bake.prices[1]));
   await btn.click();
   await btn.click();
   await expect(page.locator('.card[data-id="machine:bake"] .owned')).toHaveText('已滿級');

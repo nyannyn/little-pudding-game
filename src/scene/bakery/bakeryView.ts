@@ -832,7 +832,8 @@ class LabelAtlas {
   private readonly canvas: HTMLCanvasElement;
   private readonly tex: THREE.CanvasTexture;
   private static readonly W = 512;
-  private static readonly RH = 128;
+  /** 列高：跟機器名牌 0.46×0.13 同比例（3.5:1），字才不會被壓扁 */
+  private static readonly RH = 146;
   private static readonly ROWS = STATION_IDS.length + 3;
 
   constructor() {
@@ -857,7 +858,8 @@ class LabelAtlas {
     };
     const parts = STATION_IDS.map((id, i) => {
       const p = STATION_LABEL[id];
-      return plate(i, 0.4, 0.1, p.x, p.y, p.z);
+      // 名牌盡量大：iPhone SE 上 0.4×0.1 的字只剩幾個像素（2026-09-24 截圖）
+      return plate(i, 0.46, 0.13, p.x, p.y, p.z);
     });
     parts.push(plate(STATION_IDS.length, 1.2, 0.3, 0, 1.92, ROOM.backZ + 0.02));
     const merged = mergeGeometries(parts, false);
@@ -902,7 +904,7 @@ class LabelAtlas {
       g.stroke();
       g.fillStyle = r.fg;
       // 字級盡量大、但不超出牌子（「冷藏櫃 未購買」比「烤箱 ★」長得多）
-      let size = 78;
+      let size = 96;
       const font = (px: number) => `bold ${px}px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
       g.font = font(size);
       while (size > 30 && g.measureText(r.text).width > W - 56) g.font = font(--size);

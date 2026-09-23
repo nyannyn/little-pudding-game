@@ -26,13 +26,13 @@ export interface StationInfo {
 }
 
 export const STATIONS: Record<StationId, StationInfo> = {
-  stove: { id: 'stove', name: '爐台', verb: '加熱', sec: 10, prices: [40, 320, 1200] },
-  crack: { id: 'crack', name: '打蛋機', verb: '打蛋', sec: 4, prices: [30, 240, 900] },
-  mix: { id: 'mix', name: '攪拌機', verb: '攪拌', sec: 6, prices: [50, 400, 1500] },
-  mold: { id: 'mold', name: '裝模機', verb: '裝模', sec: 5, prices: [60, 480, 1800] },
-  bake: { id: 'bake', name: '烤箱', verb: '烘烤', sec: 45, prices: [150, 1200, 4500] },
-  chill: { id: 'chill', name: '冷藏櫃', verb: '冷藏', sec: 40, prices: [180, 1440, 5400] },
-  decorate: { id: 'decorate', name: '裝飾台', verb: '裝飾', sec: 6, prices: [100, 800, 3000] },
+  stove: { id: 'stove', name: '爐台', verb: '加熱', sec: 10, prices: [20, 120, 450] },
+  crack: { id: 'crack', name: '打蛋機', verb: '打蛋', sec: 4, prices: [20, 80, 300] },
+  mix: { id: 'mix', name: '攪拌機', verb: '攪拌', sec: 6, prices: [30, 160, 600] },
+  mold: { id: 'mold', name: '裝模機', verb: '裝模', sec: 5, prices: [40, 200, 750] },
+  bake: { id: 'bake', name: '烤箱', verb: '烘烤', sec: 45, prices: [80, 400, 1500] },
+  chill: { id: 'chill', name: '冷藏櫃', verb: '冷藏', sec: 40, prices: [150, 600, 2250] },
+  decorate: { id: 'decorate', name: '裝飾台', verb: '裝飾', sec: 6, prices: [60, 320, 1200] },
 };
 
 export const MAX_MACHINE_LEVEL = 3;

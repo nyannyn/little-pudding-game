@@ -52,7 +52,7 @@ const ZONE_SCOPED = new Set<EquipmentId>(['collector', 'autoFill']);
 /**
  * D56／D57（2026-09-24）起工坊是食譜制全自動流水線：玩家（bot）要先在商店買機器，
  * 再從菜單挑一道做得起的甜點放上線，之後線上自己走完；bot 只負責上架、交預訂單。
- * 機器買法：先把焦糖布丁塔那條線買齊（開局只有焦糖原料），再補齊其他機器；
+ * 機器買法：先把焦糖布丁塔那條線買齊（開局只有焦糖原料），解鎖上層之後再補齊其他機器；
  * 升級只在「錢多到升級價的兩倍」時才升（不把擴建的錢吃光）。
  * 工坊留著用的底量：最大那一盤（Lv3 一盤 4 份）的蛋與原料，多的才賣。
  */
@@ -96,7 +96,8 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid' | 'raw-only', seed
       // 機器：先湊齊焦糖布丁塔那條線，再補其他台（Lv1），最後有餘錢才升級
       for (const id of [...FIRST_LINE, ...STATION_IDS]) {
         if (state.bakery.machines[id] > 0) continue;
-        if (!FIRST_LINE.every((f) => state.bakery.machines[f] > 0) && !FIRST_LINE.includes(id)) continue;
+        // 焦糖布丁塔用不到的機器（冷藏櫃）等解鎖上層、開始養其他口味再買
+        if (!FIRST_LINE.includes(id) && state.zones.filter((z) => z.unlocked).length < 2) continue;
         const price = machineNextPrice(state, id)!;
         if (state.coins >= price + 20 && buyMachine(state, id, noop).ok) mark(`buy machine ${id}`);
       }
@@ -104,8 +105,10 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid' | 'raw-only', seed
       if (STATION_IDS.every((f) => state.bakery.machines[f] > 0)) {
         for (const id of STATION_IDS) {
           const price = machineNextPrice(state, id);
-          // 擴建優先：升級只花「留下下一區的錢之後」多出來的
-          const reserve = nextLockedZone(state)?.price ?? 0;
+          // 擴建優先：升級只花「留下下一區的錢之後」多出來的；
+          // 例外：解鎖上層之後，焦糖布丁塔那條線升到 Lv2 很便宜（一盤 1→2 份），真人玩家會先升
+          const cheapLine = FIRST_LINE.includes(id) && state.bakery.machines[id] < 2 && state.zones.filter((z) => z.unlocked).length >= 2;
+          const reserve = cheapLine ? 20 : (nextLockedZone(state)?.price ?? 0);
           if (price !== null && state.coins >= price + reserve && buyMachine(state, id, noop).ok) mark(`upgrade ${id} Lv${state.bakery.machines[id]}`);
         }
       }
