@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 麵粉（D58）：牛皮紙袋，正面一株小麥 -->
+  <ellipse cx="80" cy="146" rx="44" ry="8" fill="#5a3d28" opacity=".14"/>
+  <path d="M40 40 q40 -14 80 0 l8 96 q-48 10 -96 0 Z" fill="#f4e2c2" stroke="#d9bf92" stroke-width="3"/>
+  <path d="M40 40 q40 -14 80 0 l-4 12 q-36 -12 -72 0 Z" fill="#e8cfa8"/>
+  <path d="M80 70 v52" stroke="#c98f55" stroke-width="4" stroke-linecap="round"/>
+  <g fill="#f2c25c">
+    <ellipse cx="72" cy="80" rx="6" ry="10" transform="rotate(-30 72 80)"/>
+    <ellipse cx="88" cy="80" rx="6" ry="10" transform="rotate(30 88 80)"/>
+    <ellipse cx="72" cy="96" rx="6" ry="10" transform="rotate(-30 72 96)"/>
+    <ellipse cx="88" cy="96" rx="6" ry="10" transform="rotate(30 88 96)"/>
+    <ellipse cx="80" cy="66" rx="5" ry="9"/>
+  </g>
+  <path d="M70 26 q10 -10 20 0" fill="none" stroke="#fff8ee" stroke-width="5" stroke-linecap="round"/>
+</svg>

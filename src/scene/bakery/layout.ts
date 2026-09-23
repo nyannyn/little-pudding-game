@@ -1,12 +1,12 @@
-import type { StationId } from '../../game/bakery';
+import type { StationId } from '../../game/recipes';
 
 /**
  * 甜點工坊的平面配置（世界座標，地板 y=0，+z 朝鏡頭）。
  *
- * 直向手機只有約 18° 的水平視角：房間做得跟農場櫥窗一樣「窄而深」，
- * 五站排成一條往鏡頭走的 Z 字——後排工作檯（打蛋 → 攪拌 → 裝模）、
- * 中排（烤箱 → 裝飾台）、前排展示櫃與店門。甜點一路往前流、最後擺到客人面前，
- * 玩家從上往下看就是「做甜點的順序」。
+ * D57（2026-09-24 使用者：「甜點店應該要有流水線的樣子」）：七台機器沿一條 **U 型輸送帶**排——
+ * 後排由左往右 爐台 → 打蛋機 → 攪拌機 → 裝模機，右側轉下來穿過隧道烤箱，前排由右往左
+ * 冷藏櫃 → 裝飾台，出口往下接成品櫃。每道甜點只在自己要的站停，其他站輸送帶直接帶過。
+ * 店面（展示櫃、收銀台、店門、咖啡座）照舊在房間前半。
  */
 export const ROOM = {
   halfW: 1.25,
@@ -15,29 +15,97 @@ export const ROOM = {
   wallH: 2.1,
 } as const;
 
-/** 後排工作檯 */
-export const COUNTER = { z: -2.05, depth: 0.62, top: 0.78 } as const;
+/** 輸送帶：帶面高度、寬度 */
+export const BELT = { y: 0.6, w: 0.34 } as const;
 
-/** 每一站「那一盤」擺在哪裡（盤子中心） */
-export const STATION_ANCHOR: Record<StationId, { x: number; y: number; z: number }> = {
-  crack: { x: -0.8, y: COUNTER.top + 0.1, z: -1.88 },
-  mix: { x: 0, y: COUNTER.top + 0.13, z: -1.9 },
-  mold: { x: 0.8, y: COUNTER.top + 0.09, z: -1.86 },
-  bake: { x: -0.62, y: 0.47, z: -0.52 },
-  decorate: { x: 0.68, y: 0.86, z: -0.62 },
+/**
+ * 輸送帶中心線（依行進方向）。後排 → 右轉往前 → 前排往左 → 左轉往前到出口。
+ * 盤子的位置一律用「沿這條線走了多遠」表示（`pathPoint`），轉角就不必每站各寫一套。
+ */
+export const BELT_PATH: { x: number; z: number }[] = [
+  { x: -1.0, z: -1.86 },
+  { x: 0.98, z: -1.86 },
+  { x: 0.98, z: -0.5 },
+  { x: -0.98, z: -0.5 },
+  { x: -0.98, z: -0.02 },
+];
+
+function segLen(i: number): number {
+  const a = BELT_PATH[i]!;
+  const b = BELT_PATH[i + 1]!;
+  return Math.hypot(b.x - a.x, b.z - a.z);
+}
+
+export const BELT_LENGTH = BELT_PATH.slice(0, -1).reduce((n, _, i) => n + segLen(i), 0);
+
+/** 沿輸送帶走了 d 的那一點（xz）與行進方向（弧度，0＝+x） */
+export function pathPoint(d: number): { x: number; z: number; dir: number } {
+  let left = Math.max(0, Math.min(BELT_LENGTH, d));
+  for (let i = 0; i < BELT_PATH.length - 1; i++) {
+    const a = BELT_PATH[i]!;
+    const b = BELT_PATH[i + 1]!;
+    const len = segLen(i);
+    if (left <= len || i === BELT_PATH.length - 2) {
+      const k = len > 0 ? left / len : 0;
+      return { x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k, dir: Math.atan2(b.z - a.z, b.x - a.x) };
+    }
+    left -= len;
+  }
+  const last = BELT_PATH[BELT_PATH.length - 1]!;
+  return { x: last.x, z: last.z, dir: Math.PI / 2 };
+}
+
+/** 各站在輸送帶上的位置（沿線距離）：後排四台間距 0.5、烤箱在右側中段、前排兩台 */
+export const STATION_AT: Record<StationId, number> = {
+  stove: 0.24,
+  crack: 0.74,
+  mix: 1.24,
+  mold: 1.74,
+  bake: 1.98 + 0.66,
+  chill: 1.98 + 1.36 + 0.66,
+  decorate: 1.98 + 1.36 + 1.36,
 };
 
-/** 名牌掛在各站上方多高、往前多少（z） */
+/** 各站「那一盤」在哪裡（盤子中心；y＝帶面） */
+export const STATION_ANCHOR: Record<StationId, { x: number; y: number; z: number }> = (() => {
+  const out = {} as Record<StationId, { x: number; y: number; z: number }>;
+  for (const [id, d] of Object.entries(STATION_AT) as [StationId, number][]) {
+    const p = pathPoint(d);
+    out[id] = { x: p.x, y: BELT.y, z: p.z };
+  }
+  return out;
+})();
+
+/**
+ * 名牌：貼在那一站正前方的輸送帶側板上（掛牆上會被頂列與罐子架擋住，2026-09-24 截圖）；
+ * 烤箱那段帶子是直的，名牌立在隧道頂上。
+ */
+const SKIRT = BELT.y - 0.13;
 export const STATION_LABEL: Record<StationId, { x: number; y: number; z: number }> = {
-  crack: { x: -0.8, y: 1.66, z: -2.3 },
-  mix: { x: 0, y: 1.66, z: -2.3 },
-  mold: { x: 0.8, y: 1.66, z: -2.3 },
-  bake: { x: -0.62, y: 1.5, z: -0.62 },
-  decorate: { x: 0.68, y: 1.5, z: -0.8 },
+  stove: { x: STATION_ANCHOR.stove.x, y: SKIRT, z: STATION_ANCHOR.stove.z + BELT.w / 2 + 0.04 },
+  crack: { x: STATION_ANCHOR.crack.x, y: SKIRT, z: STATION_ANCHOR.crack.z + BELT.w / 2 + 0.04 },
+  mix: { x: STATION_ANCHOR.mix.x, y: SKIRT, z: STATION_ANCHOR.mix.z + BELT.w / 2 + 0.04 },
+  mold: { x: STATION_ANCHOR.mold.x, y: SKIRT, z: STATION_ANCHOR.mold.z + BELT.w / 2 + 0.04 },
+  bake: { x: 0.98, y: BELT.y + 0.62, z: STATION_ANCHOR.bake.z + 0.2 },
+  chill: { x: STATION_ANCHOR.chill.x, y: SKIRT, z: STATION_ANCHOR.chill.z + BELT.w / 2 + 0.04 },
+  decorate: { x: STATION_ANCHOR.decorate.x, y: SKIRT, z: STATION_ANCHOR.decorate.z + BELT.w / 2 + 0.04 },
 };
 
-export const OVEN = { x: -0.62, z: -0.72, w: 0.98, h: 1.12, d: 0.68 } as const;
-export const DECOR = { x: 0.68, z: -0.62, top: 0.74, w: 0.82, d: 0.62 } as const;
+/** 進度條：浮在那一站的機器上方 */
+export const STATION_BAR: Record<StationId, { x: number; y: number; z: number }> = {
+  stove: { x: STATION_ANCHOR.stove.x, y: 1.28, z: STATION_ANCHOR.stove.z - 0.1 },
+  crack: { x: STATION_ANCHOR.crack.x, y: 1.3, z: STATION_ANCHOR.crack.z - 0.1 },
+  mix: { x: STATION_ANCHOR.mix.x, y: 1.3, z: STATION_ANCHOR.mix.z - 0.1 },
+  mold: { x: STATION_ANCHOR.mold.x, y: 1.44, z: STATION_ANCHOR.mold.z - 0.1 },
+  bake: { x: 0.98, y: BELT.y + 0.8, z: STATION_ANCHOR.bake.z + 0.2 },
+  chill: { x: STATION_ANCHOR.chill.x, y: BELT.y + 0.62, z: STATION_ANCHOR.chill.z },
+  decorate: { x: STATION_ANCHOR.decorate.x, y: BELT.y + 0.8, z: STATION_ANCHOR.decorate.z },
+};
+
+/** 隧道烤箱：跨在右側那段帶子上（長邊沿 z） */
+export const OVEN = { x: 0.98, z: STATION_ANCHOR.bake.z, len: 0.62, w: 0.56, h: 0.42 } as const;
+/** 冷藏櫃：跨在前排帶子上的玻璃隧道 */
+export const CHILL = { x: STATION_ANCHOR.chill.x, z: -0.5, len: 0.54, w: 0.54, h: 0.4 } as const;
 
 /** 展示櫃：兩層、每層 6 格＝`shelfCap` 12 */
 export const SHOWCASE = { x: -0.25, z: 1.2, w: 1.84, d: 0.6, baseH: 0.52, glassH: 0.46 } as const;
@@ -54,8 +122,8 @@ export const SHELF_SLOTS: { x: number; y: number; z: number }[] = (() => {
   return out;
 })();
 
-/** 成品櫃（做好還沒上架的甜點）：靠左牆的三層小架 */
-export const RACK = { x: -1.02, z: 0.2, w: 0.36, d: 0.5 } as const;
+/** 成品櫃（做好還沒上架的甜點）：輸送帶出口前面、靠左牆的三層小架 */
+export const RACK = { x: -1.02, z: 0.4, w: 0.36, d: 0.5 } as const;
 export const RACK_SLOTS: { x: number; y: number; z: number }[] = (() => {
   const out: { x: number; y: number; z: number }[] = [];
   for (let tier = 0; tier < 3; tier++) {
@@ -76,14 +144,14 @@ export const QUEUE_Z = 1.72;
 /** 前排左邊的小咖啡座 */
 export const CAFE = { x: -0.62, z: 2.0 } as const;
 
-/** 蛋籃（打蛋站的新一盤從這裡飛過去） */
-export const EGG_BASKET = { x: -1.05, y: COUNTER.top + 0.08, z: -1.75 } as const;
+/** 蛋籃（打蛋機旁邊，打蛋時蛋從這裡飛上臂） */
+export const EGG_BASKET = { x: -0.5, y: BELT.y + 0.02, z: -2.2 } as const;
 
 /** 鏡頭：從前上方往下看整間店 */
 export const VIEW = {
-  target: { x: 0, y: 0.55, z: -0.05 },
+  target: { x: 0, y: 0.5, z: -0.1 },
   /** 俯角（從水平往下） */
-  tiltDeg: 50,
+  tiltDeg: 52,
   /** 要塞進畫面的寬度（房間寬＋一點邊） */
   fitWidth: 2.72,
 } as const;

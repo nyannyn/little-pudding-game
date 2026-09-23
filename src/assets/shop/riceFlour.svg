@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 糯米粉（D58）：白色小紙袋，正面粉紅標籤上三顆糯米團 -->
+  <ellipse cx="80" cy="146" rx="42" ry="8" fill="#5a3d28" opacity=".14"/>
+  <path d="M44 38 h72 l6 100 h-84 Z" fill="#fffdf8" stroke="#e8dccb" stroke-width="3"/>
+  <path d="M44 38 l8 -12 h56 l8 12 Z" fill="#f5c2cd"/>
+  <rect x="54" y="68" width="52" height="46" rx="10" fill="#f5c2cd"/>
+  <circle cx="68" cy="96" r="9" fill="#ffffff"/>
+  <circle cx="92" cy="96" r="9" fill="#ffffff"/>
+  <circle cx="80" cy="82" r="9" fill="#ffffff"/>
+  <circle cx="80" cy="82" r="3" fill="#f28ea6"/>
+</svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 烤箱（D57）：薰衣草紫的隧道烤箱，輸送帶從中間穿過，窗裡發橘光 -->
+  <ellipse cx="80" cy="146" rx="60" ry="8" fill="#5a3d28" opacity=".14"/>
+  <rect x="10" y="112" width="140" height="14" rx="7" fill="#7d7394"/>
+  <rect x="10" y="112" width="140" height="5" rx="2" fill="#a9a0bd"/>
+  <rect x="28" y="34" width="104" height="82" rx="16" fill="#b9a3ec"/>
+  <rect x="40" y="56" width="80" height="40" rx="8" fill="#ffb04d"/>
+  <rect x="40" y="56" width="80" height="40" rx="8" fill="none" stroke="#ffffff" stroke-width="4"/>
+  <ellipse cx="66" cy="88" rx="10" ry="6" fill="#ffc857"/>
+  <ellipse cx="94" cy="88" rx="10" ry="6" fill="#ffc857"/>
+  <circle cx="54" cy="45" r="5" fill="#a28ad9"/>
+  <circle cx="70" cy="45" r="5" fill="#a28ad9"/>
+  <rect x="108" y="16" width="14" height="24" rx="4" fill="#d6dee6"/>
+  <path d="M36 34 l-8 -8 m8 8 l-12 -2" stroke="#f28ea6" stroke-width="6" stroke-linecap="round"/>
+  <rect x="18" y="126" width="8" height="14" rx="3" fill="#5a4a5f"/>
+  <rect x="134" y="126" width="8" height="14" rx="3" fill="#5a4a5f"/>
+</svg>

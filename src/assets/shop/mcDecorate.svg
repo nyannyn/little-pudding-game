@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 裝飾台（D57）：薄荷桌巾的小桌＋轉台，擠花袋往杯子頂上擠奶油 -->
+  <ellipse cx="80" cy="146" rx="52" ry="8" fill="#5a3d28" opacity=".14"/>
+  <rect x="34" y="104" width="8" height="38" rx="3" fill="#b98059"/>
+  <rect x="118" y="104" width="8" height="38" rx="3" fill="#b98059"/>
+  <rect x="22" y="94" width="116" height="16" rx="6" fill="#86d0b6"/>
+  <rect x="22" y="90" width="116" height="8" rx="4" fill="#dca77c"/>
+  <ellipse cx="72" cy="88" rx="30" ry="6" fill="#fff8ee" stroke="#f28ea6" stroke-width="3"/>
+  <path d="M60 60 h24 l-4 26 h-16 Z" fill="#ffc4d2"/>
+  <path d="M60 60 q12 -18 24 0 Z" fill="#fff8ee"/>
+  <circle cx="72" cy="46" r="5" fill="#f28ea6"/>
+  <!-- 擠花袋 -->
+  <path d="M96 14 l30 18 -26 22 Z" fill="#fff4e0" stroke="#e8cfa8" stroke-width="3"/>
+  <path d="M100 54 l-8 8" stroke="#d6dee6" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="126" cy="96" r="4" fill="#ffd66e"/>
+  <circle cx="36" cy="84" r="4" fill="#b9a3ec"/>
+</svg>

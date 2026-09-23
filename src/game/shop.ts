@@ -1,6 +1,7 @@
 import { BALANCE, EQUIPMENT, EQUIPMENT_IDS } from './balance';
 import { levelFor } from './level';
 import { LIQUIDS, SPECIAL_LIQUIDS, SPECIES, type LiquidId, type SpeciesId } from './species';
+import { MAX_MACHINE_LEVEL, MACHINE_PORTIONS, PANTRY, PANTRY_IDS, STATIONS, STATION_IDS, type PantryId } from './recipes';
 import { equipmentIn, type GameState } from './state';
 
 /**
@@ -8,7 +9,7 @@ import { equipmentIn, type GameState } from './state';
  * 而且跟 `actions.ts` 的購買守衛用同一組數字——UI 上鎖著的東西，直接呼叫 action 也一樣買不到。
  */
 
-export type ShopTab = 'stock' | 'equipment' | 'basin' | 'zone';
+export type ShopTab = 'stock' | 'bakery' | 'equipment' | 'basin' | 'zone';
 
 export type ShopStatus =
   /** 可以買（錢夠不夠是另一回事，由 `affordable` 說） */
@@ -25,7 +26,7 @@ export interface ShopEntry {
   id: string;
   tab: ShopTab;
   /** 對應 HUD 的 data-a */
-  action: 'buyStock' | 'buyEquip' | 'buyBasin' | 'unlockZone';
+  action: 'buyStock' | 'buyPantry' | 'buyMachine' | 'buyEquip' | 'buyBasin' | 'unlockZone';
   /** 對應 HUD 的 data-arg */
   arg: string;
   /** 補貨份數（只有 buyStock 有） */
@@ -42,6 +43,8 @@ export interface ShopEntry {
   stock?: number;
   /** 大桶裝（有折扣） */
   bulk?: boolean;
+  /** 工坊機器目前幾級（0＝沒買；只有 buyMachine 有） */
+  machineLevel?: number;
 }
 
 /** 補貨價：大桶裝打折、四捨五入到整數；小包裝原價 */
@@ -52,6 +55,13 @@ export function stockCost(liquid: LiquidId, qty: number): number {
 }
 
 /** 這個份數要幾級才買得到 */
+/** 基礎材料的價錢：跟液體同一套大桶折扣（D58） */
+export function pantryCost(id: PantryId, qty: number): number {
+  const raw = PANTRY[id].unitPrice * qty;
+  if (qty >= BALANCE.stockBulkQty) return Math.round(raw * (1 - BALANCE.stockBulkDiscount));
+  return raw;
+}
+
 export function stockLevel(qty: number): number {
   return qty >= BALANCE.stockBulkQty ? BALANCE.stockBulkLevel : 1;
 }
@@ -103,6 +113,55 @@ export function shopCatalog(state: GameState): ShopEntry[] {
         bulk,
       });
     }
+  }
+
+  // 基礎材料（D58）：跟補貨同一頁
+  for (const id of PANTRY_IDS) {
+    for (const qty of [BALANCE.stockBuyQty, BALANCE.stockBulkQty]) {
+      const price = pantryCost(id, qty);
+      const need = stockLevel(qty);
+      const bulk = qty >= BALANCE.stockBulkQty;
+      out.push({
+        id: `pantry:${id}:${qty}`,
+        tab: 'stock',
+        action: 'buyPantry',
+        arg: id,
+        qty,
+        name: bulk ? `${PANTRY[id].name}大包裝` : PANTRY[id].name,
+        desc: bulk ? `${qty} 份，比小包裝省 ${Math.round(BALANCE.stockBulkDiscount * 100)}%` : `${qty} 份。甜點店做${id === 'flour' ? '塔皮、蛋糕捲、泡芙' : '大福'}用`,
+        price,
+        level: need,
+        status: gate(need),
+        affordable: state.coins >= price,
+        stock: state.pantry[id],
+        bulk,
+      });
+    }
+  }
+
+  // 工坊機器（D57）：買了之後同一張卡變成「升級」，滿級顯示已擁有
+  for (const id of STATION_IDS) {
+    const info = STATIONS[id];
+    const lv = state.bakery.machines[id];
+    const maxed = lv >= MAX_MACHINE_LEVEL;
+    const price = maxed ? 0 : info.prices[lv]!;
+    out.push({
+      id: `machine:${id}`,
+      tab: 'bakery',
+      action: 'buyMachine',
+      arg: id,
+      name: lv === 0 ? info.name : `${info.name} Lv.${lv}`,
+      desc: maxed
+        ? `一盤 ${MACHINE_PORTIONS[lv]} 份，已經是最高級`
+        : lv === 0
+          ? `${info.verb}一站 ${info.sec} 秒。Lv1 一盤 ${MACHINE_PORTIONS[1]} 份`
+          : `升到 Lv${lv + 1}：一盤 ${MACHINE_PORTIONS[lv + 1]} 份、較少失敗`,
+      price,
+      level: 1,
+      status: maxed ? 'owned' : 'available',
+      affordable: state.coins >= price,
+      machineLevel: lv,
+    });
   }
 
   for (const id of EQUIPMENT_IDS) {

@@ -18,6 +18,8 @@ export type SimEvent =
   // ── 甜點工坊（D51／D52）──
   | { type: 'bakeStep'; station: StationId; species: SpeciesId; auto: boolean }
   | { type: 'bakeDone'; species: SpeciesId; qty: number; auto: boolean }
+  /** 最後一站擲失敗（D56）：這一盤有幾份做壞了 */
+  | { type: 'bakeFailed'; species: SpeciesId; qty: number }
   | { type: 'shelfStocked'; qty: number; auto: boolean }
   | { type: 'customer'; species: SpeciesId; qty: number; coins: number }
   | { type: 'customerMissed' }

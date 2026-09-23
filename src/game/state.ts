@@ -1,5 +1,6 @@
 import { ACHIEVEMENT_IDS } from './achievements';
-import { createBakery, restoreBakery, type BakeryState } from './bakery';
+import { createBakery, isLegacyBakery, refundLegacyBatches, restoreBakery, type BakeryState } from './bakery';
+import { PANTRY_IDS, type PantryId } from './recipes';
 import { BALANCE, EQUIPMENT_IDS, RETIRED_EQUIPMENT_PRICE, type EquipmentId } from './balance';
 import { isAllele, normalizeGenes, phenotype, type Genes } from './genetics';
 import { xpFromStats } from './level';
@@ -33,8 +34,13 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * ③ **甜點加工機／自動販售口退役，照原價退款**——各區已安裝＋倉庫裡的台數全算，位置紀錄一併清掉；
  * ④ `speciesSeen` 從目前的住客補（不知道他以前養過什麼，只能保證不少算現在有的）；
  * ⑤ 新統計補 0，舊的 picked／baths／births 照舊——老玩家開檔就領得到那幾條成就，這是對的。
+ * 9（2026-09-24）：食譜制全自動流水線（D56–D58）。工坊由五站變七站、新增 `bakery.machines`（機器等級）、
+ * 拿掉 `bakery.auto`；新增 `pantry`（麵粉、糯米粉）。補值方向（使用者選「舊存檔一樣要重新買」）：
+ * ① **機器全部未購買**（不因為舊版五站免費就送）；② 舊線上做到一半的盤子**退回材料**——打蛋站只扣過蛋只退蛋、
+ * 攪拌站以後蛋與原料都退（`bakery.refundLegacyBatches`）；③ 時鐘、展示架、成品櫃、營業紀錄原樣留；
+ * ④ `pantry` 補開局那一份。分辨新舊看 `bakery` 有沒有 `machines` 欄，不看 schemaVersion。
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /** 收進倉庫的澡盆的 `zone`。不是任何一個分區，所有「這一區的盆」查詢自然會略過它 */
 export const STORAGE_ZONE = 'storage';
@@ -141,8 +147,10 @@ export interface GameState {
   stock: Record<LiquidId, number>;
   /** 已買下的特殊澡盆液體 */
   ownedBasins: LiquidId[];
-  /** 蛋（通用原料，所有甜點都要，D33） */
+  /** 蛋（通用原料，D33） */
   eggs: number;
+  /** 基礎材料（麵粉、糯米粉；布丁不會掉，要在補貨頁買，D58） */
+  pantry: Record<PantryId, number>;
   ingredients: Record<SpeciesId, number>;
   desserts: Record<SpeciesId, number>;
   puddings: Pudding[];
@@ -323,6 +331,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     stock,
     ownedBasins: [],
     eggs: 0,
+    pantry: startPantry(),
     ingredients: zeroBySpecies(),
     desserts: zeroBySpecies(),
     puddings,
@@ -344,6 +353,12 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     claimedAchievements: [],
     speciesSeen: ['caramel'],
   };
+}
+
+function startPantry(): Record<PantryId, number> {
+  const out = {} as Record<PantryId, number>;
+  for (const id of PANTRY_IDS) out[id] = BALANCE.startPantry[id] ?? 0;
+  return out;
 }
 
 /** 這一區在這份 state 裡是不是已解鎖（migrate 內部用，避免循環 import zones.findZone） */
@@ -399,6 +414,9 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
   const rawStock = r.stock as Record<string, unknown> | undefined;
   for (const id of LIQUID_IDS) out.stock[id] = Math.max(0, num(rawStock?.[id], 0));
   out.eggs = Math.max(0, num(r.eggs, 0));
+  // 基礎材料（D58）：v8 以前沒有這欄 → 補開局那一份（跟新玩家一樣）
+  const rawPantry = r.pantry as Record<string, unknown> | undefined;
+  for (const id of PANTRY_IDS) out.pantry[id] = rawPantry ? Math.max(0, num(rawPantry[id], 0)) : out.pantry[id];
   const rawIng = r.ingredients as Record<string, unknown> | undefined;
   const rawDes = r.desserts as Record<string, unknown> | undefined;
   for (const id of SPECIES_IDS) {
@@ -546,6 +564,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
 
   // 工坊（D51）：沒有這欄就以「現在」當第 1 天 07:00
   out.bakery = restoreBakery(r.bakery, out.time);
+  // v8 五站線上做到一半的盤子退回材料（D57）；機器由 restoreBakery 歸零
+  if (isLegacyBakery(r.bakery)) refundLegacyBatches(r.bakery, out);
   out.claimedAchievements = Array.isArray(r.claimedAchievements)
     ? [...new Set(r.claimedAchievements.filter((x): x is string => typeof x === 'string' && ACHIEVEMENT_IDS.includes(x)))]
     : [];

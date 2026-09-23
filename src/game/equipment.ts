@@ -2,6 +2,7 @@ import { pickAllDrops } from './actions';
 import { BALANCE } from './balance';
 import { pourIntoBasin } from './basin';
 import type { EventSink } from './events';
+import { PANTRY, PANTRY_IDS } from './recipes';
 import { LIQUIDS, type LiquidId } from './species';
 import { equipmentIn, hasEquipmentAnywhere, type GameState } from './state';
 import { unlockedZones } from './zones';
@@ -37,7 +38,7 @@ function autoFill(state: GameState, zone: string, emit: EventSink): void {
   });
 }
 
-/** 補貨合約：焦糖與牛乳見底就自動補到 restockTarget（特殊液體不自動買，太貴） */
+/** 補貨合約：焦糖、牛乳、麵粉見底就自動補到 restockTarget（特殊液體與糯米粉不自動買，太貴） */
 function autoRestock(state: GameState, emit: EventSink): void {
   const basics: LiquidId[] = ['caramel', 'milk'];
   for (const liquid of basics) {
@@ -49,5 +50,16 @@ function autoRestock(state: GameState, emit: EventSink): void {
     state.coins -= unit * affordable;
     state.stock[liquid] += affordable;
     emit({ type: 'buy', what: LIQUIDS[liquid].name, cost: unit * affordable, auto: true });
+  }
+  // 基礎材料（D58）：便宜的麵粉一起補，糯米粉跟特殊液體一樣不自動買
+  for (const id of PANTRY_IDS) {
+    if (!PANTRY[id].autoRestock || state.pantry[id] >= BALANCE.restockFloor) continue;
+    const want = BALANCE.restockTarget - state.pantry[id];
+    const unit = PANTRY[id].unitPrice;
+    const affordable = Math.min(want, Math.floor(state.coins / unit));
+    if (affordable <= 0) continue;
+    state.coins -= unit * affordable;
+    state.pantry[id] += affordable;
+    emit({ type: 'buy', what: PANTRY[id].name, cost: unit * affordable, auto: true });
   }
 }

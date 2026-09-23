@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 冷藏櫃（D57）：淺藍直立冷藏櫃，玻璃門後兩層擺著凝固中的杯子，頂上雪花 -->
+  <ellipse cx="80" cy="146" rx="46" ry="8" fill="#5a3d28" opacity=".14"/>
+  <rect x="36" y="22" width="88" height="118" rx="14" fill="#bfe6ff" stroke="#8cc9ee" stroke-width="3"/>
+  <rect x="46" y="36" width="68" height="88" rx="8" fill="#eaf6ff"/>
+  <rect x="46" y="78" width="68" height="4" fill="#8cc9ee"/>
+  <path d="M54 58 h16 l-2 16 h-12 Z" fill="#ffc4d2"/>
+  <path d="M78 58 h16 l-2 16 h-12 Z" fill="#fdf6ec"/>
+  <path d="M58 98 h16 l-2 16 h-12 Z" fill="#c9ecdf"/>
+  <path d="M84 98 h16 l-2 16 h-12 Z" fill="#fbdfe4"/>
+  <rect x="110" y="66" width="6" height="30" rx="3" fill="#ffffff"/>
+  <g stroke="#ffffff" stroke-width="4" stroke-linecap="round">
+    <path d="M80 6 v20 M71 11 l18 10 M71 21 l18 -10"/>
+  </g>
+</svg>

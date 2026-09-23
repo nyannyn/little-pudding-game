@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   buyEquipment,
+  buyPantry,
   buySpecialBasin,
   buyStock,
   fillBasin,
@@ -15,16 +16,7 @@ import {
   unlockZone,
 } from './game/actions';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
-import {
-  STATIONS,
-  advanceStation,
-  fulfillOrder,
-  nextStation,
-  startBatch,
-  stationStatus,
-  stockShelf,
-  type StationId,
-} from './game/bakery';
+import { STATIONS, buyMachine, fulfillOrder, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -371,8 +363,9 @@ const hudActions: HudActions = {
     hud.update(state, performance.now(), true);
   },
   setView: (v) => setView(v),
-  station: (id) => tapStation(id),
   startBatch: (species) => report(startBatch(state, species, world.emit)),
+  buyMachine: (id) => report(buyMachine(state, id, world.emit)),
+  buyPantry: (id, qty) => report(buyPantry(state, id, qty, world.emit)),
   stockShelf: () => {
     // 什麼都沒擺上去一定要講為什麼（D39 的教訓：按了沒反應＝玩家以為壞了）
     if (stockShelf(state, world.emit) === 0) hud.toast(shelfNothingReason(), true);
@@ -500,10 +493,12 @@ function handle(e: SimEvent) {
       if (!e.auto && view === 'bakery') sfx.splat(0.18);
       break;
     case 'bakeDone':
-      if (!e.auto) {
-        sfx.coin(0.32);
-        hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
-      }
+      // D57 起線上自己走，出爐一律是 auto；離線那幾百盤在 drainEvents 就丟了，這裡一盤最多一則
+      sfx.coin(0.32);
+      hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
+      break;
+    case 'bakeFailed':
+      hud.toast(`${SPECIES[e.species].dessert}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);
       break;
     case 'customer':
       // 客人演出只在看著工坊時播；離線結算的那幾百位早在 drainEvents 丟掉了
@@ -517,7 +512,9 @@ function handle(e: SimEvent) {
       break;
     case 'dayClosed':
       // 只會在「開著遊戲時剛好打烊」走到這裡（離線那 24 天的事件在 drainEvents 就丟了），
-      // 所以一天最多一則；昨日營收另外常駐在工坊的日曆列上
+      // 所以一天最多一則；昨日營收另外常駐在工坊的日曆列上。
+      // 機器還沒買齊、整天沒開張（D57 閘門：不來客）就不講——「營收 0，客人 0 位」只是雜訊
+      if (e.revenue === 0 && e.served === 0 && e.missed === 0) break;
       hud.toast(`第 ${e.day} 天打烊：營收 ${Math.floor(e.revenue)}，客人 ${e.served} 位${e.missed ? `，${e.missed} 位沒買到` : ''}`);
       break;
     case 'achievement':
@@ -578,28 +575,26 @@ function setView(v: GameView) {
 }
 
 /**
- * 點某一站（HUD 的站鈕或 3D 的機器都走這裡）：
- * 空的打蛋機＝開「開一盤」選單；做完的＝推到下一站；其他情況一定要講出為什麼沒動（D39）。
+ * 點 3D 的某台機器（D57 起不用推站，線上自己走）：
+ * 沒買＝說明並把商店開在工坊頁；上面有一盤＝講它在做什麼、還要幾秒；空著＝開菜單。
+ * 每一種情況都要講得出話（D39：按了沒反應＝玩家以為壞了）。
  */
 function tapStation(id: StationId) {
-  const status = stationStatus(state, id);
-  if (status === 'ready') {
-    report(advanceStation(state, id, world.emit));
+  if (state.bakery.machines[id] === 0) {
+    hud.toast(`還沒有${STATIONS[id].name}：到商店的「工坊」頁購買`);
+    hud.openShop('bakery');
     return;
   }
-  if (status === 'working') {
-    const left = Math.ceil(state.bakery.stations[id].doneAt - state.time);
-    hud.toast(`${STATIONS[id].name}還在${STATIONS[id].verb}，再 ${left} 秒`);
+  const b = state.bakery.stations[id].batch;
+  if (b) {
+    const left = Math.max(0, Math.ceil(state.bakery.stations[id].doneAt - state.time));
+    const what = SPECIES[b.species].dessert;
+    hud.toast(stationStatus(state, id) === 'working'
+      ? `${STATIONS[id].name}正在${STATIONS[id].verb}${what}，再 ${left} 秒`
+      : `${what}在${STATIONS[id].name}等下一台空出來`);
     return;
   }
-  if (id === 'crack') {
-    hud.openBatchPicker();
-    return;
-  }
-  const i = (['crack', 'mix', 'mold', 'bake', 'decorate'] as StationId[]).indexOf(id);
-  const prev = (['crack', 'mix', 'mold', 'bake', 'decorate'] as StationId[])[i - 1];
-  hud.toast(prev ? `${STATIONS[id].name}是空的：等${STATIONS[prev].name}做完，點它推過來` : `${STATIONS[id].name}是空的`);
-  void nextStation; // 流水線順序的唯一真相在 game/bakery.ts；這裡只是拿來講話
+  hud.openMenu();
 }
 
 /** 按了上架卻一份都沒擺上去的原因 */

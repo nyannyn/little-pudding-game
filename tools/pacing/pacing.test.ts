@@ -2,6 +2,7 @@ import { test } from 'vitest';
 import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../../src/game/balance';
 import {
   buyEquipment,
+  buyPantry,
   buyStock,
   fillBasin,
   pickAllDrops,
@@ -10,7 +11,8 @@ import {
   unlockZone,
 } from '../../src/game/actions';
 import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
-import { STATION_IDS, advanceStation, canStartBatch, fulfillOrder, startBatch, stationStatus, stockShelf } from '../../src/game/bakery';
+import { buyMachine, fulfillOrder, machineNextPrice, startBatch, stockShelf } from '../../src/game/bakery';
+import { RECIPES, STATION_IDS, canStartRecipe, dessertPrice, recipeMaterials, type StationId } from '../../src/game/recipes';
 import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
 import { applyGenes } from '../../src/game/genetics';
@@ -47,9 +49,16 @@ const ZONE_SCOPED = new Set<EquipmentId>(['collector', 'autoFill']);
  * `raw-only` 情境＝完全不進工坊、原料全賣：拿來對照「工坊值不值得」。
  * 成就一達成就領（D54 開局資金），里程碑記「成就領到 N 元」。
  */
-/** 工坊留著用的底量：一盤要蛋 4／原料 2，留兩盤份，多的才賣 */
-const KEEP_EGGS = 2 * BALANCE.bakery.batchSize * BALANCE.eggsPerDessert;
-const KEEP_ING = 2 * BALANCE.bakery.batchSize * BALANCE.ingredientsPerDessert;
+/**
+ * D56／D57（2026-09-24）起工坊是食譜制全自動流水線：玩家（bot）要先在商店買機器，
+ * 再從菜單挑一道做得起的甜點放上線，之後線上自己走完；bot 只負責上架、交預訂單。
+ * 機器買法：先把焦糖布丁塔那條線買齊（開局只有焦糖原料），解鎖上層之後再補齊其他機器；
+ * 升級只在「錢多到升級價的兩倍」時才升（不把擴建的錢吃光）。
+ * 工坊留著用的底量：最大那一盤（Lv3 一盤 4 份）的蛋與原料，多的才賣。
+ */
+const KEEP_EGGS = 4 * 2;
+const KEEP_ING = 4 * 2;
+const FIRST_LINE: StationId[] = RECIPES.caramel.route;
 
 function run(profile: 'equip-first' | 'zone-first' | 'hybrid' | 'raw-only', seed: number) {
   const state = createNewSave({ seed, now: 0 });
@@ -84,14 +93,28 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid' | 'raw-only', seed
     }
     const bakery = profile !== 'raw-only';
     if (bakery) {
-      // 下游先推，上游才推得過去
-      for (const id of [...STATION_IDS].reverse()) {
-        if (stationStatus(state, id) === 'ready') advanceStation(state, id, noop);
+      // 機器：先湊齊焦糖布丁塔那條線，再補其他台（Lv1），最後有餘錢才升級
+      for (const id of [...FIRST_LINE, ...STATION_IDS]) {
+        if (state.bakery.machines[id] > 0) continue;
+        // 焦糖布丁塔用不到的機器（冷藏櫃）等解鎖上層、開始養其他口味再買
+        if (!FIRST_LINE.includes(id) && state.zones.filter((z) => z.unlocked).length < 2) continue;
+        const price = machineNextPrice(state, id)!;
+        if (state.coins >= price + 20 && buyMachine(state, id, noop).ok) mark(`buy machine ${id}`);
       }
-      if (!state.bakery.stations.crack.batch) {
-        const best = SPECIES_IDS.filter((id) => canStartBatch(state, id)).sort((a, b) => state.ingredients[b] - state.ingredients[a])[0];
-        if (best) startBatch(state, best, noop);
+      if (FIRST_LINE.every((f) => state.bakery.machines[f] > 0)) mark('bakery line ready');
+      if (STATION_IDS.every((f) => state.bakery.machines[f] > 0)) {
+        for (const id of STATION_IDS) {
+          const price = machineNextPrice(state, id);
+          // 擴建優先：升級只花「留下下一區的錢之後」多出來的；
+          // 例外：解鎖上層之後，焦糖布丁塔那條線升到 Lv2 很便宜（一盤 1→2 份），真人玩家會先升
+          const cheapLine = FIRST_LINE.includes(id) && state.bakery.machines[id] < 2 && state.zones.filter((z) => z.unlocked).length >= 2;
+          const reserve = cheapLine ? 20 : (nextLockedZone(state)?.price ?? 0);
+          if (price !== null && state.coins >= price + reserve && buyMachine(state, id, noop).ok) mark(`upgrade ${id} Lv${state.bakery.machines[id]}`);
+        }
       }
+      // 菜單：做得起的裡面挑最貴的放上線（起始站忙就等下一輪）
+      const pickable = SPECIES_IDS.filter((id) => canStartRecipe(state, id)).sort((a, b) => dessertPrice(b) - dessertPrice(a));
+      for (const id of pickable) if (canStartRecipe(state, id)) startBatch(state, id, noop);
       if (state.stats.baked > 0) mark('first bake');
       for (const o of [...state.orders]) {
         if (state.desserts[o.species] + state.bakery.shelf[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
@@ -105,8 +128,12 @@ function run(profile: 'equip-first' | 'zone-first' | 'hybrid' | 'raw-only', seed
     const keepIng = bakery ? KEEP_ING : 0;
     if (state.eggs > keepEggs) sellEggs(state, state.eggs - keepEggs, noop);
     for (const id of SPECIES_IDS) {
-      if (state.ingredients[id] > keepIng && sellIngredient(state, id, state.ingredients[id] - keepIng, noop).ok) mark('first sale');
+      // 別的甜點要拿它當配料的（例如奶酪塊、抹茶粉、草莓醬）也留著
+      const usedElsewhere = bakery && SPECIES_IDS.some((d) => d !== id && recipeMaterials(d).some(([k]) => k === id));
+      const keep = keepIng * (usedElsewhere ? 2 : 1);
+      if (state.ingredients[id] > keep && sellIngredient(state, id, state.ingredients[id] - keep, noop).ok) mark('first sale');
     }
+    if (bakery && state.pantry.flour < 4) buyPantry(state, 'flour', BALANCE.stockBuyQty, noop);
     for (const a of ACHIEVEMENTS) {
       if (achievementStatus(state, a) === 'claimable') {
         claimAchievement(state, a.id, noop);

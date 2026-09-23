@@ -2,7 +2,8 @@ import { BALANCE } from '../game/balance';
 import { levelProgress } from '../game/level';
 import { shopCatalog, type ShopEntry, type ShopTab } from '../game/shop';
 import { puddingSaleBlock } from '../game/actions';
-import { SPECIES, SPECIES_IDS, dessertPrice, puddingPrice, type SpeciesId } from '../game/species';
+import { dessertPrice } from '../game/recipes';
+import { SPECIES, SPECIES_IDS, puddingPrice, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
 import { findZone } from '../game/zones';
 import { icon } from './icons';
@@ -22,6 +23,7 @@ export type ShopPage = ShopTab | 'sell';
 
 const TABS: { id: ShopPage; label: string; art: keyof typeof ART }[] = [
   { id: 'stock', label: '補貨', art: 'honeyJar' },
+  { id: 'bakery', label: '工坊', art: 'mcOven' },
   { id: 'equipment', label: '設備', art: 'eqCollector' },
   { id: 'basin', label: '澡盆', art: 'bathtub' },
   { id: 'zone', label: '擴建', art: 'window' },
@@ -47,7 +49,7 @@ function cardHtml(e: ShopEntry): string {
   let foot: string;
   switch (e.status) {
     case 'owned':
-      foot = `<span class="owned">${e.action === 'buyEquip' ? '已安裝' : '已擁有'}</span>`;
+      foot = `<span class="owned">${e.action === 'buyEquip' ? '已安裝' : e.action === 'buyMachine' ? '已滿級' : '已擁有'}</span>`;
       break;
     case 'locked':
       foot = `<span class="lockedtag"><img src="${ART.lock}" alt="">Lv.${e.level} 解鎖</span>`;
@@ -72,7 +74,7 @@ function sellCardHtml(s: SpeciesId): string {
   return `<div class="card" data-id="sell:${s}" data-status="available">
     ${artHtml(INGREDIENT_ART[s])}
     <div class="name">${info.ingredient}</div>
-    <div class="desc">直接賣 ${info.ingredientPrice}／份。送進甜點店做成${info.dessert}可賣 ${dessertPrice(s)}</div>
+    <div class="desc">直接賣 ${info.ingredientPrice}／份。做成${info.dessert}一份賣 ${dessertPrice(s)}</div>
     <div class="stock">持有 <b>0</b></div>
     <div class="foot"><button class="buy sell" data-a="sellIng" data-arg="${s}">0</button></div>
   </div>`;
@@ -83,7 +85,7 @@ function eggCardHtml(): string {
   return `<div class="card" data-id="sell:egg" data-status="available">
     ${artHtml(EGG_ART)}
     <div class="name">蛋</div>
-    <div class="desc">直接賣 ${BALANCE.eggPrice}／顆。甜點店一份甜點要 ${BALANCE.eggsPerDessert} 顆</div>
+    <div class="desc">直接賣 ${BALANCE.eggPrice}／顆。甜點店做塔、捲、泡芙都要用</div>
     <div class="stock">持有 <b>0</b></div>
     <div class="foot"><button class="buy sell" data-a="sellEggs">0</button></div>
   </div>`;
@@ -186,7 +188,7 @@ export class ShopView {
           ? sellable.length + (hasEggs ? 1 : 0)
           : catalog.filter((e) =>
               e.tab === id && e.status === 'available' &&
-              ((e.level === lp.level && e.level > 1) || (e.action !== 'buyStock' && e.affordable)),
+              ((e.level === lp.level && e.level > 1) || (e.action !== 'buyStock' && e.action !== 'buyPantry' && e.affordable)),
             ).length;
         dot.hidden = n === 0;
       }
@@ -199,11 +201,13 @@ export class ShopView {
     const zoneNote =
       this.page === 'equipment'
         ? `<div class="note">設備裝在目前這一區（${zoneName}）。每一區各買各的，別區要另外買。</div>`
-        : '';
+        : this.page === 'bakery'
+          ? '<div class="note">機器裝在甜點店的流水線上。一盤做幾份，看那道甜點路線上等級最低的那台。</div>'
+          : '';
     const key =
       this.page === 'sell'
         ? `sell:${sellable.join(',')}:egg${hasEggs ? 1 : 0}:pud${pudSpecies.join(',')}`
-        : `${this.page}:${zoneName}:${entries.map((e) => `${e.id}=${e.status}`).join(',')}:lv${lp.level}`;
+        : `${this.page}:${zoneName}:${entries.map((e) => `${e.id}=${e.status}${e.machineLevel ?? ''}`).join(',')}:lv${lp.level}`;
     if (key !== this.structureKey) {
       this.structureKey = key;
       // 買了一件（owned）也會走到這裡重建：捲動位置要留住，不然買完清單跳回最上面

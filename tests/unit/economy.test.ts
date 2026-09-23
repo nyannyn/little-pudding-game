@@ -7,14 +7,15 @@ import {
   pickDrop,
   sellIngredient,
 } from '../../src/game/actions';
-import { fulfillOrder } from '../../src/game/bakery';
+import { STATION_IDS, fulfillOrder } from '../../src/game/bakery';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
 import type { SimEvent } from '../../src/game/events';
 import { generateOrder } from '../../src/game/orders';
 import { createRng } from '../../src/game/rng';
 import { advance } from '../../src/game/sim';
-import { SPECIES, dessertPrice } from '../../src/game/species';
-import { createNewSave } from '../../src/game/state';
+import { dessertPrice } from '../../src/game/recipes';
+import { SPECIES } from '../../src/game/species';
+import { createNewSave, type GameState } from '../../src/game/state';
 import { START_ZONE } from '../../src/game/zones';
 import { advanceUntil, fillBasinDirect, makeWorld, only, runOneBath, keepFed } from './helpers';
 
@@ -126,9 +127,15 @@ describe('經濟：撿、賣', () => {
   });
 });
 
+/** D57：還沒湊齊任何一條線不出預訂單。訂單測試先把整條線買好 */
+function openShop(s: GameState) {
+  for (const id of STATION_IDS) s.bakery.machines[id] = 1;
+}
+
 describe('AC2-10 訂單卡', () => {
   it('時間到會生成訂單卡，有貨就能成交', () => {
     const w = makeWorld({ puddings: 1 });
+    openShop(w.state);
     expect(advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1)).toBeGreaterThanOrEqual(0);
     const o = w.state.orders[0]!;
     expect(o.qty).toBeGreaterThanOrEqual(1);
@@ -147,6 +154,7 @@ describe('AC2-10 訂單卡', () => {
 
   it('沒有對應物種的甜點就只能看它過期', () => {
     const w = makeWorld({ puddings: 1 });
+    openShop(w.state);
     advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1);
     const o = w.state.orders[0]!;
     expect(fulfillOrder(w.state, o.id, sink).ok).toBe(false);
@@ -157,6 +165,7 @@ describe('AC2-10 訂單卡', () => {
 
   it('過期的訂單不能事後補交', () => {
     const w = makeWorld({ puddings: 1 });
+    openShop(w.state);
     advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1);
     const o = w.state.orders[0]!;
     w.state.desserts[o.species] = o.qty;

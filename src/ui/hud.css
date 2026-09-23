@@ -300,6 +300,8 @@
 .dock .n.zero { background: var(--coral); color: #fff; }
 .dock button:disabled .n { background: #d3c6ae; color: #fff; }
 .dock .primary .n { background: #fff; border-color: var(--green-deep); color: var(--green-deep); }
+/* 甜點店鈕：錢夠買整條線、卻還沒有任何機器（D57）——教學買完收集手就結束，沒有這個記號玩家不知道工坊要先買機器 */
+.dock .primary.alert .n { background: var(--coral); border-color: #fff; color: #fff; }
 
 /* 右上角商店鈕：彩色小店招 */
 .hud .shopbtn { padding: 5px; }
@@ -846,33 +848,7 @@
 .t-bakery { --tile: #fde2e8; }
 .t-farm { --tile: #e8f6fb; }
 .t-shelf { --tile: #ffe3ea; }
-.t-crack { --tile: #dff3ea; }
-.t-mix { --tile: #ffe3ea; }
-.t-mold { --tile: #fff1c9; }
-.t-bake { --tile: #ece5fb; }
-.t-decorate { --tile: #ffe3ea; }
-
-/* 五站一排：磚要比農場的小一點才塞得下 320px */
-.dock .stations { gap: 5px; }
-.hud .dock .stations .tilebtn { min-height: 62px; padding: 4px 2px 8px; font-size: 11.5px; border-radius: 16px; }
-.dock .stations .ic.tile { width: 32px; height: 32px; padding: 5px; }
-.dock .stations .prog {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 4px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--paper-3);
-  overflow: hidden;
-}
-.dock .stations .prog > b { display: block; height: 100%; width: 0; border-radius: 2px; background: #f08aa2; }
-.dock .stations [data-status="ready"] .prog > b { background: var(--green); }
-.dock .stations [data-status="idle"] .prog { visibility: hidden; }
-/* 做完、等玩家推：整顆磚換綠邊，一眼看出「點這個」 */
-.hud .dock .stations [data-status="ready"] { --edge: var(--green); --face-top: #f4fbef; --face: #e2f2d6; }
-.dock .stations [data-status="ready"] .n { background: var(--green); color: #fff; border-color: #fff; }
-.dock .stations [data-status="working"] .n { background: #fff; color: #c0607a; border-color: #f5b8c6; }
+.t-menu { --tile: #fff1c9; }
 
 /* 工坊的日曆列：第幾天、幾點、營業中，今日／昨日營收 */
 .daybar {
@@ -900,6 +876,8 @@
 .daybar .open.closed { background: #7d7394; }
 .daybar .money { display: flex; gap: 8px; white-space: nowrap; font-size: 11.5px; }
 .daybar .yday:empty { display: none; }
+.daybar .onl { font-size: 11px; white-space: nowrap; }
+.daybar .onl:empty { display: none; }
 
 /* 成就鈕：右上角的紅點數字 */
 .hud .achbtn { position: relative; overflow: visible; }
@@ -920,26 +898,36 @@
 }
 .achbtn .badge[hidden] { display: none; }
 
-/* 開工選單：一列一項，右邊一顆鈕（成就改成底部抽屜了，見下方 .achsheet） */
-.batchcard .card { box-sizing: border-box; width: 100%; max-width: 360px; max-height: 80vh; overflow-y: auto; }
-.batchcard .lead { margin-bottom: 10px; }
-.batchcard .blist { align-self: stretch; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; text-align: left; }
-.brow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* 菜單（D56）：一道食譜一張卡——頭（圖＋名字＋路線＋售價）、數據列、原料、缺什麼、開始製作 */
+.menucard .card { box-sizing: border-box; width: 100%; max-width: 380px; max-height: 84vh; display: flex; flex-direction: column; }
+.menucard .lead { margin-bottom: 8px; }
+.menucard .rlist { align-self: stretch; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; text-align: left; min-height: 0; }
+.rcard {
   background: var(--paper);
   border: 2px solid var(--wood-light);
   border-radius: 14px;
-  padding: 6px 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
-.brow .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.brow small { color: var(--ink-soft); font-size: 11px; }
-.hud .brow button.buy { width: auto; min-height: 34px; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
-.brow .art { position: relative; width: 40px; height: 40px; flex: none; }
-.brow .art .main { width: 40px; height: 40px; object-fit: contain; }
-.brow .art .corner { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; object-fit: contain; }
-.batchcard .empty { margin: 6px 0; font-size: 13px; color: var(--ink-faint); text-align: center; }
+.rcard[data-ok="true"] { border-color: var(--green); background: #f4fbef; }
+.rcard .rhead { display: flex; align-items: center; gap: 8px; }
+.rcard .rhead .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rcard .rhead small { color: var(--ink-soft); font-size: 11px; line-height: 1.35; }
+.rcard .price { flex: none; font-weight: 700; color: #b8741a; background: #fff1c9; border-radius: 999px; padding: 2px 9px; font-size: 13px; }
+.rcard .price::before { content: '售價 '; font-weight: 500; font-size: 11px; }
+.rcard .art { position: relative; width: 40px; height: 40px; flex: none; }
+.rcard .art .main { width: 40px; height: 40px; object-fit: contain; }
+.rcard .art .corner { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; object-fit: contain; }
+.rcard .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: var(--ink-soft); }
+.rcard .mats { display: flex; flex-wrap: wrap; gap: 4px; }
+.rcard .mat { font-size: 11.5px; background: #fff; border: 1.5px solid var(--paper-3); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+.rcard .mat.short { border-color: #f0a3b3; color: #c0506c; background: #fff3f5; }
+.rcard .miss { margin: 0; font-size: 12px; color: #c0506c; line-height: 1.4; }
+/* 開始製作不花錢：不要商品卡那顆金幣 */
+.hud .rcard button.buy::before { display: none; }
+.hud .rcard button.buy { align-self: flex-end; width: auto; min-height: 34px; padding: 4px 14px; font-size: 13px; white-space: nowrap; }
 
 /* 右欄：成就鈕在上、預訂單卡在下（頂列已放不下第七個東西：390px 上獎盃會蓋住甜點數字） */
 .rightcol {

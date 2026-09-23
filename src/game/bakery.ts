@@ -1,47 +1,33 @@
 import { BALANCE } from './balance';
 import type { EventSink } from './events';
 import { grantXp } from './level';
+import {
+  MAX_MACHINE_LEVEL,
+  RECIPES,
+  STATIONS,
+  STATION_IDS,
+  anyLineReady,
+  blockerLines,
+  dessertPrice,
+  lineFailRate,
+  batchQty,
+  recipeBlockers,
+  takeRecipeMaterials,
+  type StationId,
+} from './recipes';
 import { range, type Rng } from './rng';
-import { SPECIES, SPECIES_IDS, dessertPrice, type SpeciesId } from './species';
+import { SPECIES, SPECIES_IDS, type SpeciesId } from './species';
 import type { GameState } from './state';
 
+export { STATIONS, STATION_IDS, type StationId } from './recipes';
+
 /**
- * 甜點工坊（D51／D52，2026-09-23 使用者要求「製作甜點有一個專屬的地方」「每個步驟都要有
- * 動畫跟對應的機器」「烘焙需要時間、擺在架上販賣、營業時間、日營收」）。
+ * 甜點工坊（D51／D52 → D56／D57，2026-09-24 改成食譜制全自動流水線）。
  *
- * 五站流水線：打蛋 → 攪拌 → 裝模 → 烘烤 → 裝飾。一次一盤（`batchSize` 份同一物種），
- * 每站同時只放一盤，所以五站可以各做一盤。手動＝點「完成」的那一站把這盤推到下一站；
- * 自動化設備（`bakery.auto`，**規則先做好、商店尚未上架**）在 `tickBakery` 裡呼叫同一組函式——
- * 手動與自動共用規則，UI 端不准自己抄一份（2026-09-22 出貨吃掉訂單就是這樣來的）。
+ * 一條 7 站的線（`recipes.ts`）；玩家從菜單挑一道甜點「放上線」，那一盤就沿著自己的路線
+ * 一站一站自動走到底（下一站還有一盤就在原站等）、做完進成品櫃。玩家只負責上架與交預訂單。
+ * 機器要買、有等級：一盤份數＝路線上最低那台的份數。
  */
-
-export type StationId = 'crack' | 'mix' | 'mold' | 'bake' | 'decorate';
-export const STATION_IDS: StationId[] = ['crack', 'mix', 'mold', 'bake', 'decorate'];
-
-export interface StationInfo {
-  id: StationId;
-  /** 機器名（場景名牌、HUD） */
-  name: string;
-  /** 動作名（按鈕上的動詞） */
-  verb: string;
-  /**
-   * 之後上架的自動化設備售價（D54：「甜點製作自動化系統應該很貴」）。
-   * **本包只定價、不上架**——使用者說「我之後才能上架自動化機器」。
-   */
-  autoPrice: number;
-  autoName: string;
-}
-
-export const STATIONS: Record<StationId, StationInfo> = {
-  crack: { id: 'crack', name: '打蛋機', verb: '打蛋', autoPrice: 1500, autoName: '自動打蛋機' },
-  mix: { id: 'mix', name: '攪拌機', verb: '攪拌', autoPrice: 2000, autoName: '自動攪拌臂' },
-  mold: { id: 'mold', name: '裝模機', verb: '裝模', autoPrice: 2500, autoName: '自動注模嘴' },
-  bake: { id: 'bake', name: '烤箱', verb: '烘烤', autoPrice: 4000, autoName: '烤箱輸送帶' },
-  decorate: { id: 'decorate', name: '裝飾台', verb: '裝飾', autoPrice: 5000, autoName: '自動擠花機' },
-};
-
-/** 之後才上架的其他昂貴升級（D54，只定價）：烤箱加速兩級、店員 */
-export const BAKERY_UPGRADE_PRICES = { ovenSpeed: [3000, 8000], ovenSpeedFactor: 0.7, clerk: 6000, clerkDailyWage: 100 } as const;
 
 export interface Batch {
   species: SpeciesId;
@@ -79,8 +65,8 @@ export interface BakeryState {
   lastDay: DayTally | null;
   /** 已經結算到第幾天（避免同一天結算兩次） */
   closedDay: number;
-  /** 每一站有沒有裝自動化（D54；商店尚未上架，全是 false） */
-  auto: Record<StationId, boolean>;
+  /** 每台機器的等級（0＝沒買，D57） */
+  machines: Record<StationId, number>;
 }
 
 export type StationStatus = 'idle' | 'working' | 'ready';
@@ -97,9 +83,9 @@ function emptyStations(): Record<StationId, Station> {
   return out;
 }
 
-function noAuto(): Record<StationId, boolean> {
-  const out = {} as Record<StationId, boolean>;
-  for (const id of STATION_IDS) out[id] = false;
+function noMachines(): Record<StationId, number> {
+  const out = {} as Record<StationId, number>;
+  for (const id of STATION_IDS) out[id] = 0;
   return out;
 }
 
@@ -112,7 +98,7 @@ export function createBakery(epoch: number): BakeryState {
     today: { day: 1, revenue: 0, served: 0, missed: 0 },
     lastDay: null,
     closedDay: 0,
-    auto: noAuto(),
+    machines: noMachines(),
   };
 }
 
@@ -130,21 +116,55 @@ function tally(v: unknown, fallbackDay: number): DayTally {
   };
 }
 
+/** 存檔裡的工坊是 D57 以前的五站版（沒有 `machines` 欄）：看形狀不看 schemaVersion（D45 的教訓） */
+export function isLegacyBakery(raw: unknown): boolean {
+  return typeof raw === 'object' && raw !== null && !('machines' in raw);
+}
+
+/** D57 以前的配方：每份蛋 2、該物種原料 1；打蛋站扣蛋、攪拌站扣原料 */
+const LEGACY_EGGS_PER = 2;
+const LEGACY_ING_PER = 1;
+
+/**
+ * v8 → v9：舊五站線上做到一半的那幾盤退回材料（使用者選「舊存檔一樣要重新買」，
+ * 機器歸零之後那幾盤再也走不完）。**打蛋站只扣過蛋、只退蛋；攪拌站以後蛋與原料都扣過、都退**。
+ * 回傳退了幾盤（測試用）。只在 `isLegacyBakery` 時呼叫。
+ */
+export function refundLegacyBatches(raw: unknown, state: GameState): number {
+  const stations = (raw as { stations?: Record<string, { batch?: { species?: unknown; qty?: unknown } | null } | undefined> })?.stations;
+  if (!stations) return 0;
+  let n = 0;
+  for (const [id, st] of Object.entries(stations)) {
+    const b = st?.batch;
+    if (!b || !SPECIES_IDS.includes(b.species as SpeciesId)) continue;
+    const qty = Math.max(0, Math.floor(num(b.qty, 0)));
+    if (qty <= 0) continue;
+    state.eggs += qty * LEGACY_EGGS_PER;
+    if (id !== 'crack') state.ingredients[b.species as SpeciesId] += qty * LEGACY_ING_PER;
+    n++;
+  }
+  return n;
+}
+
 /**
  * 從存檔還原工坊。沒有這欄（v7 以前）→ 以 `now`（升級那一刻的遊戲時間）當 epoch 開新工坊。
- * 站上的那一盤照存檔還原（包括還沒做完的），物種認不得的丟掉——寧可少一盤也不要讓
- * 一盤未知物種卡死整條流水線。
+ * 舊五站版（v8）：時鐘、展示架、營業紀錄照留，站上的盤子不還原（`migrate` 另外退材料）、機器全無。
+ * 站上的那一盤物種認不得的丟掉——寧可少一盤也不要讓一盤未知物種卡死整條流水線。
  */
 export function restoreBakery(raw: unknown, now: number): BakeryState {
   if (typeof raw !== 'object' || raw === null) return createBakery(now);
   const r = raw as Partial<BakeryState>;
   const out = createBakery(num(r.epoch, now));
-  for (const id of STATION_IDS) {
-    const src = (r.stations as Record<string, Partial<Station> | undefined> | undefined)?.[id];
-    const b = src?.batch;
-    if (b && SPECIES_IDS.includes(b.species as SpeciesId) && num(b.qty, 0) > 0) {
-      out.stations[id] = { batch: { species: b.species as SpeciesId, qty: Math.floor(num(b.qty, 1)) }, doneAt: num(src?.doneAt, now) };
+  if (!isLegacyBakery(raw)) {
+    for (const id of STATION_IDS) {
+      const src = (r.stations as Record<string, Partial<Station> | undefined> | undefined)?.[id];
+      const b = src?.batch;
+      if (b && SPECIES_IDS.includes(b.species as SpeciesId) && num(b.qty, 0) > 0) {
+        out.stations[id] = { batch: { species: b.species as SpeciesId, qty: Math.floor(num(b.qty, 1)) }, doneAt: num(src?.doneAt, now) };
+      }
     }
+    const m = r.machines as Record<string, unknown> | undefined;
+    for (const id of STATION_IDS) out.machines[id] = Math.min(MAX_MACHINE_LEVEL, Math.max(0, Math.floor(num(m?.[id], 0))));
   }
   const shelf = r.shelf as Record<string, unknown> | undefined;
   for (const id of SPECIES_IDS) out.shelf[id] = Math.max(0, Math.floor(num(shelf?.[id], 0)));
@@ -152,8 +172,6 @@ export function restoreBakery(raw: unknown, now: number): BakeryState {
   out.today = tally(r.today, 1);
   out.lastDay = r.lastDay ? tally(r.lastDay, Math.max(1, out.today.day - 1)) : null;
   out.closedDay = Math.max(0, Math.floor(num(r.closedDay, 0)));
-  const auto = r.auto as Record<string, unknown> | undefined;
-  for (const id of STATION_IDS) out.auto[id] = auto?.[id] === true;
   return out;
 }
 
@@ -195,22 +213,23 @@ export function stationStatus(state: GameState, id: StationId): StationStatus {
 export function stationProgress(state: GameState, id: StationId): number {
   const st = state.bakery.stations[id];
   if (!st.batch) return 0;
-  const total = BALANCE.bakery.stepSec[id] ?? 1;
+  const total = STATIONS[id].sec;
   return Math.min(1, Math.max(0, 1 - (st.doneAt - state.time) / total));
 }
 
-export function nextStation(id: StationId): StationId | null {
-  return STATION_IDS[STATION_IDS.indexOf(id) + 1] ?? null;
+/** 這一盤在自己的路線上，下一站是哪裡（null＝這一站是最後一站） */
+export function nextStationFor(species: SpeciesId, from: StationId): StationId | null {
+  const route = RECIPES[species].route;
+  return route[route.indexOf(from) + 1] ?? null;
 }
 
 export function shelfCount(state: GameState): number {
   return SPECIES_IDS.reduce((n, id) => n + state.bakery.shelf[id], 0);
 }
 
-/** 這個物種現在開得了一盤嗎：蛋與原料都要夠整盤（不然做到攪拌站才卡住） */
-export function canStartBatch(state: GameState, species: SpeciesId): boolean {
-  const q = BALANCE.bakery.batchSize;
-  return state.eggs >= q * BALANCE.eggsPerDessert && state.ingredients[species] >= q * BALANCE.ingredientsPerDessert;
+/** 線上正在做的盤數 */
+export function batchesOnLine(state: GameState): number {
+  return STATION_IDS.filter((id) => state.bakery.stations[id].batch).length;
 }
 
 /** 進行中的預訂單要保留多少份在成品櫃（上架時不能把它們擺出去被客人買走） */
@@ -227,56 +246,38 @@ const OK: BakeryResult = { ok: true };
 const fail = (error: string): BakeryResult => ({ ok: false, error });
 
 /**
- * 打蛋站開一盤。**開工前就驗齊整盤的蛋與原料**：只驗蛋的話，玩家可能在攪拌之前
- * 把原料賣掉，那一盤就永遠卡在打蛋站。打蛋扣蛋；原料到攪拌站才扣（那一步才加得進去）。
+ * 從菜單把一盤放上線（D56）。機器、材料（至少 1 份）、起始站三項都要過，原料開工時一次扣齊；
+ * 一盤份數＝min(這條線最低那台的份數, 材料夠做的份數)（D57）。
  */
-export function startBatch(state: GameState, species: SpeciesId, emit: EventSink, auto = false): BakeryResult {
-  const st = state.bakery.stations.crack;
-  if (st.batch) return fail('打蛋機上還有一盤');
-  const q = BALANCE.bakery.batchSize;
-  const eggs = q * BALANCE.eggsPerDessert;
-  const ing = q * BALANCE.ingredientsPerDessert;
-  if (state.eggs < eggs) return fail(`一盤要 ${eggs} 顆蛋`);
-  if (state.ingredients[species] < ing) return fail(`一盤要 ${ing} 份${SPECIES[species].ingredient}`);
-  state.eggs -= eggs;
-  st.batch = { species, qty: q };
-  st.doneAt = state.time + (BALANCE.bakery.stepSec.crack ?? 1);
-  emit({ type: 'bakeStep', station: 'crack', species, auto });
+export function startBatch(state: GameState, species: SpeciesId, emit: EventSink): BakeryResult {
+  const lines = blockerLines(recipeBlockers(state, species));
+  if (lines.length) return fail(lines.join('；'));
+  const qty = batchQty(state, species);
+  takeRecipeMaterials(state, species, qty);
+  const first = RECIPES[species].route[0]!;
+  const st = state.bakery.stations[first];
+  st.batch = { species, qty };
+  st.doneAt = state.time + STATIONS[first].sec;
+  emit({ type: 'bakeStep', station: first, species, auto: false });
   return OK;
 }
 
-/**
- * 把做完的那一盤推到下一站並立刻開工；裝飾站做完就進成品櫃。
- * 下一站還有一盤就推不動（留在原站等），這就是流水線的節流。
- */
-export function advanceStation(state: GameState, id: StationId, emit: EventSink, auto = false): BakeryResult {
-  const st = state.bakery.stations[id];
-  const b = st.batch;
-  if (!b) return fail(`${STATIONS[id].name}上沒有東西`);
-  if (state.time < st.doneAt) return fail(`${STATIONS[id].name}還在${STATIONS[id].verb}`);
-
-  const next = nextStation(id);
-  if (next === null) {
-    state.desserts[b.species] += b.qty;
-    state.stats.baked += b.qty;
-    st.batch = null;
-    emit({ type: 'bakeDone', species: b.species, qty: b.qty, auto });
-    grantXp(state, BALANCE.xp.craft * b.qty, emit);
-    return OK;
-  }
-
-  const to = state.bakery.stations[next];
-  if (to.batch) return fail(`${STATIONS[next].name}還有一盤`);
-  if (next === 'mix') {
-    const ing = b.qty * BALANCE.ingredientsPerDessert;
-    if (state.ingredients[b.species] < ing) return fail(`攪拌要 ${ing} 份${SPECIES[b.species].ingredient}`);
-    state.ingredients[b.species] -= ing;
-  }
-  to.batch = b;
-  to.doneAt = state.time + (BALANCE.bakery.stepSec[next] ?? 1);
-  st.batch = null;
-  emit({ type: 'bakeStep', station: next, species: b.species, auto });
+/** 買機器或升一級（D57）：價錢在 `STATIONS[id].prices`，商店目錄讀同一份 */
+export function buyMachine(state: GameState, id: StationId, emit: EventSink): BakeryResult {
+  const lv = state.bakery.machines[id];
+  if (lv >= MAX_MACHINE_LEVEL) return fail(`${STATIONS[id].name}已經是最高級`);
+  const price = STATIONS[id].prices[lv]!;
+  if (state.coins < price) return fail('焦糖幣不夠');
+  state.coins -= price;
+  state.bakery.machines[id] = lv + 1;
+  emit({ type: 'buy', what: lv === 0 ? STATIONS[id].name : `${STATIONS[id].name} Lv.${lv + 1}`, cost: price, auto: false });
   return OK;
+}
+
+/** 下一級要多少錢；滿級回 null */
+export function machineNextPrice(state: GameState, id: StationId): number | null {
+  const lv = state.bakery.machines[id];
+  return lv >= MAX_MACHINE_LEVEL ? null : STATIONS[id].prices[lv]!;
 }
 
 /**
@@ -369,23 +370,45 @@ function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
   grantXp(state, BALANCE.xp.sellDessert * qty, emit);
 }
 
-/** 自動化：下游先動（裝飾 → 打蛋），上游推過來時下一站才空得出來 */
-function runBakeryAutomation(state: GameState, emit: EventSink): void {
-  const auto = state.bakery.auto;
+/** 最後一站做完：每份獨立擲失敗（D56），成功的進成品櫃 */
+function finishBatch(state: GameState, b: Batch, rng: Rng, emit: EventSink): void {
+  const p = lineFailRate(state, b.species);
+  let ok = 0;
+  for (let i = 0; i < b.qty; i++) if (rng.next() >= p) ok++;
+  const failed = b.qty - ok;
+  if (failed > 0) emit({ type: 'bakeFailed', species: b.species, qty: failed });
+  if (ok === 0) return;
+  state.desserts[b.species] += ok;
+  state.stats.baked += ok;
+  emit({ type: 'bakeDone', species: b.species, qty: ok, auto: true });
+  grantXp(state, BALANCE.xp.craft * ok, emit);
+}
+
+/**
+ * 輸送帶（D57）：做完的那一盤自動往自己路線的下一站走；下一站還有一盤就留在原站等。
+ * **下游先動**：後面的站先清出來，前面的才推得過去（同一 tick 內一條線可以整排往前挪）。
+ */
+function runLine(state: GameState, rng: Rng, emit: EventSink): void {
+  const st = state.bakery.stations;
   for (const id of [...STATION_IDS].reverse()) {
-    if (!auto[id]) continue;
-    if (stationStatus(state, id) === 'ready') advanceStation(state, id, emit, true);
-  }
-  if (auto.crack && !state.bakery.stations.crack.batch) {
-    // 自動打蛋機挑「原料最多、做得起」的那一種
-    const pickable = SPECIES_IDS.filter((id) => canStartBatch(state, id));
-    const best = pickable.sort((a, b) => state.ingredients[b] - state.ingredients[a])[0];
-    if (best) startBatch(state, best, emit, true);
+    const b = st[id].batch;
+    if (!b || state.time < st[id].doneAt) continue;
+    const next = nextStationFor(b.species, id);
+    if (next === null) {
+      st[id].batch = null;
+      finishBatch(state, b, rng, emit);
+      continue;
+    }
+    if (st[next].batch) continue;
+    st[next].batch = b;
+    st[next].doneAt = state.time + STATIONS[next].sec;
+    st[id].batch = null;
+    emit({ type: 'bakeStep', station: next, species: b.species, auto: true });
   }
 }
 
 export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
-  runBakeryAutomation(state, emit);
+  runLine(state, rng, emit);
 
   const B = BALANCE.bakery;
   const bk = state.bakery;
@@ -396,7 +419,9 @@ export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
   // 跨了整天都沒 tick 到打烊（不該發生：advance 最大步長 1 秒）也要補結，不可以把那天的營收吞掉
   else if (bk.closedDay < c.day - 1) settleDay(state, c.day - 1, emit);
 
-  if (!c.open) {
+  // 還沒湊齊任何一道甜點的整條線、架上也沒貨：店還沒開張，不排客人（D57）。
+  // 架上有貨就照常營業——v8 老玩家升上來機器歸零，但展示架上的貨不能就這樣凍住賣不掉
+  if (!c.open || (!anyLineReady(state) && shelfCount(state) === 0)) {
     // 打烊中不排客人；開門那一刻第一位就上門
     bk.nextCustomerAt = state.time;
     return;

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 攪拌機（D57）：粉紅桌上型攪拌機＝底座＋後柱＋往前伸的機頭，不鏽鋼碗裡一圈麵糊 -->
+  <ellipse cx="80" cy="146" rx="50" ry="8" fill="#5a3d28" opacity=".14"/>
+  <rect x="30" y="124" width="100" height="18" rx="9" fill="#f28ea6"/>
+  <rect x="96" y="44" width="26" height="86" rx="12" fill="#f28ea6"/>
+  <rect x="38" y="30" width="86" height="34" rx="16" fill="#f28ea6"/>
+  <circle cx="44" cy="47" r="10" fill="#e07d95"/>
+  <circle cx="110" cy="48" r="5" fill="#fff8ee"/>
+  <rect x="60" y="62" width="6" height="22" fill="#d6dee6"/>
+  <!-- 碗 -->
+  <path d="M34 90 h64 l-8 34 h-48 Z" fill="#d6dee6" stroke="#b7c2cc" stroke-width="3"/>
+  <ellipse cx="66" cy="90" rx="32" ry="6" fill="#ffe6a0"/>
+  <path d="M56 88 q10 8 20 0" fill="none" stroke="#f2c25c" stroke-width="3" stroke-linecap="round"/>
+</svg>

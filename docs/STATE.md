@@ -31,6 +31,41 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
+## 【進行中】食譜制全自動流水線 D56–D58（2026-09-24，分支 `feat/bakery-line`，worktree `../lpg-wt-line`，計畫檔 CP9）
+
+**使用者原話（逐字，四則陸續追加）**：
+> 甜點店應該要有流水線的樣子  而且機器也都要購買
+> 不是每個甜點都需要五個步驟 你需要參考真實甜點食譜 而去一份甜點會需要多個原料
+> 我希望製作甜點可以選擇要製作哪一種（想是閱覽菜單可以看的使用原料、總時長、失敗機率、販售價錢）
+> 然後當你都有原料跟那些機器時 食譜會可以點按（其他缺少設備或原料要在個別菜單下面提示）
+> 流水線放上去後就會自動完成所有甜點（但每個機器都有 只有上架時需要玩家參與）
+> 前期機器可以製作的甜點份數比較少
+
+**使用者選定（AskUserQuestion）**：機器「兩種都要買」（後被「放上線就自動完成」取代成「機器分級」，見 D57）、流水線＝U 型輸送帶、舊存檔「一樣要重新買」、食譜表照草案、麵粉／糯米粉在補貨頁買、前期機器訂便宜。
+
+### 做了什麼
+- 規則：新檔 `src/game/recipes.ts`（七站 `stove/crack/mix/mold/bake/chill/decorate`、十道食譜、機器等級→份數**上限** 1/2/4（`batchQty`＝min(上限, 材料夠做的份數)，夠 1 份就開得了工）與失敗率 ×1/×0.6/×0.3、`recipeBlockers`／`blockerLines`、`dessertPrice` 從 species.ts 搬來、`anyLineReady`）。`bakery.ts` 改寫：`startBatch` 驗機器＋材料＋起始站、材料開工一次扣齊；`runLine` 每 tick 下游先動、下一站有盤就等；最後一站每份擲失敗、發 `bakeFailed`；`buyMachine`；**沒湊齊任何一條線、架上也沒貨就不來客**（架上有貨照常賣：v8 老玩家機器歸零但貨不能凍住）；沒線不出預訂單（`orders.ts`）。`state.pantry`（麵粉開局 4）、`SCHEMA_VERSION` 8→**9**：v8 工坊（沒有 `machines` 欄＝舊形狀）機器全 0、線上的盤子退材料（打蛋站只退蛋，攪拌以後蛋＋原料都退）。補貨合約連麵粉一起補。
+- 商店：新分頁「工坊」（七台，買了同一張卡變升級、滿級「已滿級」）；補貨頁多麵粉／糯米粉。機器與麵粉圖自己畫（`src/assets/shop/mc*.svg`、`flour.svg`、`riceFlour.svg`）。
+- HUD：工坊的五顆站磚拿掉，換「菜單／上架／回農場」一排；菜單卡（`.menucard`）十道食譜，**sig 只放結構**（缺料那行只寫材料名、持有數在晶片上就地改——advisor 抓到第一版把「蛋 3/4」放進 sig，收集手一撿就整張重建）；日曆列多「流水線上 N 盤」；甜點店鈕徽章改成「可上架份數」。點 3D 機器：沒買→開商店工坊頁、有一盤→講在做什麼、空著→開菜單。引導：`bk-buy`（工坊沒機器，列焦糖布丁塔要的機器與總價）。**農場不講「去買機器」**：教學在買下第一台農場設備（收集手 60）就結束，一定比整條線（430）先到，第一版排在前面把「去買收集手」搶走（`cp3-shop` 紅過）。
+- 場景：`layout.ts` 重寫成 U 型帶（`BELT_PATH`＋`pathPoint(d)`，每站用沿線距離 `STATION_AT` 定位）；`room.ts` 拿掉舊工作檯改畫帶子骨架；**機身移到 `machines.ts`，只在機器等級簽章變了才重建**（沒買＝空底座）；帶面一張條紋貼圖捲動（線上有盤才走）；盤子沿帶子滑到下一站、出爐滑到出口再跳進成品櫃；名牌 canvas 隨等級重畫（未購買灰底）、貼在帶子側板上。draw calls：空工坊 7、全開 22（預算 35）。
+
+### 證據（2026-09-24，worktree `../lpg-wt-line`）
+- vitest **248 passed**（`bakery.test.ts` 改寫：AC9-1〜9-7 共 31 條）；`npm run test:negative` 23 條中 22 紅（新增 AC9-2／3／4／4b／5／6／6b／7），**唯一不紅的 AC2-9 是 master 上本來就壞的那條**；e2e「菜單按鈕不被換掉」的負向對照（持有數塞回 sig）也紅過。
+- `npm run build` 綠。e2e `cp8-bakery.spec.ts` 12 條（真的點商店買線→菜單開工→自己走完→上架→客人買；320px 六分頁不溢出；點 3D 機器三種情況；v8 存檔走「還原」流程；菜單按鈕 isConnected；七站全開 draw ≤ 35）。**整套 e2e 72 passed**（commit `970fb55`，LPG_PORT=5190）。`tools/playtest/opening.mjs` 跑過：console 零錯誤，但無頭 7 分鐘只推到遊戲 12 分、只走到買爐台（完整流程靠 e2e）。
+- **踩坑**：e2e 第一版鮮奶酪杯做出 0 份——`?pause=1` 下模擬是確定性的，seed 8 那串操作剛好擲到 3% 失敗，每次都一樣；換 seed 11 並在測試註明，失敗路徑在單元 AC9-5 驗。Python 在 Windows 寫檔預設 CRLF，改完一輪整批轉回 LF（之後一律 `newline='\n'`）。
+- 截圖 iPhone 14＋SE 各 7 張（session scratchpad `shots/`、`shots-se/`），整理成 `bakery-line-signoff.pdf` 傳給使用者。
+
+### 使用者回「都照你的建議 開工」（2026-09-24）之後
+- **平衡**：初版（整條線 430、升級 ×8、售價 ×2.2）中後期慢一倍 → 調成整條線 250（Lv1：爐台 20／打蛋 20／攪拌 30／裝模 40／烤箱 80／裝飾 60；冷藏 150）、Lv2 約 Lv1 的 4 倍、`dessertMarkup` 2.8。`npm run pacing`：上層 5.9–17.6、下層 25–36、二號 40–52 分，3h 金幣 33–40k（只賣原料 20.6k），D24 全達標。量表 bot 改成「解鎖上層後把焦糖布丁塔那條線升 Lv2、冷藏櫃等上層解鎖再買」（第一版見錢就買冷藏櫃＋補貨合約，量到的是 bot 花錢方式不是平衡）。**同一組價錢跑三次，上層在 18.4／21.1／20.5 之間跳——抖動比單一價格調整的效果大，判斷要看多情境、留餘裕**。
+- **確認改讀**：「另外買自動化機」維持由「機器分級」取代。
+- **工坊入口**：錢夠買焦糖布丁塔整條線、一台機器都沒有 → 「甜點店」鈕 `.alert` 掛珊瑚色「!」（e2e＋負向對照紅過）。
+- **名牌放大**：0.46×0.13、字級自動縮到不超出牌子；iPhone SE 讀得到。
+- 證據：vitest 248、build 綠、`test:negative` 只剩 AC2-9、cp8＋cp3-shop 20 passed、**整套 e2e 73 passed**（commit `b84ee2f`）；簽核 PDF v2（8 頁，iPhone 14／SE 對照）已傳。
+
+### 還沒做／待使用者
+- 視覺簽核（PDF v2）；**PR #26 尚未 merge**（merge 要使用者同意：CP8 的授權不涵蓋這一包）。worktree `../lpg-wt-line` 的 `node_modules` 是 junction，merge 後先 `cmd /c rmdir node_modules` 再 `git worktree remove`。
+- 菜單卡的圖用的是原料圖（沒有甜點圖）；無頭試玩太慢，只驗到買第一台機器（完整流程靠 e2e）。
+
 ## 成就改版 D55（2026-09-24，使用者：「成就系統請分類 而且參照其他遊戲的成就系統做得更美觀 成就設定的有趣一點」，分支 `feat/achievements-v2`，worktree `../lpg-wt-achievements`）
 
 - **使用者截圖的直排文字**：舊成就卡外框掛 `.card`，商店卡的 `.card .foot { width:100% }` 漏進成就列，文字欄被擠到 0～一個字寬。改成跟商店同款的底部抽屜 `src/ui/achievements.ts`（`.achsheet`，不掛 `.card`）。

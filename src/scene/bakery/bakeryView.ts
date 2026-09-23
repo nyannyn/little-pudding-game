@@ -1,21 +1,16 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import {
-  STATIONS,
-  STATION_IDS,
-  dayClock,
-  stationProgress,
-  stationStatus,
-  type Batch,
-  type StationId,
-} from '../../game/bakery';
+import { batchesOnLine, dayClock, stationProgress, stationStatus, type Batch } from '../../game/bakery';
+import { RECIPES, STATIONS, STATION_IDS, type StationId } from '../../game/recipes';
 import { SPECIES, SPECIES_IDS, type SpeciesId } from '../../game/species';
 import type { GameState } from '../../game/state';
 import { toonGradient } from '../toon';
 import { Parts } from './build';
 import {
-  COUNTER,
-  DECOR,
+  BELT,
+  BELT_LENGTH,
+  BELT_PATH,
+  CHILL,
   DOOR,
   EGG_BASKET,
   OVEN,
@@ -25,32 +20,51 @@ import {
   SHELF_SLOTS,
   SHOWCASE,
   STATION_ANCHOR,
+  STATION_AT,
+  STATION_BAR,
   STATION_LABEL,
   VIEW,
+  pathPoint,
 } from './layout';
+import { buildMachines, machinesSignature } from './machines';
 import { PAL, buildRoom } from './room';
 
 const DEG = Math.PI / 180;
 /** 甜點杯的尺寸：跟掉落原料同量級（0.05），iPhone 視口下才讀得出來（D42 的教訓） */
-const CUP_R = 0.058;
-const CUP_H = 0.06;
-const MAX_ITEMS = 48;
+const CUP_R = 0.05;
+const CUP_H = 0.055;
+const MAX_ITEMS = 64;
 const MAX_CUSTOMERS = 5;
-/** 一盤從上一站飛到下一站要幾秒 */
-const FLY_SEC = 0.55;
+/** 帶子的速度（世界單位／秒）：盤子從一站滑到下一站 */
+const BELT_SPEED = 1.5;
+/** 帶面條紋間距 */
+const STRIPE = 0.12;
+/** 裝模之前的盤子畫成一只攪拌碗；裝模之後才是一杯一杯 */
+const MOLD_IDX = STATION_IDS.indexOf('mold');
+const BAKE_IDX = STATION_IDS.indexOf('bake');
 
 const CUP_COLORS = [0xffc4d2, 0xc9ecdf, 0xfff0b8, 0xe1d6fb];
 
 type V3 = { x: number; y: number; z: number };
 
-interface Flight {
-  to: StationId | 'rack';
+/** 盤子在帶子上滑動：from／to 是沿線距離；`rack` 滑到出口後再跳進成品櫃 */
+interface Ride {
+  batch: Batch;
+  /** 目的地那一站（null＝出口） */
+  to: StationId | null;
+  from: number;
+  dest: number;
+  t: number;
+  dur: number;
+  /** 滑的時候長什麼樣（剛離開的那一站） */
+  after: StationId;
+}
+
+interface Hop {
   from: V3;
   dest: V3;
   t: number;
-  batch: Batch;
-  /** 杯子裡有沒有東西（打蛋站飛過去的是蛋，不畫杯子） */
-  stage: number;
+  species: SpeciesId;
 }
 
 interface Customer {
@@ -74,12 +88,12 @@ function ease(t: number) {
 }
 
 /**
- * 甜點工坊的場景（D51）。一個獨立的 `THREE.Scene`＋自己的鏡頭；main.ts 只在玩家切到「甜點店」
+ * 甜點工坊的場景（D51 → D57 U 型流水線）。一個獨立的 `THREE.Scene`＋自己的鏡頭；main.ts 只在玩家切到「甜點店」
  * 時畫它。只讀 state、播動畫，不改規則（分層鐵則）。
  *
- * draw call（2026-09-23 設計值，e2e `cp8-bakery` 量實際值）：房間＋機身 1、玻璃 2、烤箱光 1、窗景 1、
- * 名牌 1、營業牌 1、進度條 2、甜點杯三層 3、蛋殼 1、攪拌頭 1、麵糊 1、注模嘴 1、轉台 1、擠花袋 1、
- * 客人 2 ＝ 21。
+ * draw call（2026-09-24 設計值，e2e `cp8-bakery` 量實際值）：房間 1、機身 1、帶面 1、窗景 1、烤箱光 1、
+ * 冷藏光＋玻璃 2、展示櫃玻璃 1、名牌 1、營業牌 1、進度條 2、甜點杯三層 3、蛋殼 1、打蛋器 1、注模嘴 1、
+ * 擠花袋 1、鍋蓋 1、客人 2 ＝ 23。
  */
 export class BakeryView {
   readonly scene = new THREE.Scene();
@@ -89,9 +103,17 @@ export class BakeryView {
   private readonly sun: THREE.DirectionalLight;
   private readonly windowMat: THREE.MeshBasicMaterial;
   private readonly glowMat: THREE.MeshBasicMaterial;
+  private readonly chillMat: THREE.MeshBasicMaterial;
+  /** 烤箱與冷藏櫃的光／玻璃：機器沒買時整組藏起來 */
+  private readonly ovenParts: THREE.Object3D[] = [];
+  private readonly chillParts: THREE.Object3D[] = [];
   private readonly openSign: THREE.Mesh;
   private readonly closedSign: THREE.Mesh;
+  private readonly labels: LabelAtlas;
 
+  private readonly machines: THREE.Mesh;
+  private machineSig = '';
+  private readonly beltTex: THREE.CanvasTexture;
   private readonly cups: THREE.InstancedMesh;
   private readonly fills: THREE.InstancedMesh;
   private readonly tops: THREE.InstancedMesh;
@@ -99,10 +121,9 @@ export class BakeryView {
   private readonly barBg: THREE.InstancedMesh;
   private readonly barFill: THREE.InstancedMesh;
   private readonly whisk: THREE.Mesh;
-  private readonly batter: THREE.Mesh;
   private readonly nozzle: THREE.Mesh;
-  private readonly turntable: THREE.Mesh;
   private readonly bag: THREE.Mesh;
+  private readonly potLid: THREE.Mesh;
   private readonly custBody: THREE.InstancedMesh;
   private readonly custEyes: THREE.InstancedMesh;
 
@@ -113,32 +134,43 @@ export class BakeryView {
   private readonly color = new THREE.Color();
   private nItems = 0;
   private time = 0;
-  private flights: Flight[] = [];
+  private rides: Ride[] = [];
+  private hops: Hop[] = [];
   private customers: Customer[] = [];
-  /** 上一幀每一站的那一盤（偵測「剛推過來」要播飛行動畫） */
-  private prev: Record<StationId, string> = { crack: '', mix: '', mold: '', bake: '', decorate: '' };
+  /** 上一幀每一站的那一盤（偵測「剛送過來」要播滑動） */
+  private prev: Record<StationId, string> = emptyKeys();
+  private prevBatch: Record<StationId, Batch | null> = emptyBatches();
   private prevDesserts = -1;
-  private readonly ready: Record<StationId, number> = { crack: 0, mix: 0, mold: 0, bake: 0, decorate: 0 };
+  private readonly ready: Record<StationId, number> = emptyNums();
 
   constructor() {
     this.scene.name = 'Bakery';
     this.scene.background = new THREE.Color(0xfbe3e8);
 
-    // 比農場暗一點：工坊整間是淺粉彩，ACES 在亮處會把顏色洗成一片白
     // 沒有色調映射時，亮度≈反照率 ×（半球＋平行光 × 階梯）/π：頂面約 1.0、牆面約 0.8
     this.hemi = new THREE.HemisphereLight(0xfffaf2, 0xfbe6ea, 1.9);
     this.sun = new THREE.DirectionalLight(0xfff0dc, 1.3);
     this.sun.position.set(2.5, 6, 4);
     this.scene.add(this.hemi, this.sun);
 
-    // 工坊不吃 ACES：整間是淺粉彩，ACES 會把亮處的顏色壓成一片灰白（2026-09-23 截圖實測，
-    // 降燈光也救不回飽和度）。關掉色調映射、燈光壓在不會過曝的範圍，粉彩才是粉彩。
+    // 工坊不吃 ACES：整間是淺粉彩，ACES 會把亮處的顏色壓成一片灰白（2026-09-23 截圖實測）
     const toon = (opts: THREE.MeshToonMaterialParameters = {}) =>
       new THREE.MeshToonMaterial({ gradientMap: toonGradient(), toneMapped: false, ...opts });
 
     const room = new THREE.Mesh(buildRoom(), toon({ vertexColors: true }));
     room.name = 'BakeryRoom';
     this.scene.add(room);
+
+    // 機身：買了才畫（D57），等級變了才重建
+    this.machines = new THREE.Mesh(new THREE.BufferGeometry(), toon({ vertexColors: true }));
+    this.machines.name = 'BakeryMachines';
+    this.scene.add(this.machines);
+
+    // 帶面：一張條紋貼圖沿整條 U 型鋪開，offset 捲動就是「帶子在走」
+    this.beltTex = beltTexture();
+    const belt = new THREE.Mesh(beltSurface(), new THREE.MeshBasicMaterial({ map: this.beltTex, toneMapped: false }));
+    belt.name = 'BakeryBelt';
+    this.scene.add(belt);
 
     // 窗景：一塊平面，白天天空藍、晚上深藍
     this.windowMat = new THREE.MeshBasicMaterial({ color: 0xbfe6ff });
@@ -148,48 +180,57 @@ export class BakeryView {
     win.name = 'BakeryWindow';
     this.scene.add(win);
 
-    // 烤箱窗洞裡的背板（發光）＋玻璃
-    const front = OVEN.z + OVEN.d / 2;
+    // 隧道烤箱裡的光：貼在隧道內側牆（帶子左邊）上，烤的時候發橘光
     this.glowMat = new THREE.MeshBasicMaterial({ color: 0x6d5b86 });
-    const glow = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.42), this.glowMat);
-    glow.position.set(OVEN.x, 0.52, OVEN.z + 0.15);
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(OVEN.len - 0.06, OVEN.h - 0.08), this.glowMat);
+    glow.position.set(OVEN.x - OVEN.w / 2 + 0.085, BELT.y + OVEN.h / 2 - 0.02, OVEN.z);
+    glow.rotation.y = Math.PI / 2;
     glow.name = 'OvenGlow';
     this.scene.add(glow);
+    this.ovenParts.push(glow);
 
-    const glassMat = new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.22, depthWrite: false });
-    const ovenGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.4), glassMat);
-    ovenGlass.position.set(OVEN.x, 0.52, front + 0.002);
-    ovenGlass.renderOrder = 2;
-    ovenGlass.name = 'OvenGlass';
-    this.scene.add(ovenGlass);
+    // 冷藏櫃：內側牆一片冷光＋朝鏡頭那面的玻璃
+    this.chillMat = new THREE.MeshBasicMaterial({ color: 0xdff4ff });
+    const cg = new THREE.Mesh(new THREE.PlaneGeometry(CHILL.len - 0.06, CHILL.h - 0.08), this.chillMat);
+    cg.position.set(CHILL.x, BELT.y + CHILL.h / 2 - 0.02, CHILL.z - CHILL.w / 2 + 0.065);
+    cg.name = 'ChillGlow';
+    this.scene.add(cg);
+    const chillGlass = new THREE.Mesh(
+      new THREE.PlaneGeometry(CHILL.len - 0.04, CHILL.h - 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.28, depthWrite: false }),
+    );
+    chillGlass.position.set(CHILL.x, BELT.y + CHILL.h / 2 - 0.02, CHILL.z + CHILL.w / 2 - 0.02);
+    chillGlass.renderOrder = 2;
+    chillGlass.name = 'ChillGlass';
+    this.scene.add(chillGlass);
+    this.chillParts.push(cg, chillGlass);
 
     // 展示櫃玻璃：一個盒子（前、左、右三面＋頂），半透明
-    const cg = new THREE.BoxGeometry(SHOWCASE.w - 0.02, SHOWCASE.glassH, SHOWCASE.d - 0.02);
-    const caseGlass = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ color: 0xf3fbff, transparent: true, opacity: 0.16, depthWrite: false }));
+    const sg = new THREE.BoxGeometry(SHOWCASE.w - 0.02, SHOWCASE.glassH, SHOWCASE.d - 0.02);
+    const caseGlass = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: 0xf3fbff, transparent: true, opacity: 0.16, depthWrite: false }));
     caseGlass.position.set(SHOWCASE.x, SHOWCASE.baseH + SHOWCASE.glassH / 2, SHOWCASE.z);
     caseGlass.renderOrder = 2;
     caseGlass.name = 'ShowcaseGlass';
     this.scene.add(caseGlass);
 
-    // 名牌（五站＋店招）：一張 canvas 圖集、一個 mesh
-    const { labels, open, closed } = buildLabels();
-    this.scene.add(labels);
-    this.openSign = open;
-    this.closedSign = closed;
-    this.scene.add(open, closed);
+    // 名牌（七站＋店招）：一張 canvas 圖集、一個 mesh；機器等級變了重畫那張圖
+    this.labels = new LabelAtlas();
+    this.scene.add(this.labels.mesh);
+    this.openSign = this.labels.open;
+    this.closedSign = this.labels.closed;
+    this.scene.add(this.openSign, this.closedSign);
 
     // 甜點杯：杯身＋內容物＋頂飾，三層各一個 InstancedMesh
     const cupGeo = new THREE.CylinderGeometry(CUP_R, CUP_R * 0.78, CUP_H, 16);
     cupGeo.translate(0, CUP_H / 2, 0);
     const fillGeo = new THREE.CylinderGeometry(CUP_R * 0.92, CUP_R * 0.92, 1, 16);
     fillGeo.translate(0, 0.5, 0); // 底在 0：scale.y 就是高度
-    const topGeo = swirlGeometry();
     this.cups = this.instanced(cupGeo, toon({ color: 0xffffff }), 'BakeryCups');
     this.fills = this.instanced(fillGeo, toon({ color: 0xffffff }), 'BakeryFills');
-    this.tops = this.instanced(topGeo, toon({ color: 0xffffff }), 'BakeryTops');
+    this.tops = this.instanced(swirlGeometry(), toon({ color: 0xffffff }), 'BakeryTops');
 
     // 蛋殼：半球兩片一組（上半＋下半），打蛋時分開
-    const shell = new THREE.SphereGeometry(0.075, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const shell = new THREE.SphereGeometry(0.06, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
     shell.scale(1, 1.3, 1);
     this.eggs = new THREE.InstancedMesh(shell, toon({ color: PAL.egg, side: THREE.DoubleSide }), 4);
     this.eggs.name = 'BakeryEggs';
@@ -198,52 +239,34 @@ export class BakeryView {
 
     // 進度條（每站一條：底＋填滿）
     const bar = new THREE.PlaneGeometry(1, 1);
-    this.barBg = this.instanced(bar, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }), 'BakeryBarBg', 5);
+    this.barBg = this.instanced(bar, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }), 'BakeryBarBg', STATION_IDS.length);
     const fillBar = new THREE.PlaneGeometry(1, 1);
     fillBar.translate(0.5, 0, 0); // 左端對齊：scale.x 就是進度
-    this.barFill = this.instanced(fillBar, new THREE.MeshBasicMaterial({ color: 0xffffff }), 'BakeryBarFill', 5);
+    this.barFill = this.instanced(fillBar, new THREE.MeshBasicMaterial({ color: 0xffffff }), 'BakeryBarFill', STATION_IDS.length);
     this.barBg.renderOrder = 3;
     this.barFill.renderOrder = 4;
 
-    // 攪拌頭（三圈打蛋器）
+    // 攪拌頭（三圈打蛋器）：吊在攪拌機的機頭下面
     const w = new Parts();
-    w.cyl(PAL.metal, 0.012, 0.012, 0.16, 0, 0.08, 0, 8);
-    for (let i = 0; i < 3; i++) w.torus(PAL.metal, 0.045, 0.006, 0, -0.02, 0, { x: 0, y: (i * Math.PI) / 3, z: 0 });
-    this.whisk = new THREE.Mesh(w.merge(), toon({ vertexColors: true }));
-    this.whisk.position.set(STATION_ANCHOR.mix.x, COUNTER.top + 0.32, STATION_ANCHOR.mix.z);
-    this.whisk.name = 'BakeryWhisk';
-    this.scene.add(this.whisk);
-
-    this.batter = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.08, 24), toon({ color: 0xffffff }));
-    // 麵糊頂面要高過碗口一點點，從上往下看才看得到顏色（第一版埋在碗裡整個看不見）
-    this.batter.position.set(STATION_ANCHOR.mix.x, COUNTER.top + 0.24, STATION_ANCHOR.mix.z);
-    this.batter.name = 'BakeryBatter';
-    this.scene.add(this.batter);
+    w.cyl(PAL.metal, 0.012, 0.012, 0.18, 0, 0.09, 0, 8);
+    for (let i = 0; i < 3; i++) w.torus(PAL.metal, 0.042, 0.006, 0, -0.02, 0, { x: 0, y: (i * Math.PI) / 3, z: 0 });
+    this.whisk = this.part(w, 'BakeryWhisk');
 
     const nz = new Parts();
-    nz.rbox(PAL.butterDark, 0.1, 0.08, 0.1, 0, 0.06, 0, 0.02);
-    nz.cone(PAL.metal, 0.03, 0.06, 0, -0.01, 0, 12, { x: Math.PI, y: 0, z: 0 });
-    this.nozzle = new THREE.Mesh(nz.merge(), toon({ vertexColors: true }));
-    this.nozzle.position.set(STATION_ANCHOR.mold.x, COUNTER.top + 0.24, STATION_ANCHOR.mold.z);
-    this.nozzle.name = 'BakeryNozzle';
-    this.scene.add(this.nozzle);
-
-    const tt = new Parts();
-    tt.cyl(PAL.cream, 0.17, 0.17, 0.03, 0, 0, 0, 28);
-    tt.torus(PAL.pink, 0.17, 0.012, 0, 0.012, 0, { x: Math.PI / 2, y: 0, z: 0 });
-    for (let i = 0; i < 6; i++) tt.sphere(PAL.pinkDark, 0.012, Math.cos((i * Math.PI) / 3) * 0.15, 0.02, Math.sin((i * Math.PI) / 3) * 0.15);
-    this.turntable = new THREE.Mesh(tt.merge(), toon({ vertexColors: true }));
-    this.turntable.position.set(STATION_ANCHOR.decorate.x, DECOR.top + 0.075, STATION_ANCHOR.decorate.z);
-    this.turntable.name = 'BakeryTurntable';
-    this.scene.add(this.turntable);
+    nz.rbox(PAL.butterDark, 0.09, 0.08, 0.09, 0, 0.06, 0, 0.02);
+    nz.cone(PAL.metal, 0.028, 0.06, 0, -0.01, 0, 12, { x: Math.PI, y: 0, z: 0 });
+    this.nozzle = this.part(nz, 'BakeryNozzle');
 
     const bg = new Parts();
     bg.cone(PAL.cream, 0.05, 0.16, 0, 0, 0, 16, { x: Math.PI, y: 0, z: 0 });
     bg.cone(PAL.metal, 0.014, 0.03, 0, -0.09, 0, 8, { x: Math.PI, y: 0, z: 0 });
     bg.sphere(PAL.pink, 0.02, 0, 0.09, 0);
-    this.bag = new THREE.Mesh(bg.merge(), toon({ vertexColors: true }));
-    this.bag.name = 'BakeryPipingBag';
-    this.scene.add(this.bag);
+    this.bag = this.part(bg, 'BakeryPipingBag');
+
+    const lid = new Parts();
+    lid.cyl(PAL.mintDark, 0.082, 0.082, 0.02, 0, 0, 0, 18);
+    lid.sphere(PAL.cream, 0.018, 0, 0.02, 0);
+    this.potLid = this.part(lid, 'BakeryPotLid');
 
     // 客人：圓滾滾的小兔（身體＋耳朵＋尾巴一顆幾何，眼睛另一顆），顏色走 instance
     const cb = new Parts();
@@ -251,7 +274,7 @@ export class BakeryView {
     cb.add(new THREE.CapsuleGeometry(0.028, 0.1, 4, 10), 0xffffff, { x: -0.045, y: 0.27, z: -0.01 }, { x: 0, y: 0, z: 0.18 });
     cb.add(new THREE.CapsuleGeometry(0.028, 0.1, 4, 10), 0xffffff, { x: 0.045, y: 0.27, z: -0.01 }, { x: 0, y: 0, z: -0.18 });
     cb.sphere(0xffffff, 0.035, 0, 0.1, -0.11);
-    cb.sphere(0xffb3c4, 0.022, -0.06, 0.1, 0.085, { x: 1, y: 0.6, z: 0.5 }); // 腮紅（頂點色，不吃 instance 色會被相乘，選淺粉）
+    cb.sphere(0xffb3c4, 0.022, -0.06, 0.1, 0.085, { x: 1, y: 0.6, z: 0.5 });
     cb.sphere(0xffb3c4, 0.022, 0.06, 0.1, 0.085, { x: 1, y: 0.6, z: 0.5 });
     this.custBody = new THREE.InstancedMesh(cb.merge(), toon({ vertexColors: true }), MAX_CUSTOMERS);
     this.custBody.name = 'BakeryCustomers';
@@ -265,6 +288,14 @@ export class BakeryView {
     this.scene.add(this.custBody, this.custEyes);
 
     this.buildHitBoxes();
+  }
+
+  private part(p: Parts, name: string): THREE.Mesh {
+    const m = new THREE.Mesh(p.merge(), new THREE.MeshToonMaterial({ gradientMap: toonGradient(), toneMapped: false, vertexColors: true }));
+    m.name = name;
+    m.visible = false;
+    this.scene.add(m);
+    return m;
   }
 
   private instanced(geo: THREE.BufferGeometry, mat: THREE.Material, name: string, max = MAX_ITEMS) {
@@ -286,12 +317,14 @@ export class BakeryView {
       m.updateMatrixWorld();
       this.hitBoxes.push(m);
     };
-    const t = COUNTER.top;
-    add('crack', 0.62, 0.8, 0.62, STATION_ANCHOR.crack.x - 0.05, t + 0.35, COUNTER.z + 0.05);
-    add('mix', 0.56, 0.9, 0.62, STATION_ANCHOR.mix.x, t + 0.4, COUNTER.z + 0.05);
-    add('mold', 0.62, 0.95, 0.62, STATION_ANCHOR.mold.x, t + 0.4, COUNTER.z + 0.05);
-    add('bake', OVEN.w, OVEN.h + 0.2, OVEN.d, OVEN.x, OVEN.h / 2, OVEN.z);
-    add('decorate', DECOR.w, 1.2, DECOR.d, DECOR.x, 0.6, DECOR.z);
+    for (const id of ['stove', 'crack', 'mix', 'mold'] as StationId[]) {
+      const a = STATION_ANCHOR[id];
+      add(id, 0.46, 1.3, 0.8, a.x, 0.65, a.z - 0.2);
+    }
+    add('bake', OVEN.w + 0.36, 1.1, OVEN.len, OVEN.x - 0.16, 0.55, OVEN.z);
+    add('chill', CHILL.len, 1.1, CHILL.w + 0.3, CHILL.x, 0.55, CHILL.z - 0.12);
+    const d = STATION_ANCHOR.decorate;
+    add('decorate', 0.46, 1.3, 0.9, d.x, 0.65, d.z - 0.2);
     add('shelf', SHOWCASE.w, SHOWCASE.baseH + SHOWCASE.glassH, SHOWCASE.d, SHOWCASE.x, (SHOWCASE.baseH + SHOWCASE.glassH) / 2, SHOWCASE.z);
     add('rack', 0.4, 1.1, 0.55, RACK_SLOTS[0]!.x, 0.55, RACK_SLOTS[4]!.z);
   }
@@ -304,10 +337,7 @@ export class BakeryView {
 
   /**
    * 把整間店塞進 HUD 沒蓋住的那一段畫面。
-   *
-   * 只用水平視角算距離（農場的 fitDistance）不夠：直向手機上下還被資源列與動作列各吃一截，
-   * 第一版照寬度算，後排工作檯被頂到畫面外、展示櫃佔掉半個螢幕（2026-09-23 截圖）。
-   * 做法是把房間的 8 個角投影到螢幕，逐步拉遠直到「寬在 ±1 內、高在可見段的比例內」。
+   * 把房間的 8 個角投影到螢幕，逐步拉遠直到「寬在 ±1 內、高在可見段的比例內」（2026-09-23 截圖定案的做法）。
    *
    * @param bandFrac HUD 沒遮住的高度占整個畫面的比例（main.ts 用 `measureVisibleBand` 量）
    */
@@ -329,7 +359,6 @@ export class BakeryView {
       cam.updateMatrixWorld();
       cam.updateProjectionMatrix();
     };
-    // setViewOffset 會改投影；量的時候要用沒有偏移的投影，量完再還原
     const view = cam.view ? { ...cam.view } : null;
     cam.clearViewOffset();
     let d = 4;
@@ -374,93 +403,84 @@ export class BakeryView {
     const t = this.time;
     this.nItems = 0;
 
+    this.syncMachines(state);
     this.syncDaylight(state);
-    this.detectFlights(state);
+    this.detectRides(state);
 
-    // ── 各站 ──
+    // 帶面：線上有東西才走（停著的帶子＝閒著，一眼看得出來）
+    if (batchesOnLine(state) > 0 || this.rides.length > 0) this.beltTex.offset.x -= (dt * BELT_SPEED) / STRIPE;
+
     const st = state.bakery.stations;
-    const flyingTo = new Set(this.flights.map((f) => f.to));
+    const riding = new Set(this.rides.map((r) => r.to));
+    const shown = (id: StationId) => (riding.has(id) ? null : st[id].batch);
+    const working = (id: StationId) => stationStatus(state, id) === 'working' && !riding.has(id);
+    const own = state.bakery.machines;
+
+    // ── 每一站上的那一盤 ──
+    for (const id of STATION_IDS) {
+      const b = shown(id);
+      if (!b) continue;
+      const a = STATION_ANCHOR[id];
+      this.putBatch(a.x, a.z, pathPoint(STATION_AT[id]).dir, b, id, stationProgress(state, id));
+    }
+
+    // 爐台：鍋蓋在加熱時跳
+    this.potLid.visible = own.stove > 0;
+    const sa = STATION_ANCHOR.stove;
+    this.potLid.position.set(sa.x - 0.09, 0.85 + (working('stove') ? Math.abs(Math.sin(t * 9)) * 0.025 : 0), sa.z - 0.36);
 
     // 打蛋：臂上一顆蛋落下、裂成兩半
     this.eggs.count = 0;
-    const crackBusy = stationStatus(state, 'crack') === 'working' && !flyingTo.has('crack');
-    if (st.crack.batch && !flyingTo.has('crack')) this.drawEgg(crackBusy ? (t * 0.9) % 1 : 0.2);
+    if (own.crack > 0 && shown('crack')) this.drawEgg(working('crack') ? (t * 0.9) % 1 : 0.2);
 
-    // 攪拌：碗裡的麵糊由蛋黃色轉成物種色，打蛋器轉
-    const mixB = flyingTo.has('mix') ? null : st.mix.batch;
-    this.batter.visible = !!mixB;
-    const mixWorking = stationStatus(state, 'mix') === 'working';
-    if (mixB) {
-      const k = stationProgress(state, 'mix');
-      this.color.set(0xffe6a0).lerp(new THREE.Color(SPECIES[mixB.species].bodyColor), k);
-      (this.batter.material as THREE.MeshToonMaterial).color.copy(this.color);
-      this.batter.scale.set(1, 0.8 + Math.sin(t * 14) * 0.08 * (mixWorking ? 1 : 0), 1);
-    }
-    this.whisk.rotation.y = mixWorking ? t * 18 : this.whisk.rotation.y;
-    this.whisk.position.y = COUNTER.top + (mixB ? 0.3 : 0.4);
+    // 攪拌：打蛋器降進碗裡轉
+    this.whisk.visible = own.mix > 0;
+    const ma = STATION_ANCHOR.mix;
+    this.whisk.position.set(ma.x, BELT.y + (shown('mix') ? 0.08 : 0.24), ma.z);
+    if (working('mix')) this.whisk.rotation.y = t * 18;
 
-    // 裝模：注模嘴在兩個杯之間來回，杯子慢慢填滿
-    const moldB = flyingTo.has('mold') ? null : st.mold.batch;
-    const moldWorking = stationStatus(state, 'mold') === 'working';
-    const a = STATION_ANCHOR.mold;
-    if (moldB) {
+    // 裝模：注模嘴沿門架在杯子之間來回
+    this.nozzle.visible = own.mold > 0;
+    const mo = STATION_ANCHOR.mold;
+    const moldB = shown('mold');
+    if (moldB && working('mold')) {
+      const n = cupsFor(moldB.qty);
       const k = stationProgress(state, 'mold');
-      const n = Math.min(moldB.qty, 2);
-      for (let i = 0; i < n; i++) {
-        const own = Math.min(1, Math.max(0, k * n - i));
-        this.putItem(a.x + (i - (n - 1) / 2) * 0.2, a.y - 0.03, a.z, moldB.species, i, 0.15 + own * 0.85, 1, 0, 0);
-      }
       const which = Math.min(n - 1, Math.floor(k * n));
-      const nx = a.x + (which - (n - 1) / 2) * 0.2;
-      this.nozzle.position.x = moldWorking ? nx + Math.sin(t * 12) * 0.01 : lerp(this.nozzle.position.x, a.x, 0.1);
+      this.nozzle.position.x = mo.x + cupOffset(which, n) + Math.sin(t * 12) * 0.008;
     } else {
-      this.nozzle.position.x = lerp(this.nozzle.position.x, a.x, 0.1);
+      this.nozzle.position.x = lerp(this.nozzle.position.x || mo.x, mo.x, 0.1);
     }
-    this.nozzle.position.y = COUNTER.top + 0.26 + (moldWorking ? Math.abs(Math.sin(t * 6)) * 0.02 : 0);
+    this.nozzle.position.set(this.nozzle.position.x, BELT.y + 0.3 + (working('mold') ? Math.abs(Math.sin(t * 6)) * 0.02 : 0), mo.z);
 
-    // 烘烤：窗洞發橘光（脈動），杯裡的布丁慢慢膨起來
-    const bakeB = flyingTo.has('bake') ? null : st.bake.batch;
-    const bakeWorking = stationStatus(state, 'bake') === 'working';
-    if (bakeB) {
-      const k = stationProgress(state, 'bake');
-      const b = STATION_ANCHOR.bake;
-      const n = Math.min(bakeB.qty, 2);
-      for (let i = 0; i < n; i++) this.putItem(b.x + (i - (n - 1) / 2) * 0.22, b.y - 0.16, b.z, bakeB.species, i, 1, 1 + ease(k) * 0.35, 0, 0);
-    }
-    const pulse = bakeWorking ? 0.75 + Math.sin(t * 5) * 0.25 : bakeB ? 0.45 : 0;
-    this.glowMat.color.set(0x6d5b86).lerp(new THREE.Color(0xffb04d), pulse);
+    // 烤箱：隧道裡發橘光（脈動）；冷藏櫃：冷光一閃一閃
+    const bakePulse = working('bake') ? 0.75 + Math.sin(t * 5) * 0.25 : shown('bake') ? 0.45 : 0;
+    this.glowMat.color.set(0x6d5b86).lerp(new THREE.Color(0xffb04d), bakePulse);
+    const chillPulse = working('chill') ? 0.6 + Math.sin(t * 3) * 0.4 : 0;
+    this.chillMat.color.set(0xdff4ff).lerp(new THREE.Color(0x8fd3ff), chillPulse);
 
-    // 裝飾：轉台轉、擠花袋下壓，奶油頂飾長出來
-    const decB = flyingTo.has('decorate') ? null : st.decorate.batch;
-    const decWorking = stationStatus(state, 'decorate') === 'working';
-    if (decWorking) this.turntable.rotation.y += dt * 3.2;
+    // 裝飾：擠花袋下壓
+    this.bag.visible = own.decorate > 0;
     const da = STATION_ANCHOR.decorate;
-    if (decB) {
-      const k = stationProgress(state, 'decorate');
-      const n = Math.min(decB.qty, 2);
-      for (let i = 0; i < n; i++) {
-        const ang = this.turntable.rotation.y + (i * Math.PI * 2) / n;
-        this.putItem(da.x + Math.cos(ang) * 0.075, DECOR.top + 0.09, da.z + Math.sin(ang) * 0.075, decB.species, i, 1, 1.35, Math.min(1, k * 1.15), ang);
+    this.bag.position.set(da.x, BELT.y + 0.42 - (working('decorate') ? Math.abs(Math.sin(t * 5)) * 0.06 : 0), da.z);
+
+    // ── 帶子上滑動中的盤子、跳進成品櫃的甜點 ──
+    this.rides = this.rides.filter((r) => r.t < 1);
+    for (const r of this.rides) {
+      r.t = Math.min(1, r.t + dt / r.dur);
+      const p = pathPoint(lerp(r.from, r.dest, ease(r.t)));
+      this.putBatch(p.x, p.z, p.dir, r.batch, r.after, 1);
+      if (r.t >= 1 && r.to === null) {
+        const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+        const slot = RACK_SLOTS[Math.max(0, Math.min(total - 1, RACK_SLOTS.length - 1))]!;
+        this.hops.push({ from: { x: p.x, y: BELT.y, z: p.z }, dest: slot, t: 0, species: r.batch.species });
       }
     }
-    this.bag.position.set(da.x + 0.02, DECOR.top + 0.36 - (decWorking ? Math.abs(Math.sin(t * 5)) * 0.05 : 0), da.z - 0.02);
-
-    // ── 飛行中的盤子 ──
-    this.flights = this.flights.filter((f) => f.t < 1);
-    for (const f of this.flights) {
-      f.t = Math.min(1, f.t + dt / FLY_SEC);
-      const k = ease(f.t);
-      const x = lerp(f.from.x, f.dest.x, k);
-      const z = lerp(f.from.z, f.dest.z, k);
-      const y = lerp(f.from.y, f.dest.y, k) + Math.sin(Math.PI * f.t) * 0.35;
-      if (f.stage === 0) {
-        this.drawEggAt(x, y, z, 0);
-        continue;
-      }
-      const n = Math.min(f.batch.qty, 2);
-      for (let i = 0; i < n; i++) {
-        this.putItem(x + (i - (n - 1) / 2) * 0.12, y, z, f.batch.species, i, f.stage >= 2 ? 1 : 0.15, f.stage >= 3 ? 1.35 : 1, f.stage >= 4 ? 1 : 0, 0);
-      }
+    this.hops = this.hops.filter((h) => h.t < 1);
+    for (const h of this.hops) {
+      h.t = Math.min(1, h.t + dt / 0.5);
+      const k = ease(h.t);
+      this.putItem(lerp(h.from.x, h.dest.x, k), lerp(h.from.y, h.dest.y, k) + Math.sin(Math.PI * h.t) * 0.3, lerp(h.from.z, h.dest.z, k), h.species, 0, 1, 1.35, 1, 0);
     }
 
     // ── 成品櫃與展示架 ──
@@ -490,6 +510,18 @@ export class BakeryView {
     this.eggs.instanceMatrix.needsUpdate = true;
   }
 
+  /** 機身與名牌：機器等級變了（買了／升級）才重建 */
+  private syncMachines(state: GameState) {
+    const sig = machinesSignature(state.bakery.machines);
+    if (sig === this.machineSig) return;
+    this.machineSig = sig;
+    this.machines.geometry.dispose();
+    this.machines.geometry = buildMachines(state.bakery.machines);
+    this.labels.draw(state.bakery.machines);
+    for (const o of this.ovenParts) o.visible = state.bakery.machines.bake > 0;
+    for (const o of this.chillParts) o.visible = state.bakery.machines.chill > 0;
+  }
+
   /** 營業中亮、打烊暗；窗景白天藍、晚上深藍；門口牌子 OPEN／CLOSED */
   private syncDaylight(state: GameState) {
     const c = dayClock(state);
@@ -501,51 +533,89 @@ export class BakeryView {
     this.closedSign.visible = !c.open;
   }
 
-  /** 比對上一幀各站的那一盤：新出現的就從上一站（或蛋籃）飛過來 */
-  private detectFlights(state: GameState) {
+  /**
+   * 比對上一幀各站的那一盤：新出現的就從它路線上的上一站（或帶子起點）沿帶子滑過來；
+   * 最後一站的那一盤不見了、成品櫃變多了＝出爐，滑到出口再跳進成品櫃。
+   */
+  private detectRides(state: GameState) {
     const st = state.bakery.stations;
-    const origin = (id: StationId): V3 => {
-      const i = STATION_IDS.indexOf(id);
-      if (i === 0) return { x: EGG_BASKET.x + 0.1, y: EGG_BASKET.y + 0.1, z: EGG_BASKET.z + 0.1 };
-      return STATION_ANCHOR[STATION_IDS[i - 1]!];
-    };
-    for (const [i, id] of STATION_IDS.entries()) {
+    const first = this.prevDesserts < 0;
+    for (const id of STATION_IDS) {
       const b = st[id].batch;
       const key = b ? `${b.species}:${b.qty}:${st[id].doneAt}` : '';
-      if (key && key !== this.prev[id] && this.prevDesserts >= 0) {
-        this.flights.push({ to: id, from: origin(id), dest: STATION_ANCHOR[id], t: 0, batch: b!, stage: i });
+      if (key && key !== this.prev[id] && !first) {
+        const route = RECIPES[b!.species].route;
+        const before = route[route.indexOf(id) - 1];
+        const from = before ? STATION_AT[before] : Math.max(0, STATION_AT[id] - 0.4);
+        const dist = STATION_AT[id] - from;
+        this.rides.push({ batch: b!, to: id, from, dest: STATION_AT[id], t: 0, dur: Math.max(0.35, dist / BELT_SPEED), after: before ?? id });
       }
       this.prev[id] = key;
     }
-    // 裝飾站做完被收走：成品櫃多了東西，從轉台飛過去
     const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
-    if (this.prevDesserts >= 0 && total > this.prevDesserts && !st.decorate.batch) {
-      const species = SPECIES_IDS.find((id) => state.desserts[id] > 0) ?? 'caramel';
-      const slot = RACK_SLOTS[Math.min(total - 1, RACK_SLOTS.length - 1)]!;
-      this.flights.push({ to: 'rack', from: STATION_ANCHOR.decorate, dest: slot, t: 0, batch: { species, qty: 1 }, stage: 5 });
+    if (!first && total > this.prevDesserts) {
+      // 哪一站剛做完最後一步：上一幀有盤、這一幀空了、而且那是它路線的最後一站
+      const done = STATION_IDS.find((id) => {
+        const pb = this.prevBatch[id];
+        if (!pb || st[id].batch) return false;
+        const route = RECIPES[pb.species].route;
+        return route[route.length - 1] === id;
+      });
+      if (done) {
+        const pb = this.prevBatch[done]!;
+        const dist = BELT_LENGTH - STATION_AT[done];
+        this.rides.push({ batch: pb, to: null, from: STATION_AT[done], dest: BELT_LENGTH, t: 0, dur: Math.max(0.35, dist / BELT_SPEED), after: done });
+      }
     }
+    for (const id of STATION_IDS) this.prevBatch[id] = st[id].batch ? { ...st[id].batch! } : null;
     this.prevDesserts = total;
   }
 
+  /**
+   * 畫一盤：裝模之前是一只攪拌碗（碗裡的麵糊由奶油色轉成物種色）；裝模之後一杯一杯排在帶子上，
+   * 烤過會膨起來、裝飾過頂上有奶油。`at`＝這一盤現在在（或剛離開）哪一站、`k`＝那一站的進度。
+   */
+  private putBatch(x: number, z: number, dir: number, b: Batch, at: StationId, k: number) {
+    const idx = STATION_IDS.indexOf(at);
+    const info = SPECIES[b.species];
+    if (idx < MOLD_IDX) {
+      const mixK = at === 'mix' ? k : idx > STATION_IDS.indexOf('mix') ? 1 : 0;
+      this.putItem(x, BELT.y, z, b.species, 3, 0.7, 1, 0, 0, 2.3, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
+      return;
+    }
+    const route = RECIPES[b.species].route;
+    const passed = (s: StationId) => route.includes(s) && (idx > STATION_IDS.indexOf(s) || (at === s && k >= 1));
+    const fill = at === 'mold' ? 0.15 + k * 0.85 : 1;
+    const rise = at === 'bake' ? 1 + ease(k) * 0.35 : idx > BAKE_IDX && route.includes('bake') ? 1.35 : 1;
+    const top = at === 'decorate' ? Math.min(1, k * 1.15) : passed('decorate') ? 1 : 0;
+    const n = cupsFor(b.qty);
+    const cx = Math.cos(dir);
+    const cz = Math.sin(dir);
+    for (let i = 0; i < n; i++) {
+      const off = cupOffset(i, n);
+      this.putItem(x + cx * off, BELT.y, z + cz * off, b.species, i, fill, rise, top, 0);
+    }
+  }
+
   /** 一杯甜點：杯（粉彩）＋內容物（物種色，高度＝fill×rise）＋奶油頂（頂料色，大小＝top） */
-  private putItem(x: number, y: number, z: number, species: SpeciesId, idx: number, fill: number, rise: number, top: number, rotY: number) {
+  private putItem(x: number, y: number, z: number, species: SpeciesId, idx: number, fill: number, rise: number, top: number, rotY: number, scale = 1, fillHex?: number) {
     if (this.nItems >= MAX_ITEMS) return;
     const i = this.nItems++;
     const d = this.dummy;
     d.position.set(x, y, z);
     d.rotation.set(0, rotY, 0);
-    d.scale.set(1, 1, 1);
+    d.scale.set(scale, scale * 0.8 + 0.2, scale);
     d.updateMatrix();
     this.cups.setMatrixAt(i, d.matrix);
-    this.cups.setColorAt(i, this.color.set(CUP_COLORS[idx % CUP_COLORS.length]!));
+    this.cups.setColorAt(i, this.color.set(scale > 1 ? PAL.metal : CUP_COLORS[idx % CUP_COLORS.length]!));
 
     const info = SPECIES[species];
     const h = Math.max(0.004, CUP_H * 0.85 * fill * rise);
     d.position.set(x, y + 0.006, z);
-    d.scale.set(1, h, 1);
+    d.scale.set(scale, h, scale);
     d.updateMatrix();
     this.fills.setMatrixAt(i, d.matrix);
-    this.fills.setColorAt(i, this.color.set(info.bodyColor));
+    this.fills.setColorAt(i, this.color.set(fillHex ?? info.bodyColor));
 
     const s = Math.max(0.001, top);
     d.position.set(x, y + 0.006 + h, z);
@@ -559,28 +629,23 @@ export class BakeryView {
   private drawEgg(phase: number) {
     const a = STATION_ANCHOR.crack;
     const fall = Math.min(1, phase / 0.55);
-    const y = lerp(COUNTER.top + 0.52, a.y + 0.12, ease(fall));
+    const y = lerp(0.96, BELT.y + 0.12, ease(fall));
     const open = phase < 0.55 ? 0 : (phase - 0.55) / 0.45;
-    this.drawEggAt(a.x, y, a.z, open);
-  }
-
-  private drawEggAt(x: number, y: number, z: number, open: number) {
     const d = this.dummy;
-    const spread = open * 0.07;
+    const spread = open * 0.06;
     const tilt = open * 1.2;
-    // 上半：正放；下半：翻過來（rotation.x = π）
-    d.position.set(x - spread, y, z);
+    d.position.set(a.x - spread, y, a.z);
     d.rotation.set(0, 0, tilt);
     d.scale.set(1, 1, 1);
     d.updateMatrix();
     this.eggs.setMatrixAt(this.eggs.count++, d.matrix);
-    d.position.set(x + spread, y, z);
+    d.position.set(a.x + spread, y, a.z);
     d.rotation.set(Math.PI, 0, -tilt);
     d.updateMatrix();
     this.eggs.setMatrixAt(this.eggs.count++, d.matrix);
   }
 
-  /** 每站上方一條進度條：工作中粉紅往右長、做完變綠並輕跳（提示「點我推到下一站」） */
+  /** 每站上方一條進度條：工作中粉紅往右長、做完在等下一站變綠 */
   private syncBars(state: GameState, dt: number) {
     const d = this.dummy;
     let n = 0;
@@ -590,13 +655,12 @@ export class BakeryView {
         this.ready[id] = 0;
         continue;
       }
-      const p = STATION_LABEL[id];
+      const p = STATION_BAR[id];
       const k = stationProgress(state, id);
       const isReady = status === 'ready';
       this.ready[id] = isReady ? this.ready[id] + dt : 0;
-      const bob = isReady ? Math.abs(Math.sin(this.ready[id] * 5)) * 0.04 : 0;
-      const W = 0.44, H = 0.055;
-      const y = p.y - 0.13 + bob;
+      const W = 0.36, H = 0.045;
+      const y = p.y;
       d.position.set(p.x, y, p.z + 0.02);
       d.rotation.set(0, 0, 0);
       d.scale.set(W + 0.03, H + 0.03, 1);
@@ -668,19 +732,87 @@ export class BakeryView {
   }
 }
 
+function emptyKeys(): Record<StationId, string> {
+  const out = {} as Record<StationId, string>;
+  for (const id of STATION_IDS) out[id] = '';
+  return out;
+}
+function emptyBatches(): Record<StationId, Batch | null> {
+  const out = {} as Record<StationId, Batch | null>;
+  for (const id of STATION_IDS) out[id] = null;
+  return out;
+}
+function emptyNums(): Record<StationId, number> {
+  const out = {} as Record<StationId, number>;
+  for (const id of STATION_IDS) out[id] = 0;
+  return out;
+}
+
+/** 一盤畫幾杯（Lv3 一盤 4 份就畫 4 杯） */
+function cupsFor(qty: number): number {
+  return Math.max(1, Math.min(4, qty));
+}
+
+/** 第 i 杯沿行進方向的位移（一排置中） */
+function cupOffset(i: number, n: number): number {
+  return (i - (n - 1) / 2) * 0.11;
+}
+
+/** 帶面條紋：淺灰底＋深一點的橫條，重複鋪 */
+function beltTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 16;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#8a8196';
+  g.fillRect(0, 0, 64, 16);
+  g.fillStyle = '#a79fb3';
+  g.fillRect(0, 0, 40, 16);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/**
+ * 帶面幾何：每一段一條平面，u 座標＝沿線距離 / 條紋間距（跨段連續），所以貼圖 offset 一捲，
+ * 整條 U 型上的條紋都朝行進方向走。轉角的圓盤不捲（靜態的在 room.ts）。
+ */
+function beltSurface(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  let d0 = 0;
+  for (let i = 0; i < BELT_PATH.length - 1; i++) {
+    const a = BELT_PATH[i]!;
+    const b = BELT_PATH[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const g = new THREE.PlaneGeometry(len, BELT.w - 0.04);
+    const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+    for (let k = 0; k < uv.count; k++) uv.setX(k, (d0 + uv.getX(k) * len) / STRIPE);
+    g.rotateX(-Math.PI / 2);
+    g.rotateY(-Math.atan2(b.z - a.z, b.x - a.x));
+    g.translate((a.x + b.x) / 2, BELT.y - 0.008, (a.z + b.z) / 2);
+    parts.push(g.toNonIndexed());
+    d0 += len;
+  }
+  const out = mergeGeometries(parts, false);
+  if (!out) throw new Error('[lpg] belt merge failed');
+  return out;
+}
+
 /** 擠花奶油：三層由大到小的圓環疊成的螺旋頂＋一顆小點綴 */
 function swirlGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const add = (g: THREE.BufferGeometry) => parts.push(g.index ? g.toNonIndexed() : g);
   for (let i = 0; i < 3; i++) {
-    const r = 0.046 - i * 0.013;
-    const g = new THREE.TorusGeometry(r, 0.016 - i * 0.002, 8, 20);
+    const r = 0.042 - i * 0.012;
+    const g = new THREE.TorusGeometry(r, 0.015 - i * 0.002, 8, 20);
     g.rotateX(Math.PI / 2);
-    g.translate(0, 0.012 + i * 0.02, 0);
+    g.translate(0, 0.012 + i * 0.018, 0);
     add(g);
   }
-  const tip = new THREE.ConeGeometry(0.014, 0.03, 10);
-  tip.translate(0, 0.07, 0);
+  const tip = new THREE.ConeGeometry(0.013, 0.028, 10);
+  tip.translate(0, 0.064, 0);
   add(tip);
   for (const g of parts) g.deleteAttribute('uv');
   const out = mergeGeometries(parts, false);
@@ -689,70 +821,97 @@ function swirlGeometry(): THREE.BufferGeometry {
 }
 
 /**
- * 名牌：五站＋店招畫在同一張 canvas 上，一個 mesh（每塊平面的 UV 對到自己那一列）。
+ * 名牌：七站＋店招畫在同一張 canvas 上，一個 mesh（每塊平面的 UV 對到自己那一列）。
+ * 沒買的站畫灰底「○○・未購買」，買了畫白底「○○ Lv.N」；等級變了重畫同一張 canvas（不換 mesh）。
  * OPEN／CLOSED 牌也在同一張圖上，但各自一個小 mesh 才能切換顯示。
  */
-function buildLabels() {
-  const rows = [...STATION_IDS.map((id) => ({ text: STATIONS[id].name, bg: '#ffffff', fg: '#7a5a6e' })),
-    { text: '小布丁甜點店', bg: '#f28aa3', fg: '#ffffff' },
-    { text: 'OPEN 營業中', bg: '#6cc58a', fg: '#ffffff' },
-    { text: 'CLOSED 打烊', bg: '#7d7394', fg: '#ffffff' }];
-  const W = 512, RH = 96;
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = RH * rows.length;
-  const g = canvas.getContext('2d')!;
-  rows.forEach((r, i) => {
-    const y = i * RH;
-    g.fillStyle = r.bg;
-    const pad = 6, rad = 36;
-    g.beginPath();
-    g.roundRect(pad, y + pad, W - pad * 2, RH - pad * 2, rad);
-    g.fill();
-    g.lineWidth = 6;
-    g.strokeStyle = '#f5b8c6';
-    g.stroke();
-    g.fillStyle = r.fg;
-    g.font = 'bold 54px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(r.text, W / 2, y + RH / 2 + 2);
-  });
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+class LabelAtlas {
+  readonly mesh: THREE.Mesh;
+  readonly open: THREE.Mesh;
+  readonly closed: THREE.Mesh;
+  private readonly canvas: HTMLCanvasElement;
+  private readonly tex: THREE.CanvasTexture;
+  private static readonly W = 512;
+  /** 列高：跟機器名牌 0.46×0.13 同比例（3.5:1），字才不會被壓扁 */
+  private static readonly RH = 146;
+  private static readonly ROWS = STATION_IDS.length + 3;
 
-  const plate = (row: number, w: number, h: number, x: number, y: number, z: number, rotY = 0) => {
-    const geo = new THREE.PlaneGeometry(w, h);
-    const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
-    const v0 = 1 - (row + 1) / rows.length;
-    const v1 = 1 - row / rows.length;
-    for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) > 0.5 ? v1 : v0);
-    geo.rotateY(rotY);
-    geo.translate(x, y, z);
-    return geo;
-  };
+  constructor() {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = LabelAtlas.W;
+    this.canvas.height = LabelAtlas.RH * LabelAtlas.ROWS;
+    this.tex = new THREE.CanvasTexture(this.canvas);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.tex.anisotropy = 4;
+    const mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true });
 
-  const parts = STATION_IDS.map((id, i) => {
-    const p = STATION_LABEL[id];
-    return plate(i, 0.62, 0.116, p.x, p.y, p.z);
-  });
-  parts.push(plate(5, 1.2, 0.225, 0, 1.92, ROOM.backZ + 0.02));
-  const merged = mergeGeometries(parts, false);
-  if (!merged) throw new Error('[lpg] label merge failed');
-  const labels = new THREE.Mesh(merged, mat);
-  labels.name = 'BakeryLabels';
-  labels.renderOrder = 3;
+    const rows = LabelAtlas.ROWS;
+    const plate = (row: number, w: number, h: number, x: number, y: number, z: number, rotY = 0) => {
+      const geo = new THREE.PlaneGeometry(w, h);
+      const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+      const v0 = 1 - (row + 1) / rows;
+      const v1 = 1 - row / rows;
+      for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) > 0.5 ? v1 : v0);
+      geo.rotateY(rotY);
+      geo.translate(x, y, z);
+      return geo;
+    };
+    const parts = STATION_IDS.map((id, i) => {
+      const p = STATION_LABEL[id];
+      // 名牌盡量大：iPhone SE 上 0.4×0.1 的字只剩幾個像素（2026-09-24 截圖）
+      return plate(i, 0.46, 0.13, p.x, p.y, p.z);
+    });
+    parts.push(plate(STATION_IDS.length, 1.2, 0.3, 0, 1.92, ROOM.backZ + 0.02));
+    const merged = mergeGeometries(parts, false);
+    if (!merged) throw new Error('[lpg] label merge failed');
+    this.mesh = new THREE.Mesh(merged, mat);
+    this.mesh.name = 'BakeryLabels';
+    this.mesh.renderOrder = 3;
 
-  const signAt = { x: ROOM.halfW - 0.02, y: 1.2, z: ROOM.backZ + 2.9 + 0.25 };
-  const open = new THREE.Mesh(plate(6, 0.34, 0.064, 0, 0, 0, -Math.PI / 2 + 0.6), mat);
-  const closed = new THREE.Mesh(plate(7, 0.34, 0.064, 0, 0, 0, -Math.PI / 2 + 0.6), mat);
-  for (const m of [open, closed]) {
-    m.position.set(signAt.x, signAt.y, signAt.z);
-    m.renderOrder = 3;
+    const signAt = { x: ROOM.halfW - 0.02, y: 1.2, z: ROOM.backZ + 2.9 + 0.25 };
+    this.open = new THREE.Mesh(plate(STATION_IDS.length + 1, 0.34, 0.085, 0, 0, 0, -Math.PI / 2 + 0.6), mat);
+    this.closed = new THREE.Mesh(plate(STATION_IDS.length + 2, 0.34, 0.085, 0, 0, 0, -Math.PI / 2 + 0.6), mat);
+    for (const m of [this.open, this.closed]) {
+      m.position.set(signAt.x, signAt.y, signAt.z);
+      m.renderOrder = 3;
+    }
+    this.open.name = 'BakeryOpenSign';
+    this.closed.name = 'BakeryClosedSign';
+    this.draw(Object.fromEntries(STATION_IDS.map((id) => [id, 0])) as Record<StationId, number>);
   }
-  open.name = 'BakeryOpenSign';
-  closed.name = 'BakeryClosedSign';
-  return { labels, open, closed };
+
+  draw(levels: Record<StationId, number>) {
+    const rows = [
+      ...STATION_IDS.map((id) => levels[id] > 0
+        ? { text: `${STATIONS[id].name} ${'★'.repeat(levels[id])}`, bg: '#ffffff', fg: '#7a5a6e', edge: '#f5b8c6' }
+        : { text: `${STATIONS[id].name} 未購買`, bg: '#ece6ef', fg: '#9a8fa3', edge: '#d6ccdc' }),
+      { text: '小布丁甜點店', bg: '#f28aa3', fg: '#ffffff', edge: '#f5b8c6' },
+      { text: 'OPEN 營業中', bg: '#6cc58a', fg: '#ffffff', edge: '#f5b8c6' },
+      { text: 'CLOSED 打烊', bg: '#7d7394', fg: '#ffffff', edge: '#f5b8c6' },
+    ];
+    const W = LabelAtlas.W, RH = LabelAtlas.RH;
+    const g = this.canvas.getContext('2d')!;
+    g.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    rows.forEach((r, i) => {
+      const y = i * RH;
+      g.fillStyle = r.bg;
+      const pad = 6, rad = 36;
+      g.beginPath();
+      g.roundRect(pad, y + pad, W - pad * 2, RH - pad * 2, rad);
+      g.fill();
+      g.lineWidth = 6;
+      g.strokeStyle = r.edge;
+      g.stroke();
+      g.fillStyle = r.fg;
+      // 字級盡量大、但不超出牌子（「冷藏櫃 未購買」比「烤箱 ★」長得多）
+      let size = 96;
+      const font = (px: number) => `bold ${px}px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+      g.font = font(size);
+      while (size > 30 && g.measureText(r.text).width > W - 56) g.font = font(--size);
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(r.text, W / 2, y + RH / 2 + 2);
+    });
+    this.tex.needsUpdate = true;
+  }
 }

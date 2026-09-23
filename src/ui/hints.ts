@@ -1,7 +1,8 @@
 import { BALANCE, EQUIPMENT } from '../game/balance';
 import { puddingMood } from '../game/pudding';
 import { claimableCount } from '../game/achievements';
-import { canStartBatch, dayClock, stationStatus, STATION_IDS } from '../game/bakery';
+import { batchesOnLine, dayClock } from '../game/bakery';
+import { STATIONS, anyLineReady, canStartRecipe, lineCost, RECIPES } from '../game/recipes';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
 import { STORAGE_ZONE, equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
 import { basinsIn, dropsIn, puddingsIn, unlockedZones } from '../game/zones';
@@ -168,13 +169,11 @@ export function nextHint(state: GameState): Hint | null {
     return { id: 'achieve', text: '右上角的獎盃有成就可以領，按「領取」就有焦糖幣。' };
   }
 
-  // D50：農場不再加工，甜點改在工坊做。蛋與原料湊得齊一盤就帶玩家過去
-  if (state.stats.baked === 0 && SPECIES_IDS.some((id) => canStartBatch(state, id))) {
-    const q = BALANCE.bakery.batchSize;
-    return {
-      id: 'bakery',
-      text: `蛋和原料湊夠一盤了（蛋 ${q * BALANCE.eggsPerDessert}、原料 ${q * BALANCE.ingredientsPerDessert}）。按「甜點店」去做甜點，賣得比原料貴。`,
-    };
+  // D50：農場不再加工，甜點改在工坊做。D57 起機器要買：機器與材料都齊了才帶去開工。
+  // 「去買機器」不在農場講：教學在買下第一台農場設備（收集手 60）就結束，一定比整條線（430）先到，
+  // 排在這裡只會搶走「去買收集手」那一句。買機器的引導在工坊裡（`bakeryHint` 的 bk-buy）。
+  if (state.stats.baked === 0 && SPECIES_IDS.some((id) => canStartRecipe(state, id))) {
+    return { id: 'bakery', text: '做甜點的材料湊齊了。按「甜點店」→「菜單」挑一道放上流水線，賣得比原料貴。' };
   }
 
   if (state.stats.served === 0 && SPECIES_IDS.some((id) => state.desserts[id] > 0)) {
@@ -205,14 +204,14 @@ export function bakeryHint(state: GameState): Hint | null {
   }
   if (state.stats.served > 0 && state.stats.baked >= 4) return null;
 
-  if (STATION_IDS.some((id) => stationStatus(state, id) === 'ready')) {
-    return { id: 'bk-push', text: '有一站做好了（綠色那格）。點它，這一盤就會送到下一台機器。' };
+  if (!anyLineReady(state)) {
+    const need = RECIPES.caramel.route.filter((id) => state.bakery.machines[id] === 0).map((id) => STATIONS[id].name);
+    return { id: 'bk-buy', text: `工坊還沒有機器。開右上角商店的「工坊」頁購買；焦糖布丁塔要${need.join('、')}（共 ${lineCost(state, 'caramel')} 元）。` };
   }
-  if (!state.bakery.stations.crack.batch && state.stats.baked === 0) {
-    const q = BALANCE.bakery.batchSize;
-    return SPECIES_IDS.some((id) => canStartBatch(state, id))
-      ? { id: 'bk-start', text: '點「打蛋」選一種口味開工。一盤會經過打蛋、攪拌、裝模、烘烤、裝飾五台機器。' }
-      : { id: 'bk-need', text: `一盤要蛋 ${q * BALANCE.eggsPerDessert} 顆＋同一種原料 ${q * BALANCE.ingredientsPerDessert} 份。回農場撿布丁掉的東西再來。` };
+  if (state.stats.baked === 0 && batchesOnLine(state) === 0) {
+    return SPECIES_IDS.some((id) => canStartRecipe(state, id))
+      ? { id: 'bk-start', text: '按「菜單」挑一道甜點放上流水線，機器會自己一站一站做完。' }
+      : { id: 'bk-need', text: '菜單裡每道甜點下面會寫還缺什麼。回農場撿蛋與原料、在商店補麵粉與牛乳。' };
   }
   if (SPECIES_IDS.some((id) => state.desserts[id] > 0) && SPECIES_IDS.every((id) => state.bakery.shelf[id] === 0)) {
     return { id: 'shelf', text: '甜點做好了。按「上架」擺進展示櫃，營業時間客人會來買。' };
