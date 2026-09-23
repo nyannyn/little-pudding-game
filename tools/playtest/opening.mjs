@@ -26,7 +26,7 @@ while (Date.now() < endAt) {
   for (const t of s.toasts) if (!seen.has(t)) { seen.add(t); log(s.t, `[toast] ${t}  (coins ${Math.floor(s.coins)})`); }
   if (s.basinEmpty) await tap(page, '倒焦糖');
   if (s.drops > 0) await tap(page, '撿原料');
-  // 成就（D54）：徽章亮了就全部領掉
+  // 成就（D54／D55）：徽章亮了就全部領掉
   const claimed = await page.evaluate(() => {
     const badge = document.querySelector('.achbtn .badge');
     if (!badge || badge.hidden) return 0;
@@ -35,7 +35,12 @@ while (Date.now() < endAt) {
   });
   if (claimed) {
     await page.waitForTimeout(250);
-    const got = await page.evaluate(() => [...document.querySelectorAll('.achcard [data-a="claim"]')].map((b) => { const n = b.closest('.arow').querySelector('b').textContent; b.click(); return n; }));
+    // D55：兩條以上可領時有「全部領取」；只有一條時抽屜會自己跳到那一頁，點那一列的「領取」
+    const got = await page.evaluate(() => {
+      const all = document.querySelector('.achsheet [data-a="claimAllAch"]');
+      if (all && !all.hidden) { const t = all.textContent; all.click(); return [t]; }
+      return [...document.querySelectorAll('.achsheet [data-a="claim"]')].slice(0, 1).map((b) => { const n = b.closest('.arow').querySelector('.ttl b').textContent; b.click(); return n; });
+    });
     if (got.length) log(s.t, `[achievement] ${got.join('、')}`);
     await page.evaluate(() => document.querySelector('[data-a="closeAch"]').click());
   }

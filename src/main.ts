@@ -14,7 +14,7 @@ import {
   switchZone,
   unlockZone,
 } from './game/actions';
-import { claimAchievement } from './game/achievements';
+import { claimAchievement, claimAllAchievements } from './game/achievements';
 import {
   STATIONS,
   advanceStation,
@@ -379,6 +379,10 @@ const hudActions: HudActions = {
     hud.update(state, performance.now(), true);
   },
   claimAchievement: (id) => report(claimAchievement(state, id, world.emit)),
+  claimAllAchievements: () => {
+    claimAllAchievements(state, world.emit);
+    hud.update(state, performance.now(), true);
+  },
   sellPudding: (species) => {
     // 優先賣「正在看的這一區」的那隻：玩家在看著的那一區少一隻，才看得到賣掉這件事
     const candidates = state.puddings.filter((p) => p.species === species && puddingSaleBlock(state, p.id) === null);
@@ -519,6 +523,10 @@ function handle(e: SimEvent) {
     case 'achievement':
       sfx.coin(0.4);
       hud.toast(`成就「${e.name}」+${e.reward}`);
+      break;
+    case 'achievementsClaimed':
+      sfx.coin(0.4);
+      hud.toast(`領了 ${e.count} 個成就，+${e.reward}`);
       break;
     case 'orderDone':
       sfx.coin(0.36);

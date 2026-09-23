@@ -31,6 +31,14 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
+## 成就改版 D55（2026-09-24，使用者：「成就系統請分類 而且參照其他遊戲的成就系統做得更美觀 成就設定的有趣一點」，分支 `feat/achievements-v2`，worktree `../lpg-wt-achievements`）
+
+- **使用者截圖的直排文字**：舊成就卡外框掛 `.card`，商店卡的 `.card .foot { width:100% }` 漏進成就列，文字欄被擠到 0～一個字寬。改成跟商店同款的底部抽屜 `src/ui/achievements.ts`（`.sheet.achsheet`，不掛 `.card`）。
+- 設計見計畫 D55：四類分頁（牧場日常／布丁家族／甜點工坊／生意經）＋紅點；同條件合成系列（銅→銀→金獎章＋星星）；頂部已領 x／36＋累計焦糖幣；兩條以上可領時出現「全部領取」（`claimAllAchievements`，只發一個 `achievementsClaimed` 事件＝一則 toast）；兩條隱藏成就（突變、讓 50 位客人撲空）。舊 20 個 id 全保留、只改名字；新增 16 條；**沒動 `GameState`、沒升 schema**。
+- 證據：單元 227 綠（新 `tests/unit/achievements.test.ts` 9 條，四個突變各紅過：改舊 id／系列永遠停第一階／全部領取逐條發事件／隱藏不看狀態）；e2e 新 D55 一條＋改 AC8-8，**負向對照**：把 `.achsheet .arow .act { width:100% }` 塞回去，文字欄寬 0 → 紅；`npm run build` 綠；iPhone 14／SE 截圖看過（說明字 11.5px）。
+- 節奏（`npm run pacing` 改前→改後）：前 20 分鐘成就收入 1740→2110；上層不變；下層早 0.2–0.8 分；二號櫥窗早 1.5–9.6 分（equip-first seed 7：41.3→31.7）；3 小時成就總額 4540→8560（多出來的是後段系列）。都在 D24 目標內，**要不要再收斂由使用者決定**。
+- **待使用者簽核**：分類名、36 條成就的名字與說明、獎章外觀。
+
 ## 【重點】甜點工坊改版需求（2026-09-23 使用者提出，分支 `feat/bakery`，worktree `../lpg-wt-bakery`，D50–D54）
 
 **使用者原話（逐字保留）**：

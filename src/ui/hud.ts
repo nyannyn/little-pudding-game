@@ -1,5 +1,6 @@
 import './hud.css';
-import { achievementList, claimableCount } from '../game/achievements';
+import { claimableCount, type AchievementCategory } from '../game/achievements';
+import { AchievementSheet } from './achievements';
 import {
   STATIONS,
   STATION_IDS,
@@ -36,6 +37,7 @@ export interface HudActions {
   startBatch(species: SpeciesId): void;
   stockShelf(): void;
   claimAchievement(id: string): void;
+  claimAllAchievements(): void;
   /** 賣一隻這個物種的成年布丁（D53） */
   sellPudding(species: SpeciesId): void;
   fulfill(orderId: string): void;
@@ -116,8 +118,7 @@ export class Hud {
   private readonly btnShelf: HTMLButtonElement;
   private readonly dayBar: HTMLElement;
   private readonly achBadge: HTMLElement;
-  private readonly achCard: HTMLElement;
-  private achSig = '';
+  private readonly ach = new AchievementSheet();
   private readonly batchCard: HTMLElement;
   /** 預訂單卡（工坊的右欄只放一顆鈕：卡片直接疊在畫面上會蓋掉半間店，2026-09-23 iPhone SE 截圖） */
   private readonly orderCard: HTMLElement;
@@ -272,14 +273,6 @@ export class Hud {
             <button data-a="closeOrders" class="ghost">關閉</button>
           </div>
         </div>
-        <div class="welcome achcard" hidden>
-          <div class="card">
-            <h2>成就</h2>
-            <p class="lead">達成之後按「領取」，焦糖幣就會入帳。</p>
-            <div class="alist"></div>
-            <button data-a="closeAch" class="ghost">關閉</button>
-          </div>
-        </div>
         <div class="welcome savecard" hidden>
           <div class="card">
             <h2>設定</h2>
@@ -303,6 +296,7 @@ export class Hud {
       </div>`);
     // 商店抽屜疊在歡迎卡下面、其他 HUD 上面
     this.root.insertBefore(this.shop.root, this.root.querySelector('.welcome'));
+    this.root.insertBefore(this.ach.root, this.root.querySelector('.welcome'));
     parent.appendChild(this.root);
 
     const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
@@ -317,12 +311,11 @@ export class Hud {
     this.btnShelf = q('[data-a="stockShelf"]');
     this.dayBar = q('.daybar');
     this.achBadge = q('.achbtn .badge');
-    this.achCard = q('.achcard');
     this.batchCard = q('.batchcard');
     this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
-    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard):not(.batchcard):not(.achcard):not(.ordercard)');
+    this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard):not(.batchcard):not(.ordercard)');
     this.orderCard = q('.ordercard');
     this.ordBadge = q('.ordbtn .badge');
     this.storeCard = q('.storecard');
@@ -365,11 +358,17 @@ export class Hud {
       case 'closeBatch': this.batchCard.hidden = true; break;
       case 'stockShelf': this.act.stockShelf(); break;
       case 'achievements':
-        this.achCard.hidden = false;
-        this.achSig = '';
+        // 兩張底部抽屜疊在一起會只看得到上面那張：開成就就把商店收起來
+        if (this.shop.open) this.toggleShop(false);
+        this.ach.show();
         this.lastRefresh = -1;
         break;
-      case 'closeAch': this.achCard.hidden = true; break;
+      case 'closeAch': this.ach.hide(); break;
+      case 'achTab':
+        this.ach.setTab(arg as AchievementCategory);
+        this.lastRefresh = -1;
+        break;
+      case 'claimAllAch': this.act.claimAllAchievements(); break;
       case 'openOrders':
         this.orderCard.hidden = false;
         this.lastRefresh = -1;
@@ -377,7 +376,6 @@ export class Hud {
       case 'closeOrders': this.orderCard.hidden = true; break;
       case 'claim':
         this.act.claimAchievement(arg);
-        this.achSig = '';
         break;
       case 'sellPud': this.act.sellPudding(arg as SpeciesId); break;
       case 'fulfill': this.act.fulfill(arg); break;
@@ -472,6 +470,7 @@ export class Hud {
   }
 
   private toggleShop(open: boolean, page?: ShopPage) {
+    if (open) this.ach.hide();
     if (open) this.shop.show(page);
     else this.shop.hide();
     this.lastRefresh = -1; // 下一次 update 一定要重畫商店內容
@@ -592,7 +591,7 @@ export class Hud {
     const claimable = claimableCount(state);
     this.achBadge.hidden = claimable === 0;
     this.achBadge.textContent = String(claimable);
-    if (!this.achCard.hidden) this.syncAchievements(state);
+    if (this.ach.open) this.ach.render(state);
     if (!this.batchCard.hidden) this.syncBatchCard(state);
 
     this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
@@ -645,35 +644,6 @@ export class Hud {
     const shelf = shelvable(state);
     this.btnShelf.disabled = shelf <= 0;
     (this.btnShelf.querySelector('.n') as HTMLElement).textContent = shelf > 0 ? String(shelf) : '';
-  }
-
-  /** 成就卡：只在內容（狀態）變了才重建，按到一半的「領取」才不會被換掉 */
-  private syncAchievements(state: GameState) {
-    const list = achievementList(state);
-    const sig = list.map((a) => `${a.info.id}:${a.status}:${a.value}`).join(',');
-    if (sig === this.achSig) return;
-    this.achSig = sig;
-    // 可領的排最前、再來進行中、領過的沉到最後
-    const rank = { claimable: 0, locked: 1, claimed: 2 } as const;
-    const rows = [...list].sort((a, b) => rank[a.status] - rank[b.status]);
-    (this.achCard.querySelector('.alist') as HTMLElement).innerHTML = rows
-      .map((a) => {
-        const pct = Math.round((a.value / a.info.target) * 100);
-        const foot =
-          a.status === 'claimable'
-            ? `<button class="buy" data-a="claim" data-arg="${a.info.id}">領取 ${a.info.reward}</button>`
-            : a.status === 'claimed'
-              ? '<span class="done">已領取</span>'
-              : `<span class="reward">${a.info.reward}</span>`;
-        const bar = a.status === 'locked' && a.info.target > 1
-          ? `<i class="abar"><i style="width:${pct}%"></i></i><small class="cnt">${a.value}／${a.info.target}</small>`
-          : '';
-        return `<div class="arow" data-id="${a.info.id}" data-status="${a.status}">
-          <div class="txt"><b>${a.info.name}</b><small>${a.info.desc}</small>${bar}</div>
-          <div class="foot">${foot}</div>
-        </div>`;
-      })
-      .join('');
   }
 
   /** 開一盤的選單：列出每一種有原料的物種，湊得齊一盤的才有「開工」鈕 */

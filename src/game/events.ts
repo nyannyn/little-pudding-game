@@ -24,6 +24,8 @@ export type SimEvent =
   /** 打烊結算。**不要接成 toast**：離線一次會跑出 24 個（D52），畫面讀 `bakery.lastDay` */
   | { type: 'dayClosed'; day: number; revenue: number; served: number; missed: number }
   | { type: 'achievement'; id: string; name: string; reward: number }
+  /** 「全部領取」一次領好幾條：只發這一個，不逐條發 `achievement`（七則 toast 會把別的通知擠掉） */
+  | { type: 'achievementsClaimed'; count: number; reward: number }
   | { type: 'puddingSold'; puddingId: string; species: SpeciesId; coins: number }
   | { type: 'sell'; species: SpeciesId; coins: number; auto: boolean }
   | { type: 'orderNew'; orderId: string; species: SpeciesId; qty: number; price: number }
