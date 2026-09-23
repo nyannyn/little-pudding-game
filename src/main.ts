@@ -4,20 +4,27 @@ import {
   buyEquipment,
   buySpecialBasin,
   buyStock,
-  craft,
   fillBasin,
-  fulfillOrder,
-  nearestPendingOrder,
   pickAllDrops,
   pickDrop,
-  sellDessert,
+  puddingSaleBlock,
   sellEggs,
   sellIngredient,
-  shipDesserts,
+  sellPudding,
   switchZone,
   unlockZone,
-  type ShipResult,
 } from './game/actions';
+import { claimAchievement } from './game/achievements';
+import {
+  STATIONS,
+  advanceStation,
+  fulfillOrder,
+  nextStation,
+  startBatch,
+  stationStatus,
+  stockShelf,
+  type StationId,
+} from './game/bakery';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -43,7 +50,7 @@ import { advance, createWorld, drainEvents, settleOffline, syncForSave } from '.
 import { LIQUIDS, SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from './game/species';
 import { exportCode, importCode } from './game/savecode';
 import { load, overwrite, save, useTestSave } from './game/storage';
-import { createNewSave, equipmentIn, hasEquipmentAnywhere, type GameState, type Vec2 } from './game/state';
+import { createNewSave, type GameState, type Vec2 } from './game/state';
 import { basinsIn, findZone, puddingsIn, unlockedZones, zoneKey } from './game/zones';
 import { createRenderer } from './scene/renderer';
 import { MAX_AZIMUTH, createCamera, createControls, fitBoxDistance, applyDistance } from './scene/camera';
@@ -65,7 +72,8 @@ import {
 import { createCabinetRow } from './scene/cabinetRow';
 import { BASIN_SINK, BasinsView } from './scene/basinMesh';
 import { DropsView } from './scene/dropMesh';
-import { EquipmentView, sellerSpout } from './scene/equipmentMesh';
+import { EquipmentView } from './scene/equipmentMesh';
+import { BakeryView } from './scene/bakery/bakeryView';
 import { Particles } from './scene/particles';
 import { ENTER as POUR_ENTER, PourView, THICKNESS, flowSeconds } from './scene/pourView';
 import { PuddingView } from './scene/puddingView';
@@ -74,7 +82,7 @@ import { MoodIcons } from './scene/moodIcons';
 import { Sfx } from './scene/audio';
 import { nextHint } from './ui/hints';
 import { shouldSuggestHomeScreen } from './ui/homeScreen';
-import { Hud } from './ui/hud';
+import { Hud, type GameView, type HudActions } from './ui/hud';
 import { SHOP_ART_URLS } from './ui/shopArt';
 import { measureVisibleBand, viewOffsetY } from './ui/viewport';
 import { createStats } from './debug/stats';
@@ -149,6 +157,14 @@ const particles = new Particles();
 const pours = new PourView(basins, particles);
 const coins = new CoinsView();
 scene.add(basins.group, drops.mesh, equipment.group, particles.points, pours.group, coins.mesh);
+
+/**
+ * 甜點工坊（D51）：獨立的 scene＋鏡頭，只有切到「甜點店」時才畫。
+ * `?view=bakery` 直接開在工坊（e2e 與截圖用）。
+ */
+const bakery = new BakeryView();
+bakery.resize(container.clientWidth / container.clientHeight);
+let view: GameView = params.get('view') === 'bakery' ? 'bakery' : 'farm';
 
 const sfx = new Sfx();
 // 掛 window 不掛 canvas：教學的第一個動作是 HUD 上的「倒焦糖」按鈕，事件不會經過 canvas
@@ -278,7 +294,7 @@ focusActiveZone(true);
 
 // 離線結算：上限 8 小時，回來時告訴玩家發生了什麼
 if (loaded.restored) {
-  const before = { coins: state.coins, baths: state.stats.baths };
+  const before = { coins: state.coins, baths: state.stats.baths, days: state.stats.daysClosed, served: state.stats.served };
   const offlineSeconds = settleOffline(world, Date.now());
   drainEvents(world); // 離線那幾千個事件不需要逐一播音效
   if (offlineSeconds > 60) {
@@ -289,6 +305,9 @@ if (loaded.restored) {
       () =>
         hud.showWelcome(
           `你離開的 ${mins} 分鐘裡，布丁泡了 ${baths} 次澡，賺了 ${gained} 焦糖幣。` +
+            (state.stats.daysClosed > before.days || state.stats.served > before.served
+              ? `甜點店營業了 ${state.stats.daysClosed - before.days} 天，客人買走 ${state.stats.served - before.served} 次。`
+              : '') +
             (state.drops.length > 0 ? `地板上還有 ${state.drops.length} 份原料沒收。` : '') +
             // 離線期間液體用完＝生產線停了，回來第一眼就要知道，不然「泡了 0 次澡」讀起來像壞掉
             (nextHint(state)?.warning ? nextHint(state)!.text : ''),
@@ -334,20 +353,6 @@ function basinIndexFor(liquid: LiquidId): number {
   return mine.find((i) => state.basins[i]?.preferredLiquid === liquid) ?? (mine[0] as number);
 }
 
-/** 按了出貨卻一份都沒出去時的說明。分成「被訂單扣著」與「根本沒甜點」兩種 */
-function shipNothingReason(r: ShipResult): string {
-  if (r.reserved > 0) {
-    const pending = nearestPendingOrder(state);
-    if (pending) {
-      const { order, short } = pending;
-      return `手上的甜點留給訂單了：「${SPECIES[order.species].dessert} ×${order.qty}」還差 ${short} 份才交得出來。`;
-    }
-    return '手上的甜點都留給訂單了，湊齊份數就會自己交出去。';
-  }
-  if (hasEquipmentAnywhere(state, 'seller')) return '自動販售口已經幫你賣掉了，沒有甜點要出貨。';
-  return '還沒有甜點可以出貨，先按「加工」做一份。';
-}
-
 function report(r: { ok: true } | { ok: false; error: string }) {
   if (!r.ok) hud.toast(r.error, true);
   hud.update(state, performance.now(), true);
@@ -359,26 +364,31 @@ function spawnFor() {
   return { puddingPos: { x: 0.1, z: 0.05 }, basinPos: { ...(BASIN_SLOTS[0] as Vec2) } };
 }
 
-const hud = new Hud(document.body, {
+const hudActions: HudActions = {
   pour: (liquid) => report(fillBasin(state, basinIndexFor(liquid), liquid, world.emit)),
   pickAll: () => {
     pickAllDrops(state, world.emit, false, state.activeZone);
     hud.update(state, performance.now(), true);
   },
-  craft: () => {
-    // 挑原料最多的那個物種做（蛋是共用的，不影響選誰）
-    const best = [...SPECIES_IDS].sort((a, b) => state.ingredients[b] - state.ingredients[a])[0] as SpeciesId;
-    report(craft(state, best, world.emit));
-  },
-  ship: () => {
-    // 規則在 game/：手動與自動販售口共用同一個函式（含「訂單預留量」），
-    // 這裡再抄一份就是上次「出貨把湊到一半的甜點賣掉、訂單永遠交不出去」的成因
-    const r = shipDesserts(state, world.emit);
-    // 什麼都沒出貨就一定要講話。手上的甜點被進行中的訂單預留住時，這顆鈕是亮的、
-    // 按下去卻完全沒有反應也沒有任何字——玩家看到的就是「按鍵壞了」
-    // （2026-09-22 使用者回報，存檔碼實證：裝了自動販售口＋一張焦糖 ×3 的單）
-    if (r.fulfilled === 0 && r.sold === 0) hud.toast(shipNothingReason(r), true);
+  setView: (v) => setView(v),
+  station: (id) => tapStation(id),
+  startBatch: (species) => report(startBatch(state, species, world.emit)),
+  stockShelf: () => {
+    // 什麼都沒擺上去一定要講為什麼（D39 的教訓：按了沒反應＝玩家以為壞了）
+    if (stockShelf(state, world.emit) === 0) hud.toast(shelfNothingReason(), true);
     hud.update(state, performance.now(), true);
+  },
+  claimAchievement: (id) => report(claimAchievement(state, id, world.emit)),
+  sellPudding: (species) => {
+    // 優先賣「正在看的這一區」的那隻：玩家在看著的那一區少一隻，才看得到賣掉這件事
+    const candidates = state.puddings.filter((p) => p.species === species && puddingSaleBlock(state, p.id) === null);
+    const p = candidates.find((x) => x.zone === state.activeZone) ?? candidates[0];
+    if (!p) {
+      const any = state.puddings.find((x) => x.species === species);
+      hud.toast(any ? (puddingSaleBlock(state, any.id) ?? '現在沒有可以賣的') : '沒有這種布丁', true);
+      return;
+    }
+    report(sellPudding(state, p.id, world.emit));
   },
   fulfill: (id) => report(fulfillOrder(state, id, world.emit)),
   sellIngredients: (s) => report(sellIngredient(state, s, state.ingredients[s], world.emit)),
@@ -421,7 +431,8 @@ const hud = new Hud(document.body, {
     sfx.muted = !sfx.muted;
     return sfx.muted;
   },
-});
+};
+const hud = new Hud(document.body, hudActions);
 
 // ── 事件 → 聲音／粒子／提示 ───────────────────────────
 const views = new Map<string, PuddingView>();
@@ -467,7 +478,47 @@ function handle(e: SimEvent) {
     }
     case 'sell':
       sfx.coin(0.26);
-      hud.toast(`賣出${SPECIES[e.species].dessert}，+${e.coins}`);
+      hud.toast(`賣給商店，+${e.coins}`);
+      break;
+    case 'puddingSold': {
+      // scene 從來只有「出生」沒有「離開」：view 不拿掉的話 state 少一隻、畫面上牠還在跳（AC8-6）
+      const v = views.get(e.puddingId);
+      if (v) {
+        scene.remove(v.root);
+        views.delete(e.puddingId);
+      }
+      refreshShells(); // 名牌上的住客數
+      sfx.coin(0.3);
+      hud.toast(`賣出一隻${SPECIES[e.species].name}，+${e.coins}`);
+      break;
+    }
+    case 'bakeStep':
+      if (!e.auto && view === 'bakery') sfx.splat(0.18);
+      break;
+    case 'bakeDone':
+      if (!e.auto) {
+        sfx.coin(0.32);
+        hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
+      }
+      break;
+    case 'customer':
+      // 客人演出只在看著工坊時播；離線結算的那幾百位早在 drainEvents 丟掉了
+      if (view === 'bakery') {
+        bakery.customerCame(e.species);
+        sfx.coin(0.16);
+      }
+      break;
+    case 'customerMissed':
+      if (view === 'bakery') bakery.customerCame(null);
+      break;
+    case 'dayClosed':
+      // 只會在「開著遊戲時剛好打烊」走到這裡（離線那 24 天的事件在 drainEvents 就丟了），
+      // 所以一天最多一則；昨日營收另外常駐在工坊的日曆列上
+      hud.toast(`第 ${e.day} 天打烊：營收 ${Math.floor(e.revenue)}，客人 ${e.served} 位${e.missed ? `，${e.missed} 位沒買到` : ''}`);
+      break;
+    case 'achievement':
+      sfx.coin(0.4);
+      hud.toast(`成就「${e.name}」+${e.reward}`);
       break;
     case 'orderDone':
       sfx.coin(0.36);
@@ -478,9 +529,6 @@ function handle(e: SimEvent) {
       break;
     case 'orderExpired':
       hud.toast(`訂單過期了：${SPECIES[e.species].dessert}`, true);
-      break;
-    case 'craft':
-      if (!e.auto) hud.toast(`做好一份${SPECIES[e.species].dessert}`);
       break;
     case 'buy':
       if (!e.auto) hud.toast(`購入${e.what}，−${e.cost}`);
@@ -497,22 +545,62 @@ function handle(e: SimEvent) {
 }
 
 /**
- * 賣出的金幣從販賣機彈出來、撒在地板上、消失（D42）。
- *
- * 買了販售口：從販賣機**頂上**（`sellerSpout()`，跟著販賣機的位置走，D49）冒出來——機身有半公尺高，從機身裡生
- * 第一幀就被擋住；往 −z 拋會越過機身落到地板上。沒買（手動出貨）：從前緣帶 z=0.6 正中央生，
+ * 賣出的金幣撒在地板上再消失（D42）。D50 起販售口退役，一律從前緣帶 z=0.6 正中央生：
  * 布丁地板是 ±0.4，落在 0.42–0.60 這條帶才不會蓋住布丁。
  */
 function spawnCoins(earned: number, ox: number, oy: number) {
-  const hasWindow = equipmentIn(state, state.activeZone).seller; // 販賣機只畫在裝了它的那一區
-  const spout = sellerSpout(equipmentPos(state, state.activeZone, 'seller')); // 販賣機可以被搬走（D49）
-  const x = ox + (hasWindow ? spout.x : 0);
-  const z = hasWindow ? spout.z : 0.6;
-  const y = oy + (hasWindow ? spout.y : 0.28);
+  const x = ox;
+  const z = 0.6;
+  const y = oy + 0.28;
   // 金額越大越多枚，但看得清楚比例更重要：2–6 枚
   const n = Math.max(2, Math.min(6, 2 + Math.floor(earned / 40)));
-  coins.burst(x, y, z, n, oy, Math.random, hasWindow ? 'right' : 'both');
-  particles.burst(x, y, z, 0xffe08a, 10); // 機頂冒一下，告訴玩家錢是從這裡出來的
+  coins.burst(x, y, z, n, oy, Math.random, 'both');
+  particles.burst(x, y, z, 0xffe08a, 10);
+}
+
+// ── 工坊的動作 ────────────────────────────────────────
+/** 切換農場／工坊：HUD 換一組按鈕、主迴圈換一個 scene 畫 */
+function setView(v: GameView) {
+  view = v;
+  hud.setView(v);
+  controls.enabled = v === 'farm'; // 工坊是固定鏡頭；不關的話在工坊裡拖手指會偷偷轉農場的鏡頭
+  if (edit) endEdit();
+  applyHudOffset();
+  hud.update(state, performance.now(), true);
+}
+
+/**
+ * 點某一站（HUD 的站鈕或 3D 的機器都走這裡）：
+ * 空的打蛋機＝開「開一盤」選單；做完的＝推到下一站；其他情況一定要講出為什麼沒動（D39）。
+ */
+function tapStation(id: StationId) {
+  const status = stationStatus(state, id);
+  if (status === 'ready') {
+    report(advanceStation(state, id, world.emit));
+    return;
+  }
+  if (status === 'working') {
+    const left = Math.ceil(state.bakery.stations[id].doneAt - state.time);
+    hud.toast(`${STATIONS[id].name}還在${STATIONS[id].verb}，再 ${left} 秒`);
+    return;
+  }
+  if (id === 'crack') {
+    hud.openBatchPicker();
+    return;
+  }
+  const i = (['crack', 'mix', 'mold', 'bake', 'decorate'] as StationId[]).indexOf(id);
+  const prev = (['crack', 'mix', 'mold', 'bake', 'decorate'] as StationId[])[i - 1];
+  hud.toast(prev ? `${STATIONS[id].name}是空的：等${STATIONS[prev].name}做完，點它推過來` : `${STATIONS[id].name}是空的`);
+  void nextStation; // 流水線順序的唯一真相在 game/bakery.ts；這裡只是拿來講話
+}
+
+/** 按了上架卻一份都沒擺上去的原因 */
+function shelfNothingReason(): string {
+  const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+  if (total === 0) return '成品櫃是空的：做完一盤甜點（裝飾台做完點一下）才有東西上架。';
+  const onShelf = SPECIES_IDS.reduce((n, id) => n + state.bakery.shelf[id], 0);
+  if (onShelf >= BALANCE.bakery.shelfCap) return `展示架滿了（${BALANCE.bakery.shelfCap} 份），等客人買走再補。`;
+  return '成品櫃裡的甜點都留給預訂單了，交完訂單再上架。';
 }
 
 // ── 觸控：點掉落物撿起來、點澡盆倒液體 ────────────────
@@ -522,6 +610,7 @@ let downAt = { x: 0, y: 0, t: 0 };
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   downAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+  if (view === 'bakery') return; // 工坊沒有家具可以長按搬
   if (edit) {
     startEditDrag(ev);
     return;
@@ -541,6 +630,15 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
 
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+
+  if (view === 'bakery') {
+    // 點機器＝點 HUD 上那一站；點展示櫃／成品櫃＝上架
+    raycaster.setFromCamera(pointer, bakery.camera);
+    const hit = bakery.pick(raycaster);
+    if (hit === 'shelf' || hit === 'rack') hudActions.stockShelf();
+    else if (hit) tapStation(hit as StationId);
+    return;
+  }
   raycaster.setFromCamera(pointer, camera);
 
   const hitDrop = raycaster.intersectObject(drops.mesh, false)[0];
@@ -674,14 +772,14 @@ function currentPos(ref: FurnitureRef): Vec2 {
 
 function footprintRadius(ref: FurnitureRef): number {
   if (ref.kind === 'basin') return BASIN_RADIUS + 0.03;
-  return ref.id === 'seller' ? 0.22 : ref.id === 'crafter' ? 0.2 : ref.id === 'collector' ? 0.09 : 0.14;
+  return ref.id === 'collector' ? 0.09 : 0.14;
 }
 
 /** 不是從長按進來的拖曳（倉庫拿出來、放開後再拖）：平面取這件家具大約中段的高度 */
 function grabHeight(ref: FurnitureRef): number {
   if (ref.kind === 'basin') return 0.05;
   if (ref.id === 'collector') return TANK.height - 0.3;
-  return ref.id === 'seller' ? 0.3 : ref.id === 'autoFill' ? 0.3 : 0.15;
+  return ref.id === 'autoFill' ? 0.3 : 0.15;
 }
 
 function editValid(e: Edit): boolean {
@@ -924,6 +1022,8 @@ async function ensureViews() {
 const stats = createStats(renderer, params.get('debug') === '1');
 window.__lpg.three = { scene, camera, renderer, controls, raycaster };
 window.__lpg.state = state;
+window.__lpg.bakery = bakery;
+window.__lpg.setView = (v: GameView) => setView(v);
 window.__lpg.sfx = sfx;
 window.__lpg.grantXp = (n) => grantXp(state, n, world.emit);
 window.__lpg.toScreen = (x, y, z) => {
@@ -942,9 +1042,14 @@ let bubbleT = 0;
  */
 function applyHudOffset() {
   const w = container.clientWidth, h = container.clientHeight;
-  const dy = viewOffsetY(h, measureVisibleBand(h));
-  if (dy === 0) camera.clearViewOffset();
-  else camera.setViewOffset(w, h, 0, dy, w, h);
+  const band = measureVisibleBand(h);
+  const dy = viewOffsetY(h, band);
+  for (const cam of [camera, bakery.camera]) {
+    if (dy === 0) cam.clearViewOffset();
+    else cam.setViewOffset(w, h, 0, dy, w, h);
+  }
+  // 工坊的動作列比農場高（五站＋上架），可見段不一樣：切畫面時重框一次
+  bakery.resize(w / h, (band.bottom - band.top) / h);
 }
 
 function resize() {
@@ -978,12 +1083,12 @@ function frame(dt: number, now: number) {
   // 會把同幀的其他幾筆吃掉（D42）
   let earned = 0;
   for (const e of drainEvents(world)) {
-    if (e.type === 'sell' || e.type === 'orderDone') earned += e.coins;
+    if (e.type === 'sell' || e.type === 'puddingSold') earned += e.coins;
     handle(e);
   }
 
   const { ox, oy, ceilY } = activeOrigin();
-  if (earned > 0) spawnCoins(earned, ox, oy);
+  if (earned > 0 && view === 'farm') spawnCoins(earned, ox, oy);
 
   // 泡澡冒泡：靠狀態每隔一段時間生一顆，不必為此發事件
   bubbleT += dt;
@@ -1039,8 +1144,13 @@ function frame(dt: number, now: number) {
     persist();
   }
 
-  controls.update();
-  renderer.render(scene, camera);
+  if (view === 'bakery') {
+    bakery.sync(state, dt);
+    renderer.render(bakery.scene, bakery.camera);
+  } else {
+    controls.update();
+    renderer.render(scene, camera);
+  }
   stats.tick();
 }
 
@@ -1051,6 +1161,8 @@ function loop() {
   last = now;
   frame(paused ? 0 : dt, now);
 }
+// 要等 HUD、擺放模式（`edit`）都宣告完才切：setView 會碰到它們
+if (view === 'bakery') setView('bakery');
 renderer.setAnimationLoop(loop);
 window.__lpg.step = (dt: number) => frame(dt, performance.now());
 

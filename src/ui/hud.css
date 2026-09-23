@@ -836,3 +836,160 @@
   border-radius: 999px;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 }
+
+/* ── 甜點工坊（D51）：農場／工坊兩組按鈕，靠 data-view 切換 ── */
+.hud[data-view="bakery"] .farm-only,
+.hud[data-view="farm"] .bakery-only { display: none !important; }
+/* 預訂單只在工坊交（使用者選定「訂單搬進甜點店」） */
+.hud[data-view="farm"] .orders { display: none; }
+
+.t-bakery { --tile: #fde2e8; }
+.t-farm { --tile: #e8f6fb; }
+.t-shelf { --tile: #ffe3ea; }
+.t-crack { --tile: #dff3ea; }
+.t-mix { --tile: #ffe3ea; }
+.t-mold { --tile: #fff1c9; }
+.t-bake { --tile: #ece5fb; }
+.t-decorate { --tile: #ffe3ea; }
+
+/* 五站一排：磚要比農場的小一點才塞得下 320px */
+.dock .stations { gap: 5px; }
+.hud .dock .stations .tilebtn { min-height: 62px; padding: 4px 2px 8px; font-size: 11.5px; border-radius: 16px; }
+.dock .stations .ic.tile { width: 32px; height: 32px; padding: 5px; }
+.dock .stations .prog {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--paper-3);
+  overflow: hidden;
+}
+.dock .stations .prog > b { display: block; height: 100%; width: 0; border-radius: 2px; background: #f08aa2; }
+.dock .stations [data-status="ready"] .prog > b { background: var(--green); }
+.dock .stations [data-status="idle"] .prog { visibility: hidden; }
+/* 做完、等玩家推：整顆磚換綠邊，一眼看出「點這個」 */
+.hud .dock .stations [data-status="ready"] { --edge: var(--green); --face-top: #f4fbef; --face: #e2f2d6; }
+.dock .stations [data-status="ready"] .n { background: var(--green); color: #fff; border-color: #fff; }
+.dock .stations [data-status="working"] .n { background: #fff; color: #c0607a; border-color: #f5b8c6; }
+
+/* 工坊的日曆列：第幾天、幾點、營業中，今日／昨日營收 */
+.daybar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: linear-gradient(#f7a3b6, #ec8aa1);
+  border: 2px solid #d9708b;
+  border-radius: 14px;
+  padding: 4px 10px;
+  box-shadow: 0 3px 0 #d9708b, var(--shadow);
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  max-width: calc(100% - 175px);
+}
+.daybar .when { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+.daybar .when b { font-size: 13.5px; }
+.daybar .open { background: #6cc58a; border-radius: 999px; padding: 0 7px; font-size: 11px; }
+.daybar .open.closed { background: #7d7394; }
+.daybar .money { display: flex; gap: 8px; white-space: nowrap; font-size: 11.5px; }
+.daybar .yday:empty { display: none; }
+
+/* 成就鈕：右上角的紅點數字 */
+.hud .achbtn { position: relative; overflow: visible; }
+.achbtn .badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--coral);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.2;
+  border: 2px solid #fff;
+}
+.achbtn .badge[hidden] { display: none; }
+
+/* 成就卡與開工選單：一列一項，右邊一顆鈕 */
+.achcard .card,
+.batchcard .card { box-sizing: border-box; width: 100%; max-width: 360px; max-height: 80vh; overflow-y: auto; }
+.achcard .lead,
+.batchcard .lead { margin-bottom: 10px; }
+.achcard .alist,
+.batchcard .blist { align-self: stretch; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; text-align: left; }
+.arow,
+.brow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--paper);
+  border: 2px solid var(--wood-light);
+  border-radius: 14px;
+  padding: 6px 8px;
+}
+.arow .txt,
+.brow .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.arow small,
+.brow small { color: var(--ink-soft); font-size: 11px; }
+.arow[data-status="claimable"] { border-color: var(--yellow-dark); background: #fff4d2; }
+.arow[data-status="claimed"] { opacity: 0.55; }
+.arow .abar { display: block; height: 4px; border-radius: 2px; background: var(--paper-3); overflow: hidden; margin-top: 3px; }
+.arow .abar > i { display: block; height: 100%; background: var(--yellow); }
+.arow .reward { font-size: 12px; color: #a5721c; font-weight: 700; white-space: nowrap; }
+.arow .done { font-size: 12px; color: var(--green-deep); white-space: nowrap; }
+.hud .arow button.buy,
+.hud .brow button.buy { width: auto; min-height: 34px; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
+.brow .art { position: relative; width: 40px; height: 40px; flex: none; }
+.brow .art .main { width: 40px; height: 40px; object-fit: contain; }
+.brow .art .corner { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; object-fit: contain; }
+.batchcard .empty { margin: 6px 0; font-size: 13px; color: var(--ink-faint); text-align: center; }
+
+/* 右欄：成就鈕在上、預訂單卡在下（頂列已放不下第七個東西：390px 上獎盃會蓋住甜點數字） */
+.rightcol {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.rightcol > * { pointer-events: auto; }
+.hud .rightcol .orders {
+  position: static;
+  max-height: calc(42vh - 106px - env(safe-area-inset-top, 0px));
+}
+
+/* 預訂單：工坊右欄一顆鈕＋卡片（卡片裡沿用 .order 的樣式） */
+.hud .ordbtn { position: relative; overflow: visible; }
+.ordbtn .badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; padding: 2px 5px; border-radius: 999px;
+  background: var(--yellow-dark); color: #fff; font-size: 11px; font-style: normal; font-weight: 700; line-height: 1.2; border: 2px solid #fff;
+}
+.ordbtn .badge.ok { background: var(--green); }
+.ordbtn .badge[hidden] { display: none; }
+.ordercard .card { box-sizing: border-box; width: 100%; max-width: 340px; max-height: 80vh; overflow-y: auto; }
+.hud .ordercard .orders { position: static; width: 100%; max-height: none; overflow: visible; padding: 0; margin-bottom: 12px; text-align: left; }
+.ordercard .empty { margin: 0 0 12px; font-size: 13px; color: var(--ink-faint); }
+.ordercard .empty[hidden] { display: none; }
+.hud .ordercard .order button { width: 100%; }
+
+/* 最窄的手機（320px）：頂列四個數字＋兩顆鈕塞不下，數字膠囊收窄 */
+@media (max-width: 359px) {
+  .chips { gap: 4px; }
+  .chip { padding: 2px 7px 2px 3px; gap: 3px; font-size: 13.5px; }
+  .chip .ic.bubble { width: 1.5em; height: 1.5em; }
+  .topbar { gap: 4px; }
+  .hud .topbar .iconbtn { width: 38px; min-height: 38px; padding: 7px; }
+}

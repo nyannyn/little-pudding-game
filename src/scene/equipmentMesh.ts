@@ -8,11 +8,6 @@ import { toonMaterial } from './toon';
 
 const METAL = 0xcfd6dd;
 const ACCENT = 0xe58a7b;
-const DARK = 0x4d4653;
-const CREAM = 0xfff6ea;
-const GLASS = 0xdbeefb;
-const PUDDING = 0xf7c948;
-const CARAMEL = 0xc2703a;
 
 /**
  * 所有設備併成**一個** mesh：顏色寫在頂點色裡，材質只有一個，所以整組設備永遠只佔一個 draw call。
@@ -43,98 +38,6 @@ function cyl(parts: Parts, hex: number, r: number, h: number, px: number, py: nu
   return g;
 }
 
-/** 站在展示架上的迷你布丁：本體＋頂料，`shelfY` 是架面高度 */
-function miniPudding(parts: Parts, x: number, shelfY: number, z: number, body: number, top: number) {
-  const r = 0.02, h = 0.032;
-  cyl(parts, body, r, h, x, shelfY + h / 2, z);
-  cyl(parts, top, r + 0.002, 0.009, x, shelfY + h + 0.0045, z);
-}
-
-/**
- * 自動販售口＝一台貼在前玻璃的迷你自動販賣機（2026-09-22 使用者要求「美化、添加更多細節」；
- * 原本只是三塊方塊拼的外帶窗）。
- *
- * 幾何上的兩條硬限制：
- * ① 前玻璃在 `z = d/2 = 0.70`，機身正面停在 0.66，雨遮、展示架、取物口這些會凸出來的
- *    最多到 0.695，再往前就穿玻璃。
- * ② 布丁的地板是 `z ≤ 0.4`（`floorRect`），機身背面 0.54 不能再往後退，否則布丁會跳進機器裡。
- * 金幣從機器**頂上**冒出來（`sellerSpout()`）：機身現在有半公尺高，還從原本窗口那個高度生
- * 會直接卡在機身裡。
- */
-function vendingMachine(parts: Parts, floorY: number, at: Vec2) {
-  // 預設位置（`furniture.EQUIPMENT_DEFAULT_POS.seller`）正面偏左一點點：右邊 x≥0.045 是該層名牌
-  // （cabinet.createPlates）會蓋到的區域，左邊 x≤−0.22 是澡盆。D49 起玩家可以拖到別處，
-  // `at` 是機身中心；佔地（含往前凸的雨遮）在 `furniture.ts`，那裡保證不穿玻璃。
-  const x = at.x;
-  const W = 0.32, H = 0.48, D = 0.12;
-  const zc = at.z;
-  const front = zc + D / 2;       // 機身正面
-  const y0 = floorY;
-
-  // 底座＋機身＋頂蓋
-  box(parts, DARK, W + 0.02, 0.035, D + 0.02, x, y0 + 0.0175, zc);
-  box(parts, ACCENT, W, H, D, x, y0 + 0.035 + H / 2, zc);
-  box(parts, METAL, W + 0.02, 0.03, D + 0.02, x, y0 + 0.035 + H + 0.015, zc);
-  const capTop = y0 + 0.035 + H + 0.03;
-
-  // 頂上的招牌（珊瑚色框＋奶油面板）＋坐在旁邊的布丁吉祥物
-  box(parts, ACCENT, 0.24, 0.1, 0.03, x - 0.03, capTop + 0.05, zc + 0.01);
-  box(parts, CREAM, 0.2, 0.06, 0.012, x - 0.03, capTop + 0.05, zc + 0.03);
-  cyl(parts, PUDDING, 0.038, 0.055, x + 0.115, capTop + 0.0275, zc + 0.005, 10);
-  cyl(parts, CARAMEL, 0.04, 0.014, x + 0.115, capTop + 0.055 + 0.007, zc + 0.005, 10);
-
-  // 展示窗：白框＋淡藍玻璃＋一道反光；窗子偏左，右邊留給操作面板
-  const wx = x - 0.035, wy = y0 + 0.33;
-  box(parts, CREAM, 0.23, 0.27, 0.008, wx, wy, front + 0.002);
-  box(parts, GLASS, 0.21, 0.25, 0.008, wx, wy, front + 0.006);
-  const glint = new THREE.BoxGeometry(0.012, 0.15, 0.004);
-  glint.rotateZ(0.35);
-  glint.translate(wx - 0.085, wy + 0.04, front + 0.012);
-  parts.push(paint(glint, 0xffffff));
-
-  // 窗裡兩層架子，每層三顆迷你布丁（下層焦糖、上層草莓／抹茶／鮮奶酪）
-  const shelfZ = front + 0.02;
-  for (const [i, sy] of [y0 + 0.23, y0 + 0.345].entries()) {
-    box(parts, METAL, 0.2, 0.008, 0.03, wx, sy, shelfZ);
-    const flavours: [number, number][] = i === 0
-      ? [[PUDDING, CARAMEL], [PUDDING, CARAMEL], [PUDDING, CARAMEL]]
-      : [[0xf4a7b0, 0xe0526b], [0xb9d68f, 0x6f9a55], [0xfff6ea, 0xf7c948]];
-    flavours.forEach(([body, top], j) => miniPudding(parts, wx - 0.062 + j * 0.062, sy + 0.004, shelfZ + 0.002, body, top));
-  }
-
-  // 條紋雨遮：五片交錯的珊瑚／奶油色，往前下方斜出去（跟商店圖 eqSeller.svg 的雨遮同款）
-  for (let i = 0; i < 5; i++) {
-    const slat = new THREE.BoxGeometry(0.05, 0.012, 0.05);
-    slat.rotateX(0.5);
-    slat.translate(wx - 0.1 + i * 0.05, wy + 0.155, front + 0.014);
-    parts.push(paint(slat, i % 2 === 0 ? ACCENT : CREAM));
-  }
-
-  // 右側操作面板：投幣口、小螢幕、三顆彩色按鈕
-  const px = x + 0.125;
-  box(parts, METAL, 0.06, 0.26, 0.006, px, y0 + 0.36, front + 0.002);
-  box(parts, DARK, 0.03, 0.007, 0.006, px, y0 + 0.46, front + 0.006);
-  box(parts, DARK, 0.04, 0.03, 0.006, px, y0 + 0.415, front + 0.006);
-  for (const [k, hex] of [0xffd764, 0x8fd0c9, 0xf4a7b0].entries()) {
-    const btn = new THREE.CylinderGeometry(0.011, 0.011, 0.01, 8);
-    btn.rotateX(Math.PI / 2);
-    btn.translate(px, y0 + 0.36 - k * 0.04, front + 0.006);
-    parts.push(paint(btn, hex));
-  }
-
-  // 取物口：深色開口＋金屬托盤
-  box(parts, DARK, 0.16, 0.06, 0.012, wx, y0 + 0.12, front + 0.002);
-  box(parts, METAL, 0.18, 0.012, 0.03, wx, y0 + 0.085, front + 0.012);
-}
-
-/**
- * 金幣與「賣出」粒子的生成點（區域座標；`main.ts` 加上該區的世界偏移）。
- * 在招牌上方正中，往 −z 拋會越過機身落到地板上——跟 `coinsView.burst` 的拋向一致。
- */
-export function sellerSpout(at: Vec2) {
-  return { x: at.x - 0.03, y: 0.66, z: at.z + 0.01 };
-}
-
 /**
  * 自動化設備的外觀。買了就出現，看得到「生產線越來越完整」——
  * 這是自動化軸的主要回饋，不是裝飾。
@@ -162,17 +65,6 @@ function build(id: EquipmentId, parts: Parts, floorY: number, ceilY: number, at:
       box(parts, ACCENT, 0.022, 0.06, 0.022, at.x + 0.03, ceilY - 0.29, at.z);
       break;
     }
-    case 'crafter': {
-      // 加工機：箱體＋漏斗＋煙囪（預設在後方左角）
-      const { x, z } = at;
-      box(parts, METAL, 0.3, 0.24, 0.22, x, floorY + 0.12, z);
-      box(parts, ACCENT, 0.2, 0.04, 0.16, x, floorY + 0.26, z);
-      cyl(parts, METAL, 0.028, 0.14, x + 0.1, floorY + 0.33, z);
-      break;
-    }
-    case 'seller':
-      vendingMachine(parts, floorY, at);
-      break;
     case 'restock': {
       // 補貨信箱（預設在左側牆邊）
       const { x, z } = at;

@@ -22,6 +22,7 @@ export const ICONS = {
   close: wrap('<path d="m6 6 12 12M18 6 6 18"/>'),
   sound: wrap('<path d="M4.8 9.4h3l4-3.2v11.6l-4-3.2h-3Z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/>'),
   mute: wrap('<path d="M4.8 9.4h3l4-3.2v11.6l-4-3.2h-3Z"/><path d="m15.4 9.6 4 4.8M19.4 9.6l-4 4.8"/>'),
+  trophy: wrap('<path d="M7.4 4.2h9.2v4.6a4.6 4.6 0 0 1-9.2 0Z"/><path d="M7.4 6H4.6a2.6 2.6 0 0 0 2.9 3.4M16.6 6h2.8a2.6 2.6 0 0 1-2.9 3.4M12 13.4v3.4M8.6 20h6.8l-.8-3.2H9.4Z"/>'),
   pudding: wrap('<path d="M5.6 12.6c0-3.3 2.9-6 6.4-6s6.4 2.7 6.4 6v2.2c0 2-2.9 3.6-6.4 3.6s-6.4-1.6-6.4-3.6Z"/><path d="M6.2 11c1.4 1.1 3.5.4 5-.2s3.5-.9 5 .6"/>'),
 } as const;
 
@@ -74,6 +75,56 @@ export const CUTE_ICONS = {
       '<path d="M2.8 7 5 3.4h14L21.2 7v1.4a2.4 2.4 0 0 1-4.8 0 2.3 2.3 0 0 1-4.4 0 2.3 2.3 0 0 1-4.4 0 2.4 2.4 0 0 1-4.8 0Z" fill="#ec5a63" stroke="#c2394a" stroke-width="1.1"/>' +
       '<path d="M8.6 3.4 7.6 8.4M12 3.4v5M15.4 3.4l1 5" stroke="#fff4f0" stroke-width="1.2"/>' +
       '<rect x="10" y="14.4" width="4" height="6.2" rx="1" fill="#9e6a38"/>',
+  ),
+  // ── 甜點工坊（D51）──
+  bakery: cute(
+    '<path d="M4 10h16v9.4a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 19.4Z" fill="#fde2e8" stroke="#d9708b" stroke-width="1.2"/>' +
+      '<path d="M2.8 7.2 5 3.4h14l2.2 3.8v1.2a2.2 2.2 0 0 1-4.4 0 2.2 2.2 0 0 1-4.4 0 2.2 2.2 0 0 1-4.4 0 2.2 2.2 0 0 1-4.4 0Z" fill="#f28aa3" stroke="#d9708b" stroke-width="1.1"/>' +
+      '<path d="M8.4 3.4 7.4 8.4M12 3.4v5M15.6 3.4l1 5" stroke="#fff" stroke-width="1.2"/>' +
+      '<path d="M8.4 18.6c-.4-2.6.8-4.8 3.6-4.8s4 2.2 3.6 4.8Z" fill="#f8c854" stroke="#c99a2b" stroke-width="1"/>' +
+      '<path d="M9.4 15.6c.9-.5 1.7-.9 2.6-.9s1.7.4 2.6.9" stroke="#b7651d" stroke-width="1.2"/>',
+  ),
+  farm: cute(
+    '<rect x="4.6" y="3.4" width="14.8" height="17.2" rx="2" fill="#e8f6fb" stroke="#7fb3c8" stroke-width="1.2"/>' +
+      '<path d="M4.6 9.2h14.8M4.6 14.8h14.8" stroke="#7fb3c8" stroke-width="1.1"/>' +
+      '<path d="M8.6 14.4c0-2 1.5-3.4 3.4-3.4s3.4 1.4 3.4 3.4" fill="#f8c854" stroke="#c99a2b" stroke-width="1"/>' +
+      '<path d="M9.4 11.9c.8-.4 1.7-.7 2.6-.7s1.8.3 2.6.7" stroke="#b7651d" stroke-width="1.1"/>',
+  ),
+  crack: cute(
+    '<path d="M5 14.4h14l-1.6 5a1.8 1.8 0 0 1-1.7 1.2H8.3a1.8 1.8 0 0 1-1.7-1.2Z" fill="#9fd9c4" stroke="#5fae93" stroke-width="1.2"/>' +
+      '<path d="M8.6 10.6C8.4 6.8 10 3.6 12 3.6s3.6 3.2 3.4 7l-1.4-1-1.2 1.2-1.2-1.2-1.2 1.2Z" fill="#fff4dc" stroke="#d9b98a" stroke-width="1.1"/>' +
+      '<circle cx="12" cy="14.2" r="2" fill="#ffc83d"/>',
+  ),
+  mix: cute(
+    '<path d="M4.8 11.4h14.4l-1.4 6.6a2.4 2.4 0 0 1-2.3 1.9H8.5a2.4 2.4 0 0 1-2.3-1.9Z" fill="#d6dee6" stroke="#8d9aa8" stroke-width="1.2"/>' +
+      '<path d="M5.6 11.4c1.4-1.4 3.8-2 6.4-2s5 .6 6.4 2Z" fill="#f7c9d4"/>' +
+      '<path d="M12 2.8v7.8" stroke="#8d9aa8" stroke-width="1.4"/>' +
+      '<path d="M12 10.4c-2.2 0-3-1.6-3-3.2s1.2-2.2 3-2.2 3 .6 3 2.2-.8 3.2-3 3.2Z" stroke="#8d9aa8" stroke-width="1.2"/>',
+  ),
+  mold: cute(
+    '<path d="M9.4 3.4h5.2l-1.4 4.4h-2.4Z" fill="#ffe08f" stroke="#d9a93e" stroke-width="1.1"/>' +
+      '<path d="M12 8.2v2.6" stroke="#f08aa2" stroke-width="1.6"/>' +
+      '<path d="M5.4 13h5.4l-.8 6.6H6.2ZM13.2 13h5.4l-.8 6.6H14Z" fill="#ffc4d2" stroke="#e07d95" stroke-width="1.1"/>' +
+      '<path d="M5.8 15.2h4.6M13.6 15.2h4.6" stroke="#f8c854" stroke-width="2"/>',
+  ),
+  oven: cute(
+    '<rect x="3.6" y="4" width="16.8" height="16" rx="2.4" fill="#c7b5f0" stroke="#8f76c9" stroke-width="1.2"/>' +
+      '<rect x="6.4" y="9.6" width="11.2" height="7.6" rx="1.4" fill="#ffb04d" stroke="#8f76c9" stroke-width="1.1"/>' +
+      '<g fill="#8f76c9"><circle cx="7.4" cy="6.6" r="1"/><circle cx="10.4" cy="6.6" r="1"/></g>' +
+      '<path d="M9.4 15.4c0-1.6 1.2-2.6 2.6-2.6s2.6 1 2.6 2.6Z" fill="#fff4dc"/>',
+  ),
+  decorate: cute(
+    '<path d="M6.2 13.6h11.6l-1.2 6.2H7.4Z" fill="#ffc4d2" stroke="#e07d95" stroke-width="1.1"/>' +
+      '<path d="M7 13.6c.2-2 2.4-3.4 5-3.4s4.8 1.4 5 3.4Z" fill="#fff8ee" stroke="#e0c8a8" stroke-width="1"/>' +
+      '<path d="M10.4 10.2c.2-1.4.8-2.2 1.6-2.2s1.4.8 1.6 2.2" fill="#fff8ee" stroke="#e0c8a8" stroke-width="1"/>' +
+      '<circle cx="12" cy="6.8" r="1.6" fill="#ec5a63"/>' +
+      '<g fill="#9fd9c4"><circle cx="9.2" cy="12.2" r=".6"/><circle cx="14.6" cy="12" r=".6"/></g>',
+  ),
+  shelf: cute(
+    '<rect x="3.4" y="5" width="17.2" height="15" rx="1.6" fill="#f4a3b6" stroke="#d9708b" stroke-width="1.2"/>' +
+      '<rect x="5" y="6.6" width="14" height="11.8" rx="1" fill="#eef8ff" stroke="#fff" stroke-width="1"/>' +
+      '<path d="M5 12.6h14" stroke="#d9708b" stroke-width="1.1"/>' +
+      '<path d="M7 12.4c0-1.6.8-2.6 1.8-2.6s1.8 1 1.8 2.6ZM13.4 12.4c0-1.6.8-2.6 1.8-2.6s1.8 1 1.8 2.6ZM10.2 18.2c0-1.6.8-2.6 1.8-2.6s1.8 1 1.8 2.6Z" fill="#f8c854"/>',
   ),
 } as const;
 

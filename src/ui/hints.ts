@@ -1,5 +1,7 @@
 import { BALANCE, EQUIPMENT } from '../game/balance';
 import { puddingMood } from '../game/pudding';
+import { claimableCount } from '../game/achievements';
+import { canStartBatch, dayClock, stationStatus, STATION_IDS } from '../game/bakery';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
 import { STORAGE_ZONE, equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
 import { basinsIn, dropsIn, puddingsIn, unlockedZones } from '../game/zones';
@@ -161,16 +163,22 @@ export function nextHint(state: GameState): Hint | null {
       : { id: 'restock', text: '焦糖用完了。開右上角的商店補貨，再倒進澡盆。' };
   }
 
-  const craftable = SPECIES_IDS.reduce(
-    (n, id) => n + Math.floor(state.ingredients[id] / BALANCE.ingredientsPerDessert),
-    0,
-  );
-  if (craftable > 0 && state.stats.crafted === 0) {
-    return { id: 'craft', text: `按「加工」，${BALANCE.eggsPerDessert} 顆蛋＋${BALANCE.ingredientsPerDessert} 份原料做成一份甜點。` };
+  // 成就（D54）是開局資金的來源：有得領就先講，不然第一台設備要存很久
+  if (claimableCount(state) > 0 && state.claimedAchievements.length === 0) {
+    return { id: 'achieve', text: '右上角的獎盃有成就可以領，按「領取」就有焦糖幣。' };
   }
 
-  if (SPECIES_IDS.some((id) => state.desserts[id] > 0)) {
-    return { id: 'ship', text: '按「出貨」賣掉。有訂單卡的話會優先交貨，價格是 2–3 倍。' };
+  // D50：農場不再加工，甜點改在工坊做。蛋與原料湊得齊一盤就帶玩家過去
+  if (state.stats.baked === 0 && SPECIES_IDS.some((id) => canStartBatch(state, id))) {
+    const q = BALANCE.bakery.batchSize;
+    return {
+      id: 'bakery',
+      text: `蛋和原料湊夠一盤了（蛋 ${q * BALANCE.eggsPerDessert}、原料 ${q * BALANCE.ingredientsPerDessert}）。按「甜點店」去做甜點，賣得比原料貴。`,
+    };
+  }
+
+  if (state.stats.served === 0 && SPECIES_IDS.some((id) => state.desserts[id] > 0)) {
+    return { id: 'shelf', text: '甜點做好了。在甜點店按「上架」擺進展示櫃，營業時間客人會來買。' };
   }
 
   if (state.coins >= EQUIPMENT.collector.price) {
@@ -178,8 +186,39 @@ export function nextHint(state: GameState): Hint | null {
   }
 
   if (state.stats.sold > 0) {
-    return { id: 'grind', text: '繼續倒澡盆、賣原料，存錢買第一台自動化設備。' };
+    return { id: 'grind', text: '繼續倒澡盆、賣原料、做甜點，存錢買第一台自動化設備。' };
   }
 
+  return null;
+}
+
+/**
+ * 甜點工坊畫面用的提示（D51）。農場那套講的是倒澡盆、撿原料——在工坊裡看到「先按倒焦糖」
+ * 只會讓人找不到按鈕（2026-09-23 第一張截圖就是這樣）。
+ * 警告（農場停住）照舊優先；教學句只講到客人第一次買走東西為止。
+ */
+export function bakeryHint(state: GameState): Hint | null {
+  const stalled = stalledHint(state);
+  if (stalled) return stalled;
+  if (claimableCount(state) > 0 && state.claimedAchievements.length === 0) {
+    return { id: 'achieve', text: '右上角的獎盃有成就可以領，按「領取」就有焦糖幣。' };
+  }
+  if (state.stats.served > 0 && state.stats.baked >= 4) return null;
+
+  if (STATION_IDS.some((id) => stationStatus(state, id) === 'ready')) {
+    return { id: 'bk-push', text: '有一站做好了（綠色那格）。點它，這一盤就會送到下一台機器。' };
+  }
+  if (!state.bakery.stations.crack.batch && state.stats.baked === 0) {
+    const q = BALANCE.bakery.batchSize;
+    return SPECIES_IDS.some((id) => canStartBatch(state, id))
+      ? { id: 'bk-start', text: '點「打蛋」選一種口味開工。一盤會經過打蛋、攪拌、裝模、烘烤、裝飾五台機器。' }
+      : { id: 'bk-need', text: `一盤要蛋 ${q * BALANCE.eggsPerDessert} 顆＋同一種原料 ${q * BALANCE.ingredientsPerDessert} 份。回農場撿布丁掉的東西再來。` };
+  }
+  if (SPECIES_IDS.some((id) => state.desserts[id] > 0) && SPECIES_IDS.every((id) => state.bakery.shelf[id] === 0)) {
+    return { id: 'shelf', text: '甜點做好了。按「上架」擺進展示櫃，營業時間客人會來買。' };
+  }
+  if (!dayClock(state).open) {
+    return { id: 'bk-closed', text: `打烊了，客人明天 ${String(BALANCE.bakery.openHour).padStart(2, '0')}:00 再來。現在先把甜點烤好，開門就有得賣。` };
+  }
   return null;
 }
