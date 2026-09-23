@@ -549,7 +549,9 @@ export class Hud {
 
   private syncHint(state: GameState, nowMs: number) {
     const h = nextHint(state);
-    if (this.hintOff && (!h?.warning || h.dismissable)) {
+    // 「不再顯示提示」＝全部都不顯示，包含警告（2026-09-23 使用者回報：警告無視這顆鈕＝按了沒反應）。
+    // 農場停住的事，離線回來的歡迎卡照樣會講（main.ts 的離線結算摘要）
+    if (this.hintOff) {
       this.hint.hidden = true;
       return;
     }
@@ -575,7 +577,7 @@ export class Hud {
    * **警告類（農場停住、住滿了）：只藏 `WARNING_SNOOZE_MS`**——這種狀況不會因為時間過去
    * 自己好轉，`id` 也不會變，所以「關掉＝這一整場都不再講」等於把玩家重新關回
    * 那個沒人告訴他農場已經死掉的狀態（2026-09-22 修好的正是這個洞）。
-   * 要真的永久安靜，按「不再顯示提示」。
+   * 要真的永久安靜，按「不再顯示提示」（連警告一起關）。
    */
   private isClosed(h: { id: string; warning?: boolean; dismissable?: boolean }, nowMs: number): boolean {
     if (h.dismissable && h.id === this.hintForever) return true;
