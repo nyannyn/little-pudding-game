@@ -155,3 +155,22 @@ export const VIEW = {
   /** 要塞進畫面的寬度（房間寬＋一點邊） */
   fitWidth: 2.72,
 } as const;
+
+/**
+ * 壁燈（2026-09-24 使用者：「甜點店應該要開燈」）：天黑之後亮。
+ * 後牆上半段被頂列 HUD 蓋住，燈掛在左右兩面側牆才看得到；`nx` 是牆面朝室內的法線（x 方向）。
+ * 左牆避開窗（z −0.9〜0.1）與成品櫃上方；右牆避開店門。
+ */
+export const WALL_LAMPS: { x: number; y: number; z: number; nx: number }[] = [
+  { x: -ROOM.halfW, y: 1.5, z: -1.55, nx: 1 },
+  { x: -ROOM.halfW, y: 1.5, z: 0.95, nx: 1 },
+  { x: ROOM.halfW, y: 1.5, z: -1.95, nx: -1 },
+  { x: ROOM.halfW, y: 1.5, z: 0.35, nx: -1 },
+];
+
+/** 天花板燈照在地上的暖光圈（俯視看得到的「燈開著」）：中間走道、展示櫃前、咖啡座 */
+export const FLOOR_POOLS: { x: number; z: number; r: number }[] = [
+  { x: 0, z: -1.2, r: 0.95 },
+  { x: -0.1, z: 0.55, r: 0.95 },
+  { x: 0.2, z: 1.85, r: 0.9 },
+];

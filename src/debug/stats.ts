@@ -42,7 +42,7 @@ declare global {
       /** 測試用：啟用區的區域座標（x, 高度, z）投到螢幕上的 CSS 像素——e2e 拿來長按拖家具（D49） */
       toScreen?: (x: number, y: number, z: number) => { x: number; y: number };
       /** 甜點工坊場景（D51）：e2e 讀客人數、工坊的 scene graph */
-      bakery?: { scene: THREE.Scene; camera: THREE.PerspectiveCamera; customerCount: number };
+      bakery?: { scene: THREE.Scene; camera: THREE.PerspectiveCamera; customerCount: number; lampLevel: number };
       /** 測試用：切換農場／工坊（等同按 HUD 的「甜點店」「回農場」） */
       setView?: (view: 'farm' | 'bakery') => void;
       three?: {

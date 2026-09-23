@@ -120,6 +120,9 @@ export class ShopView {
   private readonly body: HTMLElement;
   private page: ShopPage = 'stock';
   private structureKey = '';
+  /** 要標亮的那張卡（點機器頭上的升級圖示開進來的）；`scrollFocus`＝還沒捲過去 */
+  private focusId = '';
+  private scrollFocus = false;
 
   constructor() {
     this.root = el(`
@@ -150,19 +153,29 @@ export class ShopView {
   }
 
   /** 打開（可指定分頁：點櫃子上的鎖牌就直接跳到「擴建」） */
-  show(page?: ShopPage) {
+  show(page?: ShopPage, focus?: string) {
     if (page) this.setPage(page);
+    this.setFocus(focus ?? '');
     this.root.hidden = false;
   }
 
   hide() {
     this.root.hidden = true;
+    this.setFocus('');
   }
 
   setPage(page: ShopPage) {
     if (this.page === page) return;
     this.page = page;
     this.body.scrollTop = 0;
+    this.setFocus('');
+  }
+
+  /** 卡片要等下一次 render 才生得出來（而且重建時會把舊的 scrollTop 蓋回去）：只記下來，捲動在 render 最後做 */
+  private setFocus(id: string) {
+    this.body.querySelector('.card.focus')?.classList.remove('focus');
+    this.focusId = id;
+    this.scrollFocus = id !== '';
   }
 
   render(state: GameState) {
@@ -226,6 +239,19 @@ export class ShopView {
         }
       }
       this.body.scrollTop = scroll;
+    }
+
+    // 點機器頭上的升級圖示開進來的：標亮那張卡（買完卡片重建也要留著），第一次 render 捲過去
+    if (this.focusId) {
+      const card = this.body.querySelector<HTMLElement>(`[data-id="${this.focusId}"]`);
+      if (card) {
+        card.classList.add('focus');
+        if (this.scrollFocus) {
+          this.scrollFocus = false;
+          const top = card.getBoundingClientRect().top - this.body.getBoundingClientRect().top + this.body.scrollTop;
+          this.body.scrollTop = Math.max(0, top - 8);
+        }
+      }
     }
 
     // 每 160ms 會變的：錢夠不夠、庫存、可賣總價

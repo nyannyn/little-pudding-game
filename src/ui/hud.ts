@@ -28,6 +28,7 @@ import { LIQUID_SHORT, bakeryHint, closeHintForGood, closedHint, dismissHints, h
 import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
 import { ShopView, type ShopPage } from './shop';
+import { StationTags } from './stationTags';
 import { artHtml } from './shop';
 import { INGREDIENT_ART } from './shopArt';
 import { storageZoneLabel, storedRows, type StorageRow } from './storage';
@@ -43,6 +44,8 @@ export interface HudActions {
   startBatch(species: SpeciesId): void;
   /** 買工坊機器或升一級（D57） */
   buyMachine(id: StationId): void;
+  /** 點機器頭上的標籤（份數／進度條／升級圖示） */
+  stationTag(id: StationId): void;
   /** 買基礎材料（D58） */
   buyPantry(id: PantryId, qty: number): void;
   stockShelf(): void;
@@ -129,6 +132,8 @@ export class Hud {
   private menuSig = '';
   private view: GameView = 'farm';
   private readonly shop = new ShopView();
+  /** 工坊機器頭上的標籤；main.ts 給位置、每幀更新 */
+  readonly tags = new StationTags();
   private readonly shopLvl: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly toasts: HTMLElement;
@@ -296,6 +301,8 @@ export class Hud {
           </div>
         </div>
       </div>`);
+    // 機器頭上的標籤墊在最底下：頂列、提示、抽屜都蓋得過它
+    this.root.insertBefore(this.tags.root, this.root.firstChild);
     // 商店抽屜疊在歡迎卡下面、其他 HUD 上面
     this.root.insertBefore(this.shop.root, this.root.querySelector('.welcome'));
     this.root.insertBefore(this.ach.root, this.root.querySelector('.welcome'));
@@ -359,6 +366,7 @@ export class Hud {
         break;
       case 'closeMenu': this.menuCard.hidden = true; break;
       case 'buyMachine': this.act.buyMachine(arg as StationId); break;
+      case 'stationTag': this.act.stationTag(arg as StationId); break;
       case 'buyPantry': this.act.buyPantry(arg as PantryId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
       case 'stockShelf': this.act.stockShelf(); break;
       case 'achievements':
@@ -473,16 +481,16 @@ export class Hud {
     if (next) this.act.switchZone(next);
   }
 
-  private toggleShop(open: boolean, page?: ShopPage) {
+  private toggleShop(open: boolean, page?: ShopPage, focus?: string) {
     if (open) this.ach.hide();
-    if (open) this.shop.show(page);
+    if (open) this.shop.show(page, focus);
     else this.shop.hide();
     this.lastRefresh = -1; // 下一次 update 一定要重畫商店內容
   }
 
   /** 場景端也會叫（點櫃子上的鎖牌＝去商店的「擴建」頁解鎖） */
-  openShop(page?: ShopPage) {
-    this.toggleShop(true, page);
+  openShop(page?: ShopPage, focus?: string) {
+    this.toggleShop(true, page, focus);
   }
 
   /** 歡迎卡正開著（「加到主畫面」那張要讓路，不然兩張疊在一起） */

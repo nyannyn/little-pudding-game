@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Parts } from './build';
-import { BELT, BELT_PATH, CAFE, DOOR, DOOR_Z0, DOOR_Z1, RACK, REGISTER, ROOM, SHOWCASE } from './layout';
+import { BELT, BELT_PATH, CAFE, DOOR, DOOR_Z0, DOOR_Z1, RACK, REGISTER, ROOM, SHOWCASE, WALL_LAMPS } from './layout';
 
 /** 甜點店配色：粉彩、奶油、薄荷（主流甜點經營遊戲的那種糖果感） */
 export const PAL = {
@@ -94,6 +94,12 @@ export function buildRoom(): THREE.BufferGeometry {
   // 牆上的時鐘（圓）
   p.cyl(PAL.trim, 0.16, 0.16, 0.03, 0.95, 1.8, backZ + 0.03, 24, { x: Math.PI / 2, y: 0, z: 0 });
   p.torus(PAL.pinkDark, 0.16, 0.018, 0.95, 1.8, backZ + 0.05);
+
+  // 壁燈的托架（燈罩在 view 裡另一個 mesh：天黑才亮）
+  for (const l of WALL_LAMPS) {
+    p.rbox(PAL.butterDark, 0.03, 0.14, 0.1, l.x + l.nx * 0.015, l.y + 0.02, l.z, 0.012);
+    p.box(PAL.butterDark, 0.12, 0.02, 0.02, l.x + l.nx * 0.07, l.y + 0.07, l.z);
+  }
 
   beltFrame(p);
   showcase(p);

@@ -31,6 +31,17 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
+## 甜點店開燈＋機器頭上的標籤 D59（2026-09-24，分支 `feat/bakery-lights-hud`，worktree `../lpg-wt-bakery-lights`）
+
+**使用者原話**：「甜點店應該要開燈 而且正在製作的地方上面應該顯示可容納數量跟可以升級的圖標跟進度條」（附 20:08 營業中、整間暗掉的手機截圖）。AskUserQuestion 選定：份數「這盤／上限」、升級圖示「開商店到那台」。
+
+- **暗的原因**：`syncDaylight` 在 19 點後把半球光從 1.9 壓到 1.05、主光 1.3→0.35，但營業到 21 點——客人在暗店裡買東西。改成天黑燈就亮：室內光只降到 1.7／1.0 並轉暖，四盞側牆壁燈（`WALL_LAMPS`，後牆上半段被頂列蓋住所以掛側牆）＋地上三圈暖光（`FLOOR_POOLS`）＋展示櫃燈條，燈罩一個 mesh、光暈一個 mesh（加法混合、同一張放射漸層貼圖）。**打烊後燈照樣亮**（線上機器還在做；打烊看 CLOSED 牌）——這點是我定的預設，使用者有意見再改。
+- **標籤**（`src/ui/stationTags.ts`，HTML 疊層）取代原本的 3D 進度條（`barBg`／`barFill` 刪掉，draw calls 不變：拿掉 2、燈加 2，全開仍 22）。七個標籤建一次、只改文字／寬度／class。位置：`BakeryView.stationNdc()` 投影 `STATION_BAR`，main.ts 只在 `applyHudOffset` 與日曆卡尺寸變（ResizeObserver）時重算。
+- **量出來的限制**：後排四台在 390px 只隔約 44px、320px 約 36px，頭頂剛好在左上日曆卡的高度。所以：寬度按同排間距縮（390＝40px、320＝32px 並省「份」字）、整塊（含凸出 10px 的升級徽章）壓到日曆卡下緣以下、不同排靠太近把下面的往下推（320px 的裝模機／烤箱）。
+- **商店標亮**：`openShop(page, focus)`；卡片要等下一次 render 才生出來、重建又會蓋回舊 scrollTop，所以只記 `focusId`，在 render 最後捲過去並加 `.focus`（買完卡片重建也留著；換分頁或關商店清掉）。
+- 證據：新 `tests/e2e/cp9-bakery-lights.spec.ts` 8 條（20 點畫面中段亮度 > 中午 ×0.9、23 點打烊燈仍亮；份數文字／空站無標籤／滿級無徽章／錢夠變綠／進度條會長／卡住變綠；點標籤開商店捲到並標亮、買完上限跟著變、再開商店無殘留、滿級講狀態；抓住的節點不被換掉；回農場全藏；390／320 兩視口不重疊、不壓頂列／日曆卡／右側鈕／動作列、字不溢出）。**負向對照五組全紅過**：舊燈光（20 點亮度 142 vs 中午 197）、不避日曆卡、不捲到卡片、key 變就換節點、窄版不省字（文字 26.75 > 26）。整套 e2e **81 passed**、vitest 248、`npm run build` 綠。截圖 iPhone 14／SE 在 session scratchpad。
+- **待使用者**：手機上看畫面簽核（燈的亮度與暖色、標籤大小）；merge 要使用者同意。
+
 ## 食譜制全自動流水線 D56–D58（2026-09-24，已上線，PR #26，計畫檔 CP9）
 
 - **已上線（2026-09-24）**：PR #26 squash merge，master＝`59bda8c`；Pages 部署綠；線上 bundle `index-Y9ks08tM.js` 含「開始製作」「冷藏櫃」「未購買」「糯米粉」「缺機器」；`npm run smoke:live` 對線上 15 項全過（draw 19/35、SW、離線、零 console 錯誤）。**使用者在手機上遠端遙控、看不到 PDF**，授權「最差的情況直接 merge」——視覺簽核改成使用者用手機開正式網址看；有意見再開新的一包。
