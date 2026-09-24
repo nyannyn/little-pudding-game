@@ -34,6 +34,9 @@ import { ShopView, type ShopPage } from './shop';
 import { StationTags } from './stationTags';
 import { PuddingCard } from './puddingCard';
 import { ShelfCard } from './shelfCard';
+import { RegularsCard } from './regularsCard';
+import { RegularTags } from './regularTags';
+import { REGULARS, unreadStories, type RegularId } from '../game/regulars';
 import { artHtml } from './shop';
 import { INGREDIENT_ART } from './shopArt';
 import { storageZoneLabel, storedRows, type StorageRow } from './storage';
@@ -55,6 +58,8 @@ export interface HudActions {
   sellPuddingById(puddingId: string): void;
   /** 櫥窗切量產／精養（D62） */
   setZoneMode(zoneId: string, mode: 'mass' | 'elite'): void;
+  /** 名冊裡點開一章故事（記成看過，D67） */
+  readStory(id: RegularId, chapter: number): void;
   /** 升店面人氣一級（D61） */
   buyFame(): void;
   /** 買工坊機器或升一級（D57） */
@@ -169,6 +174,10 @@ export class Hud {
   /** 布丁卡與上架卡（D70） */
   private readonly pudCard = new PuddingCard();
   private readonly shelfCard = new ShelfCard();
+  private readonly regCard = new RegularsCard();
+  /** 常客頭上的名字泡泡（D70）；main.ts 每幀給位置 */
+  readonly rtags = new RegularTags();
+  private readonly regBadge: HTMLElement;
   /** 出爐字卡（D60）：同一幀的幾盤先累加在這裡 */
   private readonly bakePending = new Map<string, number>();
   private readonly bakeCard: HTMLElement;
@@ -241,6 +250,7 @@ export class Hud {
         <div class="rightcol">
           <button class="iconbtn achbtn" data-a="achievements" aria-label="成就">${icon('trophy')}<i class="badge" hidden></i></button>
           <button class="iconbtn ordbtn bakery-only" data-a="openOrders" aria-label="預訂單">${icon('order')}<i class="badge" hidden></i></button>
+          <button class="iconbtn regbtn bakery-only" data-a="openRegulars" aria-label="常客">${cuteIcon('heart')}<i class="badge" hidden></i></button>
         </div>
         <div class="dock">
           <div class="line farm-only" data-k="pour"></div>
@@ -355,6 +365,9 @@ export class Hud {
     this.root.insertBefore(this.ach.root, this.root.querySelector('.welcome'));
     this.root.appendChild(this.pudCard.root);
     this.root.appendChild(this.shelfCard.root);
+    this.root.appendChild(this.regCard.root);
+    // 名字泡泡跟底座牌一樣墊在最底下
+    this.root.insertBefore(this.rtags.root, this.root.firstChild);
     parent.appendChild(this.root);
 
     const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
@@ -377,6 +390,7 @@ export class Hud {
     this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard):not(.menucard):not(.ordercard)');
     this.orderCard = q('.ordercard');
     this.ordBadge = q('.ordbtn .badge');
+    this.regBadge = q('.regbtn .badge');
     this.storeCard = q('.storecard');
     this.editBar = q('.editbar');
     this.confirmCard = q('.confirmcard');
@@ -474,6 +488,15 @@ export class Hud {
         break;
       }
       case 'closeShelf': this.shelfCard.close(); break;
+      case 'openRegulars': this.regCard.open(); this.lastRefresh = -1; break;
+      case 'closeRegulars': this.regCard.close(); break;
+      case 'readStory': {
+        const [id, ch] = arg.split(':');
+        this.act.readStory(id as RegularId, Number(ch));
+        this.regCard.showStory(id as RegularId, Number(ch));
+        break;
+      }
+      case 'storyBack': this.regCard.backToList(); this.lastRefresh = -1; break;
       case 'closeMenu': this.menuCard.hidden = true; this.draft = null; break;
       case 'buyMachine': this.act.buyMachine(arg as StationId); break;
       case 'buyFame': this.act.buyFame(); break;
@@ -770,6 +793,11 @@ export class Hud {
     if (!this.menuCard.hidden) this.syncMenu(state);
     this.pudCard.sync(state);
     this.shelfCard.sync(state);
+    this.regCard.sync(state);
+    // 名冊鈕的徽章：還沒看的故事章數
+    const unread = unreadStories(state);
+    this.regBadge.hidden = unread === 0;
+    this.regBadge.textContent = String(unread);
 
     this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
     this.syncHint(state, nowMs);
@@ -785,6 +813,8 @@ export class Hud {
     this.orderCard.hidden = true;
     this.shelfCard.close();
     this.pudCard.close();
+    this.regCard.close();
+    if (view !== 'bakery') this.rtags.hide();
     this.lastRefresh = -1;
   }
 
@@ -1083,8 +1113,10 @@ export class Hud {
       this.ordersBox.innerHTML = state.orders
         .map((o) => {
           const info = SPECIES[o.species];
-          return `<div class="order" data-id="${o.id}">
-            <div class="t" data-a="tip" data-arg="order"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
+          // 常客的特別訂單（D67）：寫是誰訂的、最低幾星
+          const who = o.regularId ? `<span class="who">${REGULARS[o.regularId].name}・★${o.star ?? 1} 以上</span>` : '';
+          return `<div class="order${o.regularId ? ' special' : ''}" data-id="${o.id}">
+            ${who}<div class="t" data-a="tip" data-arg="order"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
             <button class="buy" data-a="fulfill" data-arg="${o.id}">交貨</button>
             <div class="clock"><i></i></div>
           </div>`;
@@ -1096,7 +1128,7 @@ export class Hud {
       if (!card) continue;
       const btn = card.querySelector('button') as HTMLButtonElement;
       btn.disabled = orderHave(state, o) < o.qty;
-      const left = Math.max(0, (o.expiresAt - state.time) / BALANCE.orderTtlSec);
+      const left = Math.max(0, (o.expiresAt - state.time) / Math.max(1, o.expiresAt - o.createdAt));
       (card.querySelector('.clock > i') as HTMLElement).style.width = `${Math.round(left * 100)}%`;
     }
   }

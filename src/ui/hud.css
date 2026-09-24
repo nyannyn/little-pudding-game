@@ -1300,3 +1300,52 @@
 .shelfcard .srow .cnt b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .hud .shelfcard .srow button.one { width: auto; min-height: 32px; padding: 2px 10px; font-size: 12.5px; white-space: nowrap; }
 .shelfcard .empty { font-size: 12.5px; }
+
+/* 常客名冊（D70） */
+.hud .regbtn { position: relative; overflow: visible; }
+.regbtn .badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; padding: 2px 5px; border-radius: 999px;
+  background: var(--coral); color: #fff; font-size: 11px; font-style: normal; font-weight: 700; line-height: 1.2; border: 2px solid #fff;
+}
+.regbtn .badge[hidden] { display: none; }
+.hud .regbtn .ic svg { width: 26px; height: 26px; }
+.regcard .card { box-sizing: border-box; width: 100%; max-width: 380px; max-height: 86vh; display: flex; flex-direction: column; }
+.regcard .lead { margin-bottom: 8px; }
+.regcard .rglist { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; min-height: 0; text-align: left; }
+.regcard .rglist[hidden] { display: none; }
+.regcard .reg { display: flex; gap: 8px; align-items: flex-start; background: #fff; border: 1.5px solid var(--paper-3); border-radius: 12px; padding: 6px 8px; }
+.regcard .reg .pic { width: 44px; height: 44px; flex: none; border-radius: 10px; background: #fdf1e2; image-rendering: pixelated; }
+.regcard .reg.locked .pic { filter: brightness(0) opacity(0.25); }
+.regcard .reg .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.regcard .reg .nm { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.regcard .reg small { font-size: 11px; color: var(--ink-soft); line-height: 1.4; }
+.regcard .reg small.next:empty { display: none; }
+.regcard .reg .ord { margin: 2px 0 0; font-size: 11px; color: #a5721c; line-height: 1.4; }
+.regcard .reg .sig { margin: 2px 0 0; font-size: 11px; color: #c0506c; font-weight: 700; }
+.regcard .chs { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+.hud .regcard .chs button { width: auto; min-height: 28px; padding: 0 9px; font-size: 11.5px; border-radius: 999px; }
+.hud .regcard .chs button.new { border-color: var(--coral); background: #fff1ec; }
+.hud .regcard .chs button.new::after { content: '新'; margin-left: 3px; font-size: 10px; color: var(--coral-dark); font-weight: 700; }
+.regcard .story { text-align: left; margin-bottom: 8px; overflow-y: auto; min-height: 0; }
+.regcard .story[hidden] { display: none; }
+.regcard .story h3 { margin: 0 0 6px; font-size: 15px; }
+.regcard .story .body { font-size: 13.5px; line-height: 1.7; color: var(--ink); }
+.hud .regcard button.ghost { background: none; box-shadow: none; border: none; color: var(--ink-soft); font-size: 12px; min-height: 30px; }
+
+/* 常客頭上的名字泡泡（D70）：HTML 疊層，不吃 draw call */
+.rtags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.hud[data-view="farm"] .rtags { display: none; }
+.rtag {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 3px; white-space: nowrap;
+  background: var(--paper); border: 1.5px solid var(--wood); border-radius: 999px; padding: 1px 7px 1px 4px;
+  font-size: 11px; box-shadow: 0 2px 0 var(--wood-light);
+}
+.rtag[hidden] { display: none; }
+.rtag .ic:empty { display: none; }
+.rtag .ic svg { width: 14px; height: 14px; display: block; }
+.rtag[data-mood="happy"] { border-color: #e98a96; }
+.rtag[data-mood="sad"] { border-color: #8fb0c8; }
+
+/* 常客的特別訂單（D67）：卡片上寫是誰訂的 */
+.order.special { border-color: #f0a3b3; background: #fff6f7; }
+.order .who { display: block; font-size: 11px; color: #c0506c; font-weight: 700; margin-bottom: 2px; }

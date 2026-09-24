@@ -18,7 +18,7 @@ import {
   unlockZone,
 } from './game/actions';
 import { useStarTonic } from './game/stars';
-import { deliverOrder } from './game/regulars';
+import { REGULARS, awaySummary, deliverOrder, markStorySeen } from './game/regulars';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
 import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, shelfOne, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
 import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
@@ -293,7 +293,7 @@ focusActiveZone(true);
 
 // 離線結算：上限 8 小時，回來時告訴玩家發生了什麼
 if (loaded.restored) {
-  const before = { coins: state.coins, baths: state.stats.baths, days: state.stats.daysClosed, served: state.stats.served };
+  const before = { coins: state.coins, baths: state.stats.baths, days: state.stats.daysClosed, served: state.stats.served, time: state.time };
   const offlineSeconds = settleOffline(world, Date.now());
   drainEvents(world); // 離線那幾千個事件不需要逐一播音效
   if (offlineSeconds > 60) {
@@ -307,6 +307,7 @@ if (loaded.restored) {
             (state.stats.daysClosed > before.days || state.stats.served > before.served
               ? `甜點店營業了 ${state.stats.daysClosed - before.days} 天，客人買走 ${state.stats.served - before.served} 次。`
               : '') +
+            awayText(before.time) +
             (state.drops.length > 0 ? `地板上還有 ${state.drops.length} 份原料沒收。` : '') +
             // 離線期間液體用完＝生產線停了，回來第一眼就要知道，不然「泡了 0 次澡」讀起來像壞掉
             (nextHint(state)?.warning ? nextHint(state)!.text : ''),
@@ -316,6 +317,20 @@ if (loaded.restored) {
   }
 } else {
   state.lastSeenAt = Date.now();
+}
+
+/**
+ * 「你不在的時候」常客的摘要（D66／AC11-9）：從 `regulars[*].lastResult` 推導，不是逐條 toast——
+ * 離線一次可能跑 24 個營業日，每位常客來兩三次，逐條講會把畫面塞爆。
+ */
+function awayText(since: number): string {
+  const rows = awaySummary(state, since);
+  if (!rows.length) return '';
+  return rows
+    .map(({ id, result: r }) => (r.bought && r.dessert
+      ? `${REGULARS[id].name}來過，買了 ★${r.star} ${SPECIES[r.dessert].dessert}。`
+      : `${REGULARS[id].name}來過，但架上沒有想買的。`))
+    .join('');
 }
 
 // 加到主畫面：Safari 分頁裡的存檔七天沒互動就會被清掉，加到主畫面的 web app 不吃那條規則。
@@ -378,6 +393,10 @@ const hudActions: HudActions = {
     hud.toast(`搬到${findZone(state, zone)?.shortName ?? ''}了`);
   },
   useTonic: (pid) => report(useStarTonic(state, pid, world.emit)),
+  readStory: (id, ch) => {
+    markStorySeen(state, id, ch);
+    hud.update(state, performance.now(), true);
+  },
   sellPuddingById: (pid) => report(sellPudding(state, pid, world.emit)),
   setZoneMode: (zone, mode) => {
     if (!report(setZoneMode(state, zone, mode, world.emit))) return;
@@ -558,6 +577,29 @@ function handle(e: SimEvent) {
       break;
     case 'customerMissed':
       if (view === 'bakery') bakery.customerCame(null);
+      break;
+    // ── 常客（D66／D67）。離線那幾天的在 drainEvents 就丟了，回來看「歡迎回來」卡的摘要 ──
+    case 'regularVisit': {
+      const name = REGULARS[e.id].name;
+      if (view === 'bakery') {
+        bakery.regularCame(e.id, e.bought, e.dessert);
+        if (e.bought) sfx.coin(0.3);
+      } else {
+        hud.toast(e.bought && e.dessert ? `${name}來店裡買了 ★${e.star} ${SPECIES[e.dessert].dessert}，+${e.coins}` : `${name}來了，架上沒有想買的甜點`, !e.bought);
+      }
+      if (e.gift) hud.toast(e.gift === 'tonic' ? `${name}送你一瓶升星藥！（布丁卡裡用）` : `${name}送你幾份原料`);
+      break;
+    }
+    case 'regularUnlocked':
+      hud.toast(`新常客：${REGULARS[e.id].name}會來店裡（甜點店右邊的愛心鈕看口味）`);
+      break;
+    case 'regularOrder':
+      hud.toast(`${REGULARS[e.id].name}下了一張特別訂單（預訂單裡看）`);
+      break;
+    case 'hearts':
+      if (e.reached === 2 || e.reached === 8 || e.reached === 10) hud.toast(`${REGULARS[e.id].name} ♥${e.reached}：解鎖新的故事章節`);
+      else if (e.reached === 4) hud.toast(`${REGULARS[e.id].name} ♥4：之後來店會下特別訂單`);
+      else if (e.reached === 6) hud.toast(`${REGULARS[e.id].name} ♥6：之後買到有時會送禮`);
       break;
     case 'dayClosed':
       // 只會在「開著遊戲時剛好打烊」走到這裡（離線那 24 天的事件在 drainEvents 就丟了），
@@ -1246,6 +1288,8 @@ function frame(dt: number, now: number) {
   if (view === 'bakery') {
     hud.tags.update(state);
     bakery.sync(state, dt);
+    const rect = renderer.domElement.getBoundingClientRect();
+    hud.rtags.place(bakery.regularAnchors(), rect.width, rect.height);
     renderer.render(bakery.scene, bakery.camera);
   } else {
     controls.update();

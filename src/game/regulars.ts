@@ -403,3 +403,20 @@ export function awaySummary(state: GameState, since: number): { id: RegularId; r
   }
   return out;
 }
+
+/** 名冊裡點開一章故事：記成「看過」（新章節的徽章靠 `storySeen < storyChapters(hearts)` 推導） */
+export function markStorySeen(state: GameState, id: RegularId, chapter: number): void {
+  const reg = state.regulars[id];
+  if (!reg.unlocked || chapter < 1 || chapter > storyChapters(reg.hearts)) return;
+  reg.storySeen = Math.max(reg.storySeen, Math.min(3, Math.floor(chapter)));
+}
+
+/** 有沒有還沒看過的故事章節（名冊鈕的徽章） */
+export function unreadStories(state: GameState): number {
+  let n = 0;
+  for (const id of REGULAR_IDS) {
+    const r = state.regulars[id];
+    if (r.unlocked) n += Math.max(0, storyChapters(r.hearts) - r.storySeen);
+  }
+  return n;
+}
