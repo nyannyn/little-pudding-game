@@ -21,7 +21,7 @@ import {
   SHOWCASE,
   STATION_ANCHOR,
   STATION_AT,
-  STATION_BAR,
+  STATION_PLATE,
   VIEW,
   WALL_LAMPS,
   FLOOR_POOLS,
@@ -397,7 +397,7 @@ export class BakeryView {
   }
 
   /**
-   * 各站機器頭上那一點投到畫面上的位置（NDC，x/y 在 −1〜1）；HUD 的站標籤（份數／進度條／升級鈕）貼在這裡。
+   * 各站底座牌那一點（機器正前方的輸送帶側板）投到畫面上的位置（NDC，x/y 在 −1〜1）；HUD 的站標籤貼在這裡。
    * 工坊鏡頭是固定的，main.ts 只在 resize／HUD 偏移變了之後重算一次。
    */
   stationNdc(): Record<StationId, { x: number; y: number }> {
@@ -405,7 +405,7 @@ export class BakeryView {
     const out = {} as Record<StationId, { x: number; y: number }>;
     const v = new THREE.Vector3();
     for (const id of STATION_IDS) {
-      const p = STATION_BAR[id];
+      const p = STATION_PLATE[id];
       v.set(p.x, p.y, p.z).project(this.camera);
       out[id] = { x: v.x, y: v.y };
     }

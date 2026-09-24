@@ -1141,30 +1141,30 @@
 /* 商店：點機器頭上的升級圖示開進來的那張卡（靜態標亮，不做閃爍） */
 .card.focus { outline: 3px solid var(--green); outline-offset: 1px; }
 
-/* ── 工坊機器頭上的標籤：名稱＋Lv（小字）、份數「這盤／上限」、進度條、右上角升級徽章 ───
-   機器名牌 2026-09-24 拿掉了，名稱只剩這裡，所以七台一律顯示（沒買的整塊變淡）。
-   後排四台在 390px 寬只隔約 44px、320px 只隔約 36px：寬度吃 --stag-w（stationTags.ts 按實際間距算；窄版名稱與 Lv 分兩行），整塊就是按鈕。
-   位置由 main.ts 給（left/top＝機器頭上那一點，translate 讓底邊中點對齊它）。 */
+/* ── 工坊每台機器的底座牌：第一行名稱＋Lv、第二行進度條＋份數「這盤/上限」、錢夠升級時右上角冒綠色箭頭 ───
+   主流料理經營遊戲的排法：機器本身完整露出來，狀態寫在機器正前方（輸送帶側板上，舊 3D 名牌的位置）；
+   2026-09-24 第一版浮在機器頭上，使用者：「請改成可以看到機器的長相 現在這樣都被擋住了」。
+   後排四台在 390px 寬只隔約 44px、320px 只隔約 36px：寬度吃 --stag-w（stationTags.ts 按實際間距算），整塊就是按鈕。
+   位置由 main.ts 給（left/top＝底座牌中心）。 */
 .stags { position: absolute; inset: 0; pointer-events: none; }
 .stags[hidden] { display: none; }
 .hud .stag {
   position: absolute;
   left: 0;
   top: 0;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -50%);
   box-sizing: border-box;
   width: var(--stag-w, 42px);
   min-height: 0;
-  padding: 2px 1px 3px;
+  padding: 1.5px 3px 2.5px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 1.5px;
+  gap: 1px;
   overflow: visible;
-  border-width: 1.5px;
-  border-radius: 7px;
-  box-shadow: 0 2px 0 var(--wood-light), 0 2px 5px rgba(90, 61, 40, 0.18);
-  font-size: 8.5px;
+  border-width: 1px;
+  border-radius: 6px;
+  box-shadow: 0 1.5px 0 var(--wood-light);
   line-height: 1.1;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -1172,34 +1172,36 @@
   pointer-events: auto;
 }
 .hud .stag[hidden] { display: none; }
-.hud .stag:active:not(:disabled) { transform: translate(-50%, calc(-100% + 1px)); }
-.stag .nm { display: flex; justify-content: center; align-items: baseline; column-gap: 1.5px; color: var(--ink-soft); font-size: 7.5px; letter-spacing: -0.3px; }
+.hud .stag:active:not(:disabled) { transform: translate(-50%, calc(-50% + 1px)); }
+.stag .nm { display: flex; justify-content: center; align-items: baseline; column-gap: 1.5px; color: var(--ink); font-size: 7.5px; letter-spacing: -0.3px; }
 .stag .nm .lv { font-size: 7px; color: var(--wood-dark); font-weight: 700; letter-spacing: 0; }
 .stag .nm .lv:empty { display: none; }
-.stag .q { letter-spacing: -0.2px; }
-.stag .q b { font-weight: 700; font-size: 10px; }
+.stag .pr { display: flex; align-items: center; gap: 2px; }
+.stag .bar { flex: 1; display: block; height: 3.5px; border-radius: 2px; background: #f0dcc4; overflow: hidden; }
+.stag .bar > i { display: block; height: 100%; width: 0; background: #f08aa2; border-radius: 2px; }
+.stag.ready .bar > i { background: #6cc58a; }
+.stag .q { font-size: 7.5px; color: var(--ink-soft); }
+.stag .q b { font-weight: 700; font-size: 8.5px; color: var(--ink); }
 .stag .q .of[hidden] { display: none; }
 .hud .stag.off { opacity: 0.72; }
-.stag.off .q b { font-weight: 400; font-size: 8.5px; color: var(--ink-soft); }
-.stag.off .bar { visibility: hidden; }
-.stags.narrow .stag .nm { flex-direction: column; align-items: center; }
-.stag .bar { margin: 0 2px; }
+.stag.off .bar { display: none; }
+.stag.off .pr { justify-content: center; }
+.stag.off .q b { font-weight: 400; font-size: 7.5px; color: var(--ink-soft); }
+/* 升級箭頭：錢夠升（或買）才出現，凸在牌子右上角外面、不壓字 */
 .stag .up {
   position: absolute;
-  top: -13px;
+  top: -14px;
   right: -6px;
   display: flex;
   box-sizing: border-box;
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 1.5px solid #fff;
-  background: var(--ink-faint);
+  background: var(--green);
   color: #fff;
 }
 .stag .up[hidden] { display: none; }
 .stag .up svg { width: 100%; height: 100%; }
-.stag.afford .up { background: var(--green); }
-.stag .bar { display: block; height: 4px; border-radius: 2px; background: #f3e3cf; overflow: hidden; }
-.stag .bar > i { display: block; height: 100%; width: 0; background: #f08aa2; border-radius: 2px; }
-.stag.ready .bar > i { background: #6cc58a; }
+.stags.narrow .stag .nm { flex-direction: column; align-items: center; line-height: 1; }
+.stags.narrow .stag { padding-top: 1px; padding-bottom: 2px; gap: 0.5px; }

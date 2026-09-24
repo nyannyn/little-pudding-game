@@ -1,7 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import sharp from 'sharp';
 import { BALANCE } from '../../src/game/balance';
-import { STATIONS } from '../../src/game/recipes';
+import { STATIONS, STATION_IDS } from '../../src/game/recipes';
+import { BELT, STATION_ANCHOR, STATION_BAR } from '../../src/scene/bakery/layout';
 import type { GameState } from '../../src/game/state';
 
 /**
@@ -35,10 +36,13 @@ async function setHour(page: Page, hour: number) {
 
 /** 畫面中段（輸送帶與展示櫃之間的地板與機器）平均亮度 0–255 */
 async function midLuma(page: Page): Promise<number> {
+  // 量的是 3D 場景的亮度：HUD 的底座牌是白色 HTML、不受燈光影響，先藏起來
+  await page.evaluate(() => { (document.querySelector('.stags') as HTMLElement).style.visibility = 'hidden'; });
   const vp = page.viewportSize()!;
   const buf = await page.screenshot({
     clip: { x: vp.width * 0.25, y: vp.height * 0.3, width: vp.width * 0.5, height: vp.height * 0.25 },
   });
+  await page.evaluate(() => { (document.querySelector('.stags') as HTMLElement).style.visibility = ''; });
   const { channels } = await sharp(buf).removeAlpha().stats();
   const [r, g, b] = channels.map((c) => c.mean);
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
@@ -79,18 +83,18 @@ async function seedLine(page: Page, coins: number) {
 
 const tag = (page: Page, id: string) => page.locator(`.stag[data-arg="${id}"]`);
 
-test('七台頭上都有標籤：名稱＋Lv、份數「這盤／上限」（空著 0）、沒買寫未購買；進度條會長、升級圖示（錢夠亮綠）', async ({ page }) => {
+test('七台都有底座牌：名稱＋Lv、份數「這盤/上限」（空著 0）、沒買寫未購買；進度條會長、錢夠升級才冒綠色箭頭', async ({ page }) => {
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
   await seedLine(page, 0);
 
   await expect(page.locator('.stag:not([hidden])')).toHaveCount(7);
   await expect(tag(page, 'stove').locator('.nm')).toHaveText('爐台Lv1');
   await expect(tag(page, 'mix').locator('.nm')).toHaveText('攪拌機Lv3');
-  await expect(tag(page, 'stove').locator('.q')).toHaveText('1/1份');
-  await expect(tag(page, 'mix').locator('.q')).toHaveText('2/4份');
-  await expect(tag(page, 'bake').locator('.q')).toHaveText('2/2份');
+  await expect(tag(page, 'stove').locator('.q')).toHaveText('1/1');
+  await expect(tag(page, 'mix').locator('.q')).toHaveText('2/4');
+  await expect(tag(page, 'bake').locator('.q')).toHaveText('2/2');
   // 空著：這盤 0 份、這台上限照寫，進度條空
-  await expect(tag(page, 'crack').locator('.q')).toHaveText('0/2份');
+  await expect(tag(page, 'crack').locator('.q')).toHaveText('0/2');
   await expect(tag(page, 'crack').locator('.bar > i')).toHaveAttribute('style', /width: 0%/);
   // 沒買：寫未購買、整塊變淡、沒有 Lv
   await expect(tag(page, 'chill').locator('.q b')).toHaveText('未購買');
@@ -104,16 +108,19 @@ test('七台頭上都有標籤：名稱＋Lv、份數「這盤／上限」（空
     return m.geometry.attributes.position.count;
   })).toBe(4);
 
-  // 滿級（攪拌機 Lv3）沒有升級圖示；其他有，錢不夠是灰的
-  await expect(tag(page, 'mix').locator('.up')).toBeHidden();
-  await expect(tag(page, 'stove').locator('.up')).toBeVisible();
-  await expect(tag(page, 'stove')).not.toHaveClass(/afford/);
+  // 沒錢：一個箭頭都沒有（主流料理遊戲的做法：買得起才冒出來，畫面不亂）
+  for (const id of STATION_IDS) await expect(tag(page, id).locator('.up')).toBeHidden();
 
-  // 錢夠了變亮綠
+  // 錢剛好夠爐台升級：只有爐台冒箭頭；烤箱 Lv2→3 比較貴、攪拌機滿級，都沒有
   await page.evaluate((p) => { (window.__lpg.state as GameState).coins = p; }, STATIONS.stove.prices[1]);
   await step(page, 0.3);
+  await expect(tag(page, 'stove').locator('.up')).toBeVisible();
   await expect(tag(page, 'stove')).toHaveClass(/afford/);
-  await expect(tag(page, 'bake')).not.toHaveClass(/afford/); // 烤箱 Lv2→3 比爐台貴
+  await expect(tag(page, 'bake').locator('.up')).toBeHidden();
+  await page.evaluate(() => { (window.__lpg.state as GameState).coins = 1e6; });
+  await step(page, 0.3);
+  await expect(tag(page, 'mix').locator('.up')).toBeHidden();
+  await expect(tag(page, 'chill').locator('.up')).toBeVisible(); // 沒買的：錢夠買也冒
 
   // 進度條跟著時間長
   const width = (l: Locator) => l.locator('.bar > i').evaluate((e) => parseFloat((e as HTMLElement).style.width));
@@ -164,7 +171,7 @@ test('點標籤：還能升級＝開商店工坊頁、捲到那台並標亮，�
   await step(page, 0.3);
   await expect(page.locator('.sheet .card[data-id="machine:bake"]')).toHaveClass(/focus/);
   await page.locator('[data-a="closeShop"]').click();
-  await expect(tag(page, 'bake').locator('.q')).toHaveText('2/4份');
+  await expect(tag(page, 'bake').locator('.q')).toHaveText('2/4');
   await expect(tag(page, 'bake').locator('.up')).toBeHidden();
 
   // 再從別的地方打開商店：沒有殘留的標亮
@@ -190,7 +197,7 @@ test('線一直在跑：抓住的標籤不會在手指底下被換掉（D55／D5
   const handle = await tag(page, 'bake').elementHandle();
   // 進度一直在長，錢也在抽屜外漲：中途跨過升級價（升級圖示由灰轉綠）也不能換掉節點
   for (let i = 0; i < 4; i++) {
-    await page.evaluate((p) => { (window.__lpg.state as GameState).coins += p; }, STATIONS.bake.prices[2] / 2);
+    await page.evaluate((p) => { (window.__lpg.state as GameState).coins += p; }, STATIONS.bake.prices[2] / 3);
     await step(page, 3);
   }
   await expect(tag(page, 'bake')).toHaveClass(/afford/);
@@ -264,6 +271,42 @@ for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
       for (const sel of ['.topbar', '.daybar', '.rightcol', '.dock']) {
         const hb = (await page.locator(sel).boundingBox())!;
         for (const [i, b] of boxes.entries()) expect(hit(b, hb), `tag ${i} vs ${sel}`).toBe(false);
+      }
+    });
+  });
+}
+
+for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+  test.describe(`${vp.width}px 機器看得到`, () => {
+    test.use({ viewport: vp });
+    test('七台都買、錢夠升級、每站都有一盤：每台機器的機頭與機身都沒被牌子或箭頭擋住（使用者：「請改成可以看到機器的長相」）', async ({ page }) => {
+      await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
+      await page.evaluate(() => {
+        const s = window.__lpg.state as GameState;
+        s.coins = 99999;
+        for (const [i, id] of (['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'] as const).entries()) {
+          s.bakery.machines[id] = 2;
+          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, doneAt: s.time + 500 + i };
+        }
+      });
+      await step(page, 0.3);
+      await expect(page.locator('.stag .up:visible')).toHaveCount(7);
+      for (const id of STATION_IDS) {
+        const head = STATION_BAR[id];
+        const a = STATION_ANCHOR[id];
+        // 機頭（機身最高處附近）與機身中段（帶面上方 0.25）
+        for (const [label, p] of [['head', head], ['body', { x: a.x, y: BELT.y + 0.25, z: a.z - 0.05 }]] as const) {
+          const hitTag = await page.evaluate(([x, y, z]) => {
+            const cam = window.__lpg.bakery!.camera;
+            const v = cam.position.clone().set(x!, y!, z!).project(cam);
+            const rect = document.querySelector('canvas')!.getBoundingClientRect();
+            const sx = rect.left + ((v.x + 1) / 2) * rect.width;
+            const sy = rect.top + ((1 - v.y) / 2) * rect.height;
+            const el = document.elementFromPoint(sx, sy);
+            return el?.tagName === 'CANVAS' ? '' : `${el?.className ?? 'null'} @ ${Math.round(sx)},${Math.round(sy)}`;
+          }, [p.x, p.y, p.z]);
+          expect(hitTag, `${id} ${label} covered`).toBe('');
+        }
       }
     });
   });

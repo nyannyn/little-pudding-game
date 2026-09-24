@@ -76,7 +76,7 @@ export const STATION_ANCHOR: Record<StationId, { x: number; y: number; z: number
   return out;
 })();
 
-/** 機器頭上那一點：HUD 標籤（名稱／等級／份數／進度條）貼在這裡 */
+/** 機器頭上那一點（機身最高處附近）；e2e 拿來確認機器沒被 HUD 標籤擋住 */
 export const STATION_BAR: Record<StationId, { x: number; y: number; z: number }> = {
   stove: { x: STATION_ANCHOR.stove.x, y: 1.28, z: STATION_ANCHOR.stove.z - 0.1 },
   crack: { x: STATION_ANCHOR.crack.x, y: 1.3, z: STATION_ANCHOR.crack.z - 0.1 },
@@ -91,6 +91,24 @@ export const STATION_BAR: Record<StationId, { x: number; y: number; z: number }>
 export const OVEN = { x: 0.98, z: STATION_ANCHOR.bake.z, len: 0.62, w: 0.56, h: 0.42 } as const;
 /** 冷藏櫃：跨在前排帶子上的玻璃隧道 */
 export const CHILL = { x: STATION_ANCHOR.chill.x, z: -0.5, len: 0.54, w: 0.54, h: 0.4 } as const;
+
+/**
+ * 每台機器的「底座牌」（HUD 標籤：名稱／Lv／份數／進度條）貼在這裡：那一站正前方的輸送帶側板，
+ * 也就是 2026-09-24 以前 3D 名牌的位置。主流料理經營遊戲的排法——機器本身完整露出來，狀態寫在底座前面
+ * （同日使用者：「請改成可以看到機器的長相 現在這樣都被擋住了」；標籤原本浮在機器頭上）。
+ * 烤箱那段帶子是直的（沿 z），牌子放在隧道朝鏡頭那一端的下緣。
+ */
+const SKIRT = BELT.y - 0.13;
+const skirt = (id: StationId) => ({ x: STATION_ANCHOR[id].x, y: SKIRT, z: STATION_ANCHOR[id].z + BELT.w / 2 + 0.04 });
+export const STATION_PLATE: Record<StationId, { x: number; y: number; z: number }> = {
+  stove: skirt('stove'),
+  crack: skirt('crack'),
+  mix: skirt('mix'),
+  mold: skirt('mold'),
+  bake: { x: OVEN.x, y: SKIRT, z: OVEN.z + OVEN.len / 2 + 0.06 },
+  chill: skirt('chill'),
+  decorate: skirt('decorate'),
+};
 
 /** 展示櫃：兩層、每層 6 格＝`shelfCap` 12 */
 export const SHOWCASE = { x: -0.25, z: 1.2, w: 1.84, d: 0.6, baseH: 0.52, glassH: 0.46 } as const;
