@@ -5,15 +5,19 @@ import {
   buyPantry,
   buyStock,
   fillBasin,
+  movePudding,
   pickAllDrops,
   sellEggs,
   sellIngredient,
+  setZoneMode,
   unlockZone,
 } from '../../src/game/actions';
+import { REGULAR_IDS, REGULARS, deliverOrder, regularWants } from '../../src/game/regulars';
+import { growsCare, isEliteZone, useStarTonic } from '../../src/game/stars';
 import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
 import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, orderHave, startBatch, stockShelf } from '../../src/game/bakery';
-import { stockOf, totalStock } from '../../src/game/stock';
-import { MACHINE_CURVE, MAX_MACHINE_LEVEL, RECIPES, stationSeconds, STATION_IDS, canStartRecipe, dessertPrice, linePortions, maxBatch, recipeMaterials, type StationId } from '../../src/game/recipes';
+import { STARS, stockOf, totalStock, type Star } from '../../src/game/stock';
+import { DESSERT_IDS, MACHINE_CURVE, MAX_MACHINE_LEVEL, RECIPES, recipeUnlocked, stationSeconds, STATION_IDS, canStartRecipe, dessertPrice, linePortions, maxBatch, recipeMaterials, type StationId } from '../../src/game/recipes';
 import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
 import { applyGenes } from '../../src/game/genetics';
@@ -112,13 +116,71 @@ function run(profile: Profile, seed: number) {
     return r;
   };
   const earnedByDay: number[] = [];
+  /** CP11（D62–D68）月玩家的養成紀錄：第一顆 ★N 在第幾天、每位常客哪天解鎖、哪天 ♥10 */
+  const starDay: Record<number, number> = {};
+  const regUnlockDay: Record<string, number> = {};
+  const regMaxDay: Record<string, number> = {};
+  const heartsByDay: string[] = [];
+  const dayNow = () => Math.floor(state.time / 86400) + 1;
+  let lastElite = -1;
+  /**
+   * 月玩家的精養（CP11，D62／D63）：只有 month 情境做——3 小時五情境的 bot 不切精養（AC11-13 守住前期節奏）。
+   * 上層切成精養；那 5 格留給「還在長、潛力最高」的布丁（潛力高＝世代鏈往前走），
+   * 沒在長的名額給「已經長到頂、星級最高」的媽媽：讓牠泡牛奶生下一代（寶寶潛力＝媽媽星級＋1，會被送到別區，
+   * 下一輪再被挑回精養區）。一分鐘整理一次（每 3 秒整理只是浪費量表時間，玩家也不會那樣頻繁搬家）。
+   */
+  const manageElite = () => {
+    if (profile !== 'month' || state.time - lastElite < 60) return;
+    lastElite = state.time;
+    const ELITE = 'c0t2';
+    const z = state.zones.find((x) => x.id === ELITE);
+    if (!z?.unlocked) return;
+    if (z.mode !== 'elite' && !setZoneMode(state, ELITE, 'elite', noop).ok) return;
+    const score = (p: (typeof state.puddings)[number]) => (p.star < p.potential ? 100 + p.potential * 10 + p.star : p.star * 10);
+    const ranked = [...state.puddings].filter((p) => p.mode !== 'bathing').sort((a, b) => score(b) - score(a));
+    const want = new Set(ranked.slice(0, BALANCE.eliteCapacity).map((p) => p.id));
+    // 先搬出去（騰位子）再搬進來
+    for (const p of state.puddings.filter((q) => q.zone === ELITE && !want.has(q.id))) {
+      const dest = unlockedZones(state).find((q) => q.id !== ELITE && state.puddings.filter((r) => r.zone === q.id).length < BALANCE.zoneCapacity);
+      if (dest) movePudding(state, p.id, dest.id, noop);
+    }
+    for (const id of want) {
+      const p = state.puddings.find((q) => q.id === id);
+      if (p && p.zone !== ELITE) movePudding(state, p.id, ELITE, noop);
+    }
+    // 精養區的盆：有長到頂的高星媽媽就倒牛奶（生高潛力寶寶），否則倒熱焦糖（焦糖系的本命液）
+    const elite = state.puddings.filter((p) => p.zone === ELITE);
+    const breeder = elite.some((p) => p.star >= p.potential && p.star >= 2);
+    const growingPanna = elite.some((p) => growsCare(state, p) && p.genes.includes('panna'));
+    state.basins.forEach((b, i) => {
+      if (b.zone !== ELITE || b.units > 0) return;
+      const liquid = breeder || growingPanna ? 'milk' : 'caramel';
+      if (state.stock[liquid] > 0) fillBasin(state, i, liquid, noop);
+    });
+    // 升星藥（D67）：給精養區卡在上限、星級最高的那隻
+    if (state.items.starTonic > 0) {
+      const capped = elite.filter((p) => p.star >= p.potential && p.star < 5).sort((a, b) => b.star - a.star)[0];
+      if (capped) useStarTonic(state, capped.id, noop);
+    }
+  };
+  const noteGrowth = () => {
+    if (profile !== 'month') return;
+    for (const p of state.puddings) for (let s = 2; s <= p.star; s++) if (!(s in starDay)) starDay[s] = dayNow();
+    for (const id of REGULAR_IDS) {
+      const r = state.regulars[id];
+      if (r.unlocked && !(id in regUnlockDay)) regUnlockDay[id] = dayNow();
+      if (r.hearts >= 10 && !(id in regMaxDay)) regMaxDay[id] = dayNow();
+    }
+  };
   const step = () => {
     // D34：牛奶澡＝繁殖。還有空位就優先倒牛乳（玩家想把櫥窗養滿），滿了才倒焦糖。
     // 不模擬這一步的話量表只會跑舊路徑，住客永遠是「解鎖送的那幾隻」
     const capacity = state.zones.filter((z) => z.unlocked).length * BALANCE.zoneCapacity;
     const wantMore = state.puddings.length < capacity;
+    manageElite();
     state.basins.forEach((b, i) => {
       if (b.units > 0) return;
+      if (profile === 'month' && isEliteZone(state, b.zone)) return; // 精養區的盆由 manageElite 決定倒什麼
       if (wantMore && state.stock.milk > 0) fillBasin(state, i, 'milk', noop);
       else if (state.stock.caramel > 0) fillBasin(state, i, 'caramel', noop);
     });
@@ -149,14 +211,21 @@ function run(profile: Profile, seed: number) {
           else break;
         }
       }
-      // 菜單：做得起的裡面挑最貴的放上線（起始站忙就等下一輪）；份數疊到最多（D60）
-      const pickable = SPECIES_IDS.filter((id) => canStartRecipe(state, id)).sort((a, b) => dessertPrice(b) - dessertPrice(a));
-      for (const id of pickable) if (canStartRecipe(state, id)) startBatch(state, id, maxBatch(state, id), noop);
+      // 菜單：做得起的裡面挑最貴的放上線（起始站忙就等下一輪）；份數疊到最多（D60）。
+      // CP11：星級由高往低試（高星原料做高價甜點；招牌甜點解鎖了也在候選裡）。3 小時情境沒有高星原料，行為跟改版前一樣
+      const pickable = DESSERT_IDS.filter((id) => recipeUnlocked(state, id)).sort((a, b) => dessertPrice(b) - dessertPrice(a));
+      for (const id of pickable) {
+        for (const star of [...STARS].reverse() as Star[]) {
+          if (!canStartRecipe(state, id, star)) continue;
+          startBatch(state, id, maxBatch(state, id, star), noop, star);
+          break;
+        }
+      }
       if (state.stats.baked > 0) mark('first bake');
       for (const o of [...state.orders]) {
-        if (orderHave(state, o) >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
+        if (orderHave(state, o) >= o.qty && deliverOrder(state, o.id, noop).ok) mark('first order');
       }
-      stockShelf(state, noop);
+      stockShelf(state, noop, false, regularWants(state));
       if (state.stats.served > 0) mark('first customer');
       if (state.stats.daysClosed > 0) mark('first day closed');
     }
@@ -223,6 +292,7 @@ function run(profile: Profile, seed: number) {
     if (nz && state.coins >= nz.price + 20 && pay(() => unlockZone(state, nz.id, SPAWN, noop)).ok) mark(`unlock ${nz.name}`);
     for (const c of [100, 500, 1000, 3000]) if (state.coins >= c) mark(`coins ${c}`);
     mark(`Lv.${levelFor(state.xp)}`);
+    noteGrowth();
   };
 
   if (profile === 'month') {
@@ -243,6 +313,7 @@ function run(profile: Profile, seed: number) {
         if (gap > BALANCE.offlineCapSec) state.time += gap - BALANCE.offlineCapSec;
       }
       earnedByDay.push(state.coins + spent);
+      heartsByDay.push(REGULAR_IDS.map((id) => (state.regulars[id].unlocked ? state.regulars[id].hearts : '-')).join(','));
     }
   } else {
     const total = HOURS * 3600;
@@ -266,8 +337,21 @@ function run(profile: Profile, seed: number) {
         `day 30: ${lv} fame:${state.bakery.fame}  (max ${MAX_MACHINE_LEVEL}/${FAME.max})\n` +
         `end: coins=${Math.floor(state.coins)} baked=${state.stats.baked} served=${state.stats.served} missed=${state.stats.missed} puddings=${state.puddings.length} eggs=${state.eggs} desserts=${totalStock(state, 'desserts')}\n` +
         `per day: ${Array.from({ length: 30 }, (_, d) => upgrades.filter((u) => u.day === d + 1).length).join(' ')}\n` +
-        `earned per day (k): ${earnedByDay.map((e, i) => Math.round((e - (earnedByDay[i - 1] ?? 0)) / 1000)).join(' ')}\n`,
+        `earned per day (k): ${earnedByDay.map((e, i) => Math.round((e - (earnedByDay[i - 1] ?? 0)) / 1000)).join(' ')}\n` +
+        // CP11（AC11-12）：養成與常客的節奏
+        `first star day: ★2 ${starDay[2] ?? '-'} / ★3 ${starDay[3] ?? '-'} / ★4 ${starDay[4] ?? '-'} / ★5 ${starDay[5] ?? '-'}\n` +
+        `regular unlock day: ${REGULAR_IDS.map((id) => `${REGULARS[id].name}${regUnlockDay[id] ?? '-'}`).join(' ')}\n` +
+        `regular ♥10 day: ${REGULAR_IDS.map((id) => `${REGULARS[id].name}${regMaxDay[id] ?? '-'}`).join(' ')}\n` +
+        `hearts by day (${REGULAR_IDS.join(',')}):\n${heartsByDay.map((h, i) => `  d${i + 1}: ${h}`).join('\n')}\n` +
+        `stars at end: ${[1, 2, 3, 4, 5].map((s) => state.puddings.filter((p) => p.star === s).length).join('/')}  regularsServed=${state.stats.regularsServed} starUps=${state.stats.starUps} tonic=${state.items.starTonic}\n`,
     );
+    // 給 AC11-12 的判定腳本讀（`tools/pacing/ac11-12.mjs`）
+    if (process.env.PACING_JSON) {
+      const fs = require('node:fs') as typeof import('node:fs');
+      const prev = fs.existsSync(process.env.PACING_JSON) ? JSON.parse(fs.readFileSync(process.env.PACING_JSON, 'utf8')) : {};
+      prev[`month-${seed}`] = { starDay, regUnlockDay, regMaxDay, buckets, upgrades: upgrades.length };
+      fs.writeFileSync(process.env.PACING_JSON, JSON.stringify(prev, null, 1));
+    }
     return;
   }
   const lines = Object.entries(milestones)
