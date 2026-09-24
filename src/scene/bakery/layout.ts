@@ -76,22 +76,7 @@ export const STATION_ANCHOR: Record<StationId, { x: number; y: number; z: number
   return out;
 })();
 
-/**
- * 名牌：貼在那一站正前方的輸送帶側板上（掛牆上會被頂列與罐子架擋住，2026-09-24 截圖）；
- * 烤箱那段帶子是直的，名牌立在隧道頂上。
- */
-const SKIRT = BELT.y - 0.13;
-export const STATION_LABEL: Record<StationId, { x: number; y: number; z: number }> = {
-  stove: { x: STATION_ANCHOR.stove.x, y: SKIRT, z: STATION_ANCHOR.stove.z + BELT.w / 2 + 0.04 },
-  crack: { x: STATION_ANCHOR.crack.x, y: SKIRT, z: STATION_ANCHOR.crack.z + BELT.w / 2 + 0.04 },
-  mix: { x: STATION_ANCHOR.mix.x, y: SKIRT, z: STATION_ANCHOR.mix.z + BELT.w / 2 + 0.04 },
-  mold: { x: STATION_ANCHOR.mold.x, y: SKIRT, z: STATION_ANCHOR.mold.z + BELT.w / 2 + 0.04 },
-  bake: { x: 0.98, y: BELT.y + 0.62, z: STATION_ANCHOR.bake.z + 0.2 },
-  chill: { x: STATION_ANCHOR.chill.x, y: SKIRT, z: STATION_ANCHOR.chill.z + BELT.w / 2 + 0.04 },
-  decorate: { x: STATION_ANCHOR.decorate.x, y: SKIRT, z: STATION_ANCHOR.decorate.z + BELT.w / 2 + 0.04 },
-};
-
-/** 進度條：浮在那一站的機器上方 */
+/** 機器頭上那一點：HUD 標籤（名稱／等級／份數／進度條）貼在這裡 */
 export const STATION_BAR: Record<StationId, { x: number; y: number; z: number }> = {
   stove: { x: STATION_ANCHOR.stove.x, y: 1.28, z: STATION_ANCHOR.stove.z - 0.1 },
   crack: { x: STATION_ANCHOR.crack.x, y: 1.3, z: STATION_ANCHOR.crack.z - 0.1 },

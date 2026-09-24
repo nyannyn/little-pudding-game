@@ -22,7 +22,6 @@ import {
   STATION_ANCHOR,
   STATION_AT,
   STATION_BAR,
-  STATION_LABEL,
   VIEW,
   WALL_LAMPS,
   FLOOR_POOLS,
@@ -101,7 +100,7 @@ function ease(t: number) {
  * 時畫它。只讀 state、播動畫，不改規則（分層鐵則）。
  *
  * draw call（2026-09-24 設計值，e2e `cp8-bakery` 量實際值）：房間 1、機身 1、帶面 1、窗景 1、烤箱光 1、
- * 冷藏光＋玻璃 2、展示櫃玻璃 1、名牌 1、營業牌 1、燈罩 1、光暈 1、甜點杯三層 3、蛋殼 1、打蛋器 1、注模嘴 1、
+ * 冷藏光＋玻璃 2、展示櫃玻璃 1、店招 1、營業牌 1、燈罩 1、光暈 1、甜點杯三層 3、蛋殼 1、打蛋器 1、注模嘴 1、
  * 擠花袋 1、鍋蓋 1、客人 2 ＝ 23。進度條、份數與升級鈕是 HTML 疊層（`ui/stationTags.ts`），不吃 draw call。
  */
 export class BakeryView {
@@ -243,7 +242,7 @@ export class BakeryView {
     halo.renderOrder = 1;
     this.scene.add(halo);
 
-    // 名牌（七站＋店招）：一張 canvas 圖集、一個 mesh；機器等級變了重畫那張圖
+    // 店招＋營業牌：一張 canvas 圖集（機器名牌 2026-09-24 移到 HUD 標籤）
     this.labels = new LabelAtlas();
     this.scene.add(this.labels.mesh);
     this.openSign = this.labels.open;
@@ -546,14 +545,13 @@ export class BakeryView {
     this.eggs.instanceMatrix.needsUpdate = true;
   }
 
-  /** 機身與名牌：機器等級變了（買了／升級）才重建 */
+  /** 機身：機器等級變了（買了／升級）才重建 */
   private syncMachines(state: GameState) {
     const sig = machinesSignature(state.bakery.machines);
     if (sig === this.machineSig) return;
     this.machineSig = sig;
     this.machines.geometry.dispose();
     this.machines.geometry = buildMachines(state.bakery.machines);
-    this.labels.draw(state.bakery.machines);
     for (const o of this.ovenParts) o.visible = state.bakery.machines.bake > 0;
     for (const o of this.chillParts) o.visible = state.bakery.machines.chill > 0;
   }
@@ -885,7 +883,7 @@ function swirlGeometry(): THREE.BufferGeometry {
 }
 
 /**
- * 名牌：七站＋店招畫在同一張 canvas 上，一個 mesh（每塊平面的 UV 對到自己那一列）。
+ * 店招＋營業牌畫在同一張 canvas 上（每塊平面的 UV 對到自己那一列）。前七列是 2026-09-24 以前的機器名牌，已不貼到場景上。
  * 沒買的站畫灰底「○○・未購買」，買了畫白底「○○ Lv.N」；等級變了重畫同一張 canvas（不換 mesh）。
  * OPEN／CLOSED 牌也在同一張圖上，但各自一個小 mesh 才能切換顯示。
  */
@@ -920,12 +918,8 @@ class LabelAtlas {
       geo.translate(x, y, z);
       return geo;
     };
-    const parts = STATION_IDS.map((id, i) => {
-      const p = STATION_LABEL[id];
-      // 名牌盡量大：iPhone SE 上 0.4×0.1 的字只剩幾個像素（2026-09-24 截圖）
-      return plate(i, 0.46, 0.13, p.x, p.y, p.z);
-    });
-    parts.push(plate(STATION_IDS.length, 1.2, 0.3, 0, 1.92, ROOM.backZ + 0.02));
+    // 機器名牌拿掉了（2026-09-24 使用者：名稱與等級改寫在機器頭上的 HUD 標籤）；圖集前七列留著不畫上去，列號不必重排
+    const parts = [plate(STATION_IDS.length, 1.2, 0.3, 0, 1.92, ROOM.backZ + 0.02)];
     const merged = mergeGeometries(parts, false);
     if (!merged) throw new Error('[lpg] label merge failed');
     this.mesh = new THREE.Mesh(merged, mat);

@@ -63,12 +63,12 @@ test('天黑燈就開：20 點營業中跟中午一樣亮，壁燈亮著；中�
   await expect(page.locator('.daybar .open')).toContainText('打烊');
 });
 
-/** 四台有一盤、三台空著；等級 1／2／3 混著 */
+/** 三台有一盤、三台空著、冷藏櫃沒買；等級 1／2／3 混著 */
 async function seedLine(page: Page, coins: number) {
   await page.evaluate((c) => {
     const s = window.__lpg.state as GameState;
     s.coins = c;
-    Object.assign(s.bakery.machines, { stove: 1, crack: 2, mix: 3, mold: 2, bake: 2, chill: 1, decorate: 1 });
+    Object.assign(s.bakery.machines, { stove: 1, crack: 2, mix: 3, mold: 2, bake: 2, chill: 0, decorate: 1 });
     for (const id of Object.keys(s.bakery.stations) as (keyof typeof s.bakery.stations)[]) s.bakery.stations[id] = { batch: null, doneAt: 0 };
     s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, doneAt: s.time + 1000 };
     s.bakery.stations.mix = { batch: { species: 'matcha', qty: 2 }, doneAt: s.time + 1000 };
@@ -79,15 +79,30 @@ async function seedLine(page: Page, coins: number) {
 
 const tag = (page: Page, id: string) => page.locator(`.stag[data-arg="${id}"]`);
 
-test('有一盤的站頭上有標籤：份數「這盤／上限」、進度條會長、升級圖示（錢夠亮綠）；空站沒有', async ({ page }) => {
+test('七台頭上都有標籤：名稱＋Lv、份數「這盤／上限」（空著 0）、沒買寫未購買；進度條會長、升級圖示（錢夠亮綠）', async ({ page }) => {
   await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
   await seedLine(page, 0);
 
-  await expect(tag(page, 'stove')).toBeVisible();
+  await expect(page.locator('.stag:not([hidden])')).toHaveCount(7);
+  await expect(tag(page, 'stove').locator('.nm')).toHaveText('爐台Lv1');
+  await expect(tag(page, 'mix').locator('.nm')).toHaveText('攪拌機Lv3');
   await expect(tag(page, 'stove').locator('.q')).toHaveText('1/1份');
   await expect(tag(page, 'mix').locator('.q')).toHaveText('2/4份');
   await expect(tag(page, 'bake').locator('.q')).toHaveText('2/2份');
-  for (const id of ['crack', 'mold', 'chill', 'decorate']) await expect(tag(page, id)).toBeHidden();
+  // 空著：這盤 0 份、這台上限照寫，進度條空
+  await expect(tag(page, 'crack').locator('.q')).toHaveText('0/2份');
+  await expect(tag(page, 'crack').locator('.bar > i')).toHaveAttribute('style', /width: 0%/);
+  // 沒買：寫未購買、整塊變淡、沒有 Lv
+  await expect(tag(page, 'chill').locator('.q b')).toHaveText('未購買');
+  await expect(tag(page, 'chill').locator('.q .of')).toBeHidden();
+  await expect(tag(page, 'chill')).toHaveClass(/off/);
+  await expect(tag(page, 'chill').locator('.nm')).toHaveText('冷藏櫃');
+
+  // 機器底下的 3D 名牌拿掉了：名牌 mesh 只剩店招一塊（4 個頂點）
+  expect(await page.evaluate(() => {
+    const m = window.__lpg.bakery!.scene.getObjectByName('BakeryLabels') as unknown as { geometry: { attributes: { position: { count: number } } } };
+    return m.geometry.attributes.position.count;
+  })).toBe(4);
 
   // 滿級（攪拌機 Lv3）沒有升級圖示；其他有，錢不夠是灰的
   await expect(tag(page, 'mix').locator('.up')).toBeHidden();
@@ -187,6 +202,7 @@ test('回農場標籤全藏；切回工坊又在', async ({ page }) => {
   await seedLine(page, 0);
   await expect(tag(page, 'stove')).toBeVisible();
   await page.getByRole('button', { name: /回農場/ }).click();
+  await expect(page.locator('.stags')).toBeHidden();
   await expect(tag(page, 'stove')).toBeHidden();
   await page.getByRole('button', { name: /甜點店/ }).click();
   await expect(tag(page, 'stove')).toBeVisible();
@@ -198,7 +214,7 @@ const hit = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.
 for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
   test.describe(`${vp.width}px`, () => {
     test.use({ viewport: vp });
-    test('七站都有一盤：標籤彼此不重疊、不壓到頂列／日曆卡／右側按鈕、都在畫面內、字不溢出', async ({ page }) => {
+    test('七站都有一盤：標籤彼此不重疊、不壓到頂列／日曆卡／右側按鈕、都在畫面內、字不溢出、徽章不壓名稱', async ({ page }) => {
       await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
       await page.evaluate(() => {
         const s = window.__lpg.state as GameState;
@@ -226,6 +242,14 @@ for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
           return { text: r.getBoundingClientRect().width, room: (e.parentElement as HTMLElement).clientWidth - 4 };
         });
         expect(q.text, `tag ${i} text overflow`).toBeLessThanOrEqual(q.room);
+        // 右上角的升級徽章不能壓到第一行的名稱＋Lv（2026-09-24 截圖：「打蛋機 Lv2」的 2 被蓋掉）
+        const nm = await t.locator('.nm').evaluate((e) => {
+          const r = document.createRange();
+          r.selectNodeContents(e);
+          const b = r.getBoundingClientRect();
+          return { x: b.x, y: b.y, width: b.width, height: b.height };
+        });
+        expect(hit(nm, up), `tag ${i} badge covers name`).toBe(false);
         expect(b.x).toBeGreaterThanOrEqual(0);
         expect(b.x + b.width).toBeLessThanOrEqual(vp.width);
       }
