@@ -155,18 +155,26 @@ export function ownsAllele(state: GameState, allele: AlleleId): boolean {
 // ─────────────────────────────────────────────────────────────
 
 export const REGULAR_BALANCE = {
-  /** 來店間隔（營業日）；`visitJitterDays` 是 ± 範圍 */
-  visitEveryDays: 8,
-  visitJitterDays: 1,
+  /**
+   * 來店間隔（營業日）；`visitJitterDays` 是 ± 範圍。
+   * 計畫原本寫 8（假設月玩家一天 8.75 遊戲小時＝約 3 次來店）；月玩家量表實測一天約 21 遊戲小時
+   * （三段離線 5h＋8h＋8h 上限），8 天間隔變成一天來 8 次、好感與升星藥都太快（2026-09-25，AC11-12）。
+   * 20（一天約 3 次）又慢到 30 天只有 2–3 位 ♥10；取 13（一天約 5 次）。這個數字跟營業日長度、離線上限綁在一起，改任何一個都要重跑月玩家量表。
+   */
+  visitEveryDays: 13,
+  visitJitterDays: 2,
   /** 常客買東西付星級價的幾倍（比散客大方） */
   tip: 1.2,
   heartsPerBuy: 1,
   heartsPerOrder: 2,
   /** ♥6 起每次買到送禮的機率 */
   giftChance: 0.3,
+  /** 禮物裡是升星藥的比例（其餘是原料）：升星藥能跳過世代鏈，太常送 ★5 會早到第 4 天（AC11-12 量到） */
+  tonicShare: 1 / 3,
   orderQtyMin: 5,
   orderQtyMax: 20,
-  orderDays: 3,
+  /** 特別訂單期限（營業日）：計畫寫 3，同上理由（一天約 21 遊戲小時、常客多半在離線時下單）放寬到 8＝約 2.7 遊戲小時 */
+  orderDays: 8,
   orderRewardMult: 2,
   giftIngredients: 3,
 } as const;
@@ -302,7 +310,7 @@ function visit(state: GameState, id: RegularId, rng: Rng, emit: EventSink): void
     star = pick.star;
 
     if (reg.hearts >= 6 && rng.next() < REGULAR_BALANCE.giftChance) {
-      if (rng.next() < 0.5) {
+      if (rng.next() < REGULAR_BALANCE.tonicShare) {
         state.items.starTonic++;
         gift = 'tonic';
       } else {

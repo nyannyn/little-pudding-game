@@ -15,12 +15,12 @@ import {
   setZoneMode,
   unlockZone,
 } from '../../src/game/actions';
-import { REGULAR_IDS, REGULARS, deliverOrder, regularWants } from '../../src/game/regulars';
+import { REGULAR_IDS, REGULARS, deliverOrder, minStarFor, regularAccepts, regularWants } from '../../src/game/regulars';
 import { placeFromStorage, storeFurniture } from '../../src/game/furniture';
 import { growsCare, isEliteZone, useStarTonic } from '../../src/game/stars';
 import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
 import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, orderHave, startBatch, stockShelf } from '../../src/game/bakery';
-import { STARS, stockOf, totalStock, type Star } from '../../src/game/stock';
+import { STARS, stockAtLeast, stockOf, totalStock, type Star } from '../../src/game/stock';
 import { DESSERT_IDS, MACHINE_CURVE, MAX_MACHINE_LEVEL, RECIPES, recipeUnlocked, stationSeconds, STATION_IDS, canStartRecipe, dessertPrice, linePortions, maxBatch, recipeMaterials, type StationId } from '../../src/game/recipes';
 import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
@@ -269,6 +269,27 @@ function run(profile: Profile, seed: number) {
       }
       // 菜單：做得起的裡面挑最貴的放上線（起始站忙就等下一輪）；份數疊到最多（D60）。
       // CP11：星級由高往低試（高星原料做高價甜點；招牌甜點解鎖了也在候選裡）。3 小時情境沒有高星原料，行為跟改版前一樣
+      // CP11（月玩家）：先看名冊替常客做——每位已解鎖的常客，櫃上＋架上符合他的不到 2 份就先開一盤
+      // （他要的口味、不低於他的最低星級、做得起的最低那一星；自己的招牌甜點優先）
+      if (profile === 'month') {
+        for (const rid of REGULAR_IDS) {
+          const reg = state.regulars[rid];
+          if (!reg.unlocked) continue;
+          const min = minStarFor(rid, reg.hearts);
+          const accepts = regularAccepts(state, rid);
+          const have = accepts.reduce((n, id) => n + stockAtLeast(state, 'desserts', id, min) + stockAtLeast(state, 'shelf', id, min), 0);
+          if (have >= 2) continue;
+          let started = false;
+          for (const id of accepts) {
+            for (const star of STARS) {
+              if (star < min || !canStartRecipe(state, id, star)) continue;
+              started = startBatch(state, id, maxBatch(state, id, star), noop, star).ok;
+              break;
+            }
+            if (started) break;
+          }
+        }
+      }
       const pickable = DESSERT_IDS.filter((id) => recipeUnlocked(state, id)).sort((a, b) => dessertPrice(b) - dessertPrice(a));
       for (const id of pickable) {
         for (const star of [...STARS].reverse() as Star[]) {
@@ -369,7 +390,7 @@ function run(profile: Profile, seed: number) {
         advance(w, Math.min(gap, BALANCE.offlineCapSec));
         // 離線上限之外的時間不算數，但時鐘要走到下一次開遊戲那一刻（天數才對得上）
         if (gap > BALANCE.offlineCapSec) state.time += gap - BALANCE.offlineCapSec;
-        if (process.env.PACING_DEBUG) {
+        if (process.env.PACING_DEBUG === '1') {
           const el = state.puddings.filter((p) => isEliteZone(state, p.zone));
           console.log(`d${day + 1}s${i} t=${(state.time / 3600).toFixed(1)}h zones=${unlockedZones(state).map((z) => `${z.id}:${z.mode}:${state.puddings.filter((p) => p.zone === z.id).length}`).join(',')} elite=${el.map((p) => `${p.species}★${p.star}/${p.potential}c${Math.floor(p.care)}`).join(' ')} basins=${state.basins.map((b) => `${b.zone}:${b.liquid ?? b.preferredLiquid}:${b.units}`).join(',')} stock=${state.stock.caramel}/${state.stock.milk} baths=${state.stats.baths}`);
         }
