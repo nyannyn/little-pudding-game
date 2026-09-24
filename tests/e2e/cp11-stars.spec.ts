@@ -161,7 +161,7 @@ test('AC11-11：七站滿載＋5 位散客＋2 位常客，draw calls ≤ 預算
     window.__lpg.bakery!.regularCame('rabbit', false, null);
     window.__lpg.bakery!.regularCame('sheep', true, 'panna'); // 第三位在門外排隊，不畫
   });
-  await step(page, 0.5);
+  await step(page, 1.5); // 第二位要等第一位走進來一段才進門（同時進門會疊在一起）
   const two = await page.evaluate(() => ({ draw: window.__lpg.stats.drawCalls, n: window.__lpg.bakery!.regularCount }));
   expect(one.n).toBe(1);
   expect(two.n).toBe(2);
