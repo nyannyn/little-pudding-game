@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { STATION_IDS, type StationId } from '../../game/recipes';
+import { MACHINE_TIER_SIZE, STATION_IDS, machineTier, type StationId } from '../../game/recipes';
 import { Parts } from './build';
 import { BELT, CHILL, EGG_BASKET, OVEN, STATION_ANCHOR } from './layout';
 import { PAL } from './room';
 
 /**
  * 七台機器的機身（D57：機器要買、有等級）。沒買的站畫一塊空底座；買了畫機器，
- * 機身側邊一排小星星＝等級。全部併成一個 mesh，只在「機器等級」變了才重建（買東西才會變，不是每幀）。
+ * 機身側邊一排小星星＝等級（一階 5 顆、顏色＝階級，D61）。全部併成一個 mesh，只在「機器等級」變了才重建（買東西才會變，不是每幀）。
  * 會動的部件（蛋、打蛋器、注模嘴、擠花袋、鍋蓋、兩個隧道的光）在 `bakeryView.ts`。
  */
 export function machinesSignature(levels: Record<StationId, number>): string {
@@ -45,15 +45,24 @@ function padPos(id: StationId): { x: number; z: number } {
   return { x: a.x, z: a.z - 0.36 };
 }
 
-/** 等級星星：機器前面一排金色小球（1–3 顆） */
+/** 階級配色（D61）：鐵／銅／銀／金，跟底座牌左邊那條色帶同色 */
+const TIER_COLORS = [0xb9b3c2, 0xc98a55, 0xdfe6ee, 0xf1c24b] as const;
+
+/**
+ * 等級星星：機器前面一排小球。20 級不能排 20 顆（擠滿帶子側邊），
+ * 所以一階 5 顆、顏色＝階級：Lv7＝兩顆銅色。跨階那一刻星星變回 1 顆、換顏色，看得出「突破」了。
+ */
 function stars(p: Parts, id: StationId, lv: number) {
   const a = STATION_ANCHOR[id];
   const y = BELT.y - 0.08;
-  for (let i = 0; i < lv; i++) {
-    const off = (i - (lv - 1) / 2) * 0.05;
-    if (id === 'bake') p.sphere(PAL.butter, 0.018, a.x - BELT.w / 2 - 0.04, y, a.z + off, undefined, 10);
-    else if (id === 'chill' || id === 'decorate') p.sphere(PAL.butter, 0.018, a.x + off, y, a.z + BELT.w / 2 + 0.04, undefined, 10);
-    else p.sphere(PAL.butter, 0.018, a.x + off, y, a.z + BELT.w / 2 + 0.04, undefined, 10);
+  const tier = machineTier(lv);
+  const n = lv - (tier - 1) * MACHINE_TIER_SIZE;
+  const color = TIER_COLORS[tier - 1] ?? PAL.butter;
+  for (let i = 0; i < n; i++) {
+    const off = (i - (n - 1) / 2) * 0.05;
+    if (id === 'bake') p.sphere(color, 0.018, a.x - BELT.w / 2 - 0.04, y, a.z + off, undefined, 10);
+    else if (id === 'chill' || id === 'decorate') p.sphere(color, 0.018, a.x + off, y, a.z + BELT.w / 2 + 0.04, undefined, 10);
+    else p.sphere(color, 0.018, a.x + off, y, a.z + BELT.w / 2 + 0.04, undefined, 10);
   }
 }
 

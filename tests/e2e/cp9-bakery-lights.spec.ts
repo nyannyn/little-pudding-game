@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import sharp from 'sharp';
 import { BALANCE } from '../../src/game/balance';
-import { STATIONS, STATION_IDS } from '../../src/game/recipes';
+import { STATIONS, STATION_IDS, machinePrice } from '../../src/game/recipes';
 import { BELT, STATION_ANCHOR, STATION_BAR } from '../../src/scene/bakery/layout';
 import type { GameState } from '../../src/game/state';
 
@@ -67,16 +67,16 @@ test('天黑燈就開：20 點營業中跟中午一樣亮，壁燈亮著；中�
   await expect(page.locator('.daybar .open')).toContainText('打烊');
 });
 
-/** 三台有一盤、三台空著、冷藏櫃沒買；等級 1／2／3 混著 */
+/** 三台有一盤、三台空著、冷藏櫃沒買；等級 1／2／滿級（20）混著 */
 async function seedLine(page: Page, coins: number) {
   await page.evaluate((c) => {
     const s = window.__lpg.state as GameState;
     s.coins = c;
-    Object.assign(s.bakery.machines, { stove: 1, crack: 2, mix: 3, mold: 2, bake: 2, chill: 0, decorate: 1 });
-    for (const id of Object.keys(s.bakery.stations) as (keyof typeof s.bakery.stations)[]) s.bakery.stations[id] = { batch: null, doneAt: 0 };
-    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, doneAt: s.time + 1000 };
-    s.bakery.stations.mix = { batch: { species: 'matcha', qty: 2 }, doneAt: s.time + 1000 };
-    s.bakery.stations.bake = { batch: { species: 'custard', qty: 2 }, doneAt: s.time + 1000 };
+    Object.assign(s.bakery.machines, { stove: 1, crack: 2, mix: 20, mold: 2, bake: 2, chill: 0, decorate: 1 });
+    for (const id of Object.keys(s.bakery.stations) as (keyof typeof s.bakery.stations)[]) s.bakery.stations[id] = { batch: null, startedAt: 0, doneAt: 0 };
+    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.mix = { batch: { species: 'matcha', qty: 2 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.bake = { batch: { species: 'custard', qty: 2 }, startedAt: s.time, doneAt: s.time + 1000 };
   }, coins);
   await step(page, 0.3);
 }
@@ -89,9 +89,9 @@ test('七台都有底座牌：名稱＋Lv、份數「這盤/上限」（空著 0
 
   await expect(page.locator('.stag:not([hidden])')).toHaveCount(7);
   await expect(tag(page, 'stove').locator('.nm')).toHaveText('爐台Lv1');
-  await expect(tag(page, 'mix').locator('.nm')).toHaveText('攪拌機Lv3');
+  await expect(tag(page, 'mix').locator('.nm')).toHaveText('攪拌機Lv20');
   await expect(tag(page, 'stove').locator('.q')).toHaveText('1/1');
-  await expect(tag(page, 'mix').locator('.q')).toHaveText('2/4');
+  await expect(tag(page, 'mix').locator('.q')).toHaveText('2/20');
   await expect(tag(page, 'bake').locator('.q')).toHaveText('2/2');
   // 空著：這盤 0 份、這台上限照寫，進度條空
   await expect(tag(page, 'crack').locator('.q')).toHaveText('0/2');
@@ -112,7 +112,7 @@ test('七台都有底座牌：名稱＋Lv、份數「這盤/上限」（空著 0
   for (const id of STATION_IDS) await expect(tag(page, id).locator('.up')).toBeHidden();
 
   // 錢剛好夠爐台升級：只有爐台冒箭頭；烤箱 Lv2→3 比較貴、攪拌機滿級，都沒有
-  await page.evaluate((p) => { (window.__lpg.state as GameState).coins = p; }, STATIONS.stove.prices[1]);
+  await page.evaluate((p) => { (window.__lpg.state as GameState).coins = p; }, machinePrice('stove', 1)!);
   await step(page, 0.3);
   await expect(tag(page, 'stove').locator('.up')).toBeVisible();
   await expect(tag(page, 'stove')).toHaveClass(/afford/);
@@ -142,8 +142,8 @@ test('做完卡在等下一站：進度條滿、變綠', async ({ page }) => {
   // 爐台那盤做完、下一站（打蛋機）被佔著 → 停在爐台等
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.bakery.stations.crack = { batch: { species: 'custard', qty: 1 }, doneAt: s.time + 1000 };
-    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, doneAt: s.time + 0.1 };
+    s.bakery.stations.crack = { batch: { species: 'custard', qty: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, startedAt: s.time, doneAt: s.time + 0.1 };
   });
   await step(page, 1);
   const s = await page.evaluate(() => (window.__lpg.state as GameState).bakery.stations.stove.batch);
@@ -171,7 +171,10 @@ test('點標籤：還能升級＝開商店工坊頁、捲到那台並標亮，�
   await step(page, 0.3);
   await expect(page.locator('.sheet .card[data-id="machine:bake"]')).toHaveClass(/focus/);
   await page.locator('[data-a="closeShop"]').click();
-  await expect(tag(page, 'bake').locator('.q')).toHaveText('2/4');
+  await expect(tag(page, 'bake').locator('.q')).toHaveText('2/3');
+  // D61 起 Lv3 不是頂：錢還夠升下一級就還冒箭頭，錢花光才收起來
+  await page.evaluate(() => { (window.__lpg.state as GameState).coins = 0; });
+  await step(page, 0.3);
   await expect(tag(page, 'bake').locator('.up')).toBeHidden();
 
   // 再從別的地方打開商店：沒有殘留的標亮
@@ -197,7 +200,7 @@ test('線一直在跑：抓住的標籤不會在手指底下被換掉（D55／D5
   const handle = await tag(page, 'bake').elementHandle();
   // 進度一直在長，錢也在抽屜外漲：中途跨過升級價（升級圖示由灰轉綠）也不能換掉節點
   for (let i = 0; i < 4; i++) {
-    await page.evaluate((p) => { (window.__lpg.state as GameState).coins += p; }, STATIONS.bake.prices[2] / 3);
+    await page.evaluate((p) => { (window.__lpg.state as GameState).coins += p; }, machinePrice('bake', 2)! / 3);
     await step(page, 3);
   }
   await expect(tag(page, 'bake')).toHaveClass(/afford/);
@@ -228,7 +231,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
         s.coins = 99999;
         for (const [i, id] of (['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'] as const).entries()) {
           s.bakery.machines[id] = 2;
-          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, doneAt: s.time + 500 + i };
+          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, startedAt: s.time, doneAt: s.time + 500 + i };
         }
       });
       await step(page, 0.3);
@@ -286,7 +289,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
         s.coins = 99999;
         for (const [i, id] of (['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'] as const).entries()) {
           s.bakery.machines[id] = 2;
-          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, doneAt: s.time + 500 + i };
+          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, startedAt: s.time, doneAt: s.time + 500 + i };
         }
       });
       await step(page, 0.3);

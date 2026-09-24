@@ -928,6 +928,18 @@
 /* 開始製作不花錢：不要商品卡那顆金幣 */
 .hud .rcard button.buy::before { display: none; }
 .hud .rcard button.buy { align-self: flex-end; width: auto; min-height: 34px; padding: 4px 14px; font-size: 13px; white-space: nowrap; }
+/* D60：點卡片疊份數。整張卡是按鈕（data-a="addPortion"），被選中的那一道框線加粗 */
+.rcard[data-ok="true"] { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+.rcard.picked { border-width: 3px; box-shadow: 0 0 0 2px #cfeec0 inset; }
+.rcard .rfoot { display: flex; align-items: center; gap: 6px; }
+.rcard .rfoot .qty { flex: 1; display: flex; align-items: baseline; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.rcard .rfoot .qty b { font-size: 20px; color: var(--ink); min-width: 1.4em; }
+.rcard .rfoot .qty small { font-size: 11px; }
+.rcard .rfoot .qty.bump { animation: qtybump 0.3s; }
+@keyframes qtybump { 30% { transform: translateX(-3px); color: #c0506c; } 60% { transform: translateX(3px); } }
+.hud .rcard button.mini::before { display: none; }
+.hud .rcard button.mini { width: auto; min-width: 34px; min-height: 34px; padding: 2px 8px; font-size: 13px; }
+
 
 /* 右欄：成就鈕在上、預訂單卡在下（頂列已放不下第七個東西：390px 上獎盃會蓋住甜點數字） */
 .rightcol {
@@ -1205,3 +1217,20 @@
 .stag .up svg { width: 100%; height: 100%; }
 .stags.narrow .stag .nm { flex-direction: column; align-items: center; line-height: 1; }
 .stags.narrow .stag { padding-top: 1px; padding-bottom: 2px; gap: 0.5px; }
+
+/* 出爐字卡（D60）：畫面中上方一張奶油色大字卡，彈一下、1.8 秒後收起；點得穿（不擋機器與按鈕） */
+.hud .bakebanner {
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 150px); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; z-index: 30;
+  background: var(--paper); border: 2px solid var(--wood); border-radius: 18px; box-shadow: 0 4px 0 var(--wood-dark, #b98a5e);
+  padding: 8px 18px; white-space: nowrap; font-size: 15px;
+}
+.hud .bakebanner[hidden] { display: none; }
+.hud .bakebanner b { font-size: 20px; font-weight: 700; color: #d9774a; }
+.hud .bakebanner em { font-style: normal; font-weight: 700; font-size: 18px; color: var(--ink); }
+.hud .bakebanner.pop { animation: bakepop 0.45s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes bakepop { 0% { transform: translateX(-50%) scale(0.4); opacity: 0; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+/* 底座牌的階級色帶（D61）：鐵／銅／銀／金 */
+.stag[data-tier="2"] { box-shadow: inset 3px 0 0 #c98a55; }
+.stag[data-tier="3"] { box-shadow: inset 3px 0 0 #aab4c2; }
+.stag[data-tier="4"] { box-shadow: inset 3px 0 0 #f1c24b; }

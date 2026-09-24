@@ -19,27 +19,107 @@ export interface StationInfo {
   name: string;
   /** 動作名（「烤箱正在烘烤」） */
   verb: string;
-  /** 這一站做一盤要幾秒（遊戲秒） */
+  /** Lv1 這一站做一盤要幾秒（遊戲秒）；每升一級 ×`MACHINE_CURVE.sec`（`machineSeconds`） */
   sec: number;
-  /** [買 Lv1, 升 Lv2, 升 Lv3] 的價錢 */
-  prices: [number, number, number];
+  /** 買 Lv1 的價錢；升級價從它照公比推（`machinePrice`） */
+  price: number;
 }
 
 export const STATIONS: Record<StationId, StationInfo> = {
-  stove: { id: 'stove', name: '爐台', verb: '加熱', sec: 10, prices: [20, 120, 450] },
-  crack: { id: 'crack', name: '打蛋機', verb: '打蛋', sec: 4, prices: [20, 80, 300] },
-  mix: { id: 'mix', name: '攪拌機', verb: '攪拌', sec: 6, prices: [30, 160, 600] },
-  mold: { id: 'mold', name: '裝模機', verb: '裝模', sec: 5, prices: [40, 200, 750] },
-  bake: { id: 'bake', name: '烤箱', verb: '烘烤', sec: 45, prices: [80, 400, 1500] },
-  chill: { id: 'chill', name: '冷藏櫃', verb: '冷藏', sec: 40, prices: [150, 600, 2250] },
-  decorate: { id: 'decorate', name: '裝飾台', verb: '裝飾', sec: 6, prices: [60, 320, 1200] },
+  stove: { id: 'stove', name: '爐台', verb: '加熱', sec: 10, price: 20 },
+  crack: { id: 'crack', name: '打蛋機', verb: '打蛋', sec: 4, price: 20 },
+  mix: { id: 'mix', name: '攪拌機', verb: '攪拌', sec: 6, price: 30 },
+  mold: { id: 'mold', name: '裝模機', verb: '裝模', sec: 5, price: 40 },
+  bake: { id: 'bake', name: '烤箱', verb: '烘烤', sec: 45, price: 80 },
+  chill: { id: 'chill', name: '冷藏櫃', verb: '冷藏', sec: 40, price: 150 },
+  decorate: { id: 'decorate', name: '裝飾台', verb: '裝飾', sec: 6, price: 60 },
 };
 
-export const MAX_MACHINE_LEVEL = 3;
-/** 機器等級 → 一盤幾份（索引＝等級；0＝沒買） */
-export const MACHINE_PORTIONS = [0, 1, 2, 4] as const;
-/** 機器等級 → 失敗率乘數 */
-export const MACHINE_FAIL_MULT = [1, 1, 0.6, 0.3] as const;
+/**
+ * 機器等級曲線（D61，2026-09-24 使用者「每次升級應該都要同級距且同等困難」「規劃一個可以玩一個月的遊戲」）。
+ * **每一級同級距**：秒數、失敗率是等比、一盤上限每級 ＋1，所以相鄰兩級的差別永遠一樣大——
+ * 不寫成逐級查表，查表的每一格都是一個可以單獨寫錯的地方（D57 的 1/2/4 就是查表）。
+ * **每次升級同等困難**：升級價＝`upgradeBase` × `upgradeCurve(等級)`，七台與人氣同價。收入不是固定的，價錢要跟著收入曲線走，
+ * 每次升級才會隔差不多的遊玩時間；純等比（每級 ×1.38）實測第一天就升掉 75 次、第 8 天起一次都沒有
+ * （`npm run pacing` 月玩家，2026-09-24）。
+ * 每 `MACHINE_TIER_SIZE` 級一階（鐵→銅→銀→金），跨階換配色。
+ */
+export const MAX_MACHINE_LEVEL = 20;
+export const MACHINE_TIER_SIZE = 5;
+export const MACHINE_TIER_NAMES = ['鐵', '銅', '銀', '金'] as const;
+export const MACHINE_CURVE = {
+  /** 每升一級這一站的秒數乘上它（Lv20＝0.96^19≈46%） */
+  sec: 0.96,
+  /** 每升一級失敗率乘上它 */
+  fail: 0.7,
+  /**
+   * 升級價＝`upgradeBase` × `upgradeCurve(等級)`，**七台機器與店面人氣共用同一組價錢**：
+   * 「每次升級同等困難」——烤箱 Lv7→8 跟爐台 Lv7→8 一樣貴。各台只有「買 Lv1」的價錢不同（`STATIONS[*].price`）。
+   * 各台各自一組價錢時，最貴那台（冷藏櫃 150）會一路被留到最後、月底一天只升得到一兩次（月玩家量表實測）。
+   */
+  upgradeBase: 60,
+  /**
+   * 升級價曲線（見 `upgradeCurve`）：最高倍數、半高在第幾級、陡度。
+   * 月玩家量表校準（2026-09-24，每天 3×15 分鐘、30 天，seed 7）：每 5 天升級次數 40／22／19／19／19／20，
+   * 第 30 天機器 Lv16–19、人氣 Lv16（都還沒滿、都 ≥ Lv15）；第 6 天起每天穩定 3–5 次、約 15 分鐘實玩一次。
+   */
+  priceMax: 1300,
+  priceHalf: 5,
+  pricePow: 3,
+} as const;
+
+/** 等級 → 一盤最多幾份（0＝沒買）：每級 ＋1 */
+export function machinePortions(lv: number): number {
+  return Math.max(0, Math.min(MAX_MACHINE_LEVEL, Math.floor(lv)));
+}
+
+/** 這台機器在這個等級做一盤要幾秒（沒買的當 Lv1 算：菜單要能先講「買了之後要多久」） */
+export function machineSeconds(id: StationId, lv: number): number {
+  return STATIONS[id].sec * MACHINE_CURVE.sec ** (Math.max(1, lv) - 1);
+}
+
+/** 等級 → 失敗率乘數 */
+export function machineFailMult(lv: number): number {
+  return MACHINE_CURVE.fail ** (Math.max(1, lv) - 1);
+}
+
+/** 從 `lv` 升到 `lv + 1` 要多少錢（`lv`＝0 就是買 Lv1）；滿級回 null */
+export function machinePrice(id: StationId, lv: number): number | null {
+  if (lv >= MAX_MACHINE_LEVEL) return null;
+  return lv <= 0 ? STATIONS[id].price : upgradePrice(lv);
+}
+
+/** 從 `lv` 升到 `lv + 1` 的價錢（lv ≥ 1；機器與店面人氣共用，D61） */
+export function upgradePrice(lv: number): number {
+  return nicePrice(MACHINE_CURVE.upgradeBase * upgradeCurve(lv));
+}
+
+/**
+ * 升級價相對於 Lv1 價的倍數（`lv`＝0 是 1：買 Lv1 就是原價）。S 形：前幾級漲得快、之後趨近 `priceMax`。
+ * 形狀照收入走（月玩家量表，2026-09-24）：頭三四天農場還在長、收入一路往上，之後農場養滿、收入持平——
+ * 價錢跟著「先陡後平」，每次升級才會隔差不多的遊玩時間。純等比或 lv²×1.1^lv 在收入持平之後越升越久。
+ */
+export function upgradeCurve(lv: number): number {
+  if (lv <= 0) return 1;
+  const { priceMax, priceHalf, pricePow } = MACHINE_CURVE;
+  const x = lv ** pricePow;
+  return (priceMax * x) / (x + priceHalf ** pricePow);
+}
+
+/** 第幾階（1＝鐵…4＝金；沒買 0） */
+export function machineTier(lv: number): number {
+  return lv <= 0 ? 0 : Math.ceil(Math.min(lv, MAX_MACHINE_LEVEL) / MACHINE_TIER_SIZE);
+}
+
+/**
+ * 價錢取三位有效數字（12,345 → 12,300）：玩家看的是「大概多少」，逐級冒出 12,345／17,071 這種數字很難比。
+ * 不取兩位：後段曲線趨平（Lv15 以後每級只差幾百），兩位有效數字會讓相鄰兩級變同價（單元測試守「一級比一級貴」）。
+ */
+export function nicePrice(x: number): number {
+  if (x < 100) return Math.round(x);
+  const mag = 10 ** (Math.floor(Math.log10(x)) - 2);
+  return Math.round(x / mag) * mag;
+}
 
 // ── 基礎材料（D58）───────────────────────────────
 
@@ -113,9 +193,14 @@ export function recipeMaterials(species: SpeciesId): [MaterialKey, number][] {
   return Object.entries(RECIPES[species].materials) as [MaterialKey, number][];
 }
 
-/** 這道甜點走完整條路線要幾秒（遊戲秒） */
-export function recipeSeconds(species: SpeciesId): number {
-  return RECIPES[species].route.reduce((n, id) => n + STATIONS[id].sec, 0);
+/** 這一站以目前機器等級做一盤要幾秒（D60：看這台自己的等級，不是路線最低級） */
+export function stationSeconds(state: GameState, id: StationId): number {
+  return machineSeconds(id, state.bakery.machines[id]);
+}
+
+/** 這道甜點以目前機器等級走完整條路線要幾秒（遊戲秒） */
+export function recipeSeconds(state: GameState, species: SpeciesId): number {
+  return RECIPES[species].route.reduce((n, id) => n + stationSeconds(state, id), 0);
 }
 
 /**
@@ -140,7 +225,7 @@ export function lineLevel(state: GameState, species: SpeciesId): number {
 
 /** 這條線一盤**最多**做幾份＝路線上最低那台的份數（D57「前期機器可以製作的甜點份數比較少」） */
 export function linePortions(state: GameState, species: SpeciesId): number {
-  return MACHINE_PORTIONS[lineLevel(state, species)] ?? 0;
+  return machinePortions(lineLevel(state, species));
 }
 
 /** 手上的材料夠做幾份（最缺的那一種決定） */
@@ -149,22 +234,22 @@ export function affordablePortions(state: GameState, species: SpeciesId): number
 }
 
 /**
- * 這一盤實際做幾份＝min(機器上限, 材料夠做的份數)。**份數是上限不是門檻**：
- * 整條線升到 Lv3（一盤 4 份）之後，材料只夠 1 份也要開得了工——不然升級等於花錢買降級（混種原料本來就少）。
+ * 這一盤**最多**能做幾份＝min(機器上限, 材料夠做的份數)；實際做幾份由玩家在菜單上疊（D60）。
+ * **份數是上限不是門檻**：線升得再高，材料只夠 1 份也開得了工——不然升級等於花錢買降級。
  */
-export function batchQty(state: GameState, species: SpeciesId): number {
+export function maxBatch(state: GameState, species: SpeciesId): number {
   return Math.min(linePortions(state, species), affordablePortions(state, species));
 }
 
 /** 目前機器下每份的失敗率 */
 export function lineFailRate(state: GameState, species: SpeciesId): number {
   const lv = Math.max(1, lineLevel(state, species));
-  return RECIPES[species].failRate * (MACHINE_FAIL_MULT[lv] ?? 1);
+  return RECIPES[species].failRate * machineFailMult(lv);
 }
 
 /** 把這道甜點還沒買的機器都買到 Lv1 要多少錢 */
 export function lineCost(state: GameState, species: SpeciesId): number {
-  return RECIPES[species].route.filter((id) => machineLevel(state, id) === 0).reduce((n, id) => n + STATIONS[id].prices[0], 0);
+  return RECIPES[species].route.filter((id) => machineLevel(state, id) === 0).reduce((n, id) => n + STATIONS[id].price, 0);
 }
 
 /** 有沒有湊齊至少一道甜點的整條線（D57：沒有就不來客、不出預訂單） */

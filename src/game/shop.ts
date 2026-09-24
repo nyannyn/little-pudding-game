@@ -1,7 +1,8 @@
 import { BALANCE, EQUIPMENT, EQUIPMENT_IDS } from './balance';
 import { levelFor } from './level';
 import { LIQUIDS, SPECIAL_LIQUIDS, SPECIES, type LiquidId, type SpeciesId } from './species';
-import { MAX_MACHINE_LEVEL, MACHINE_PORTIONS, PANTRY, PANTRY_IDS, STATIONS, STATION_IDS, type PantryId } from './recipes';
+import { FAME, famePrice, fameIntervalMult } from './bakery';
+import { MACHINE_TIER_NAMES, PANTRY, PANTRY_IDS, STATIONS, STATION_IDS, machinePortions, machinePrice, machineSeconds, machineTier, type PantryId } from './recipes';
 import { equipmentIn, type GameState } from './state';
 
 /**
@@ -26,7 +27,7 @@ export interface ShopEntry {
   id: string;
   tab: ShopTab;
   /** 對應 HUD 的 data-a */
-  action: 'buyStock' | 'buyPantry' | 'buyMachine' | 'buyEquip' | 'buyBasin' | 'unlockZone';
+  action: 'buyStock' | 'buyPantry' | 'buyMachine' | 'buyFame' | 'buyEquip' | 'buyBasin' | 'unlockZone';
   /** 對應 HUD 的 data-arg */
   arg: string;
   /** 補貨份數（只有 buyStock 有） */
@@ -43,7 +44,7 @@ export interface ShopEntry {
   stock?: number;
   /** 大桶裝（有折扣） */
   bulk?: boolean;
-  /** 工坊機器目前幾級（0＝沒買；只有 buyMachine 有） */
+  /** 工坊機器目前幾級（0＝沒買；只有 buyMachine 有）；店面人氣卡是人氣等級 */
   machineLevel?: number;
 }
 
@@ -139,12 +140,15 @@ export function shopCatalog(state: GameState): ShopEntry[] {
     }
   }
 
-  // 工坊機器（D57）：買了之後同一張卡變成「升級」，滿級顯示已擁有
+  // 工坊機器（D57／D61）：買了之後同一張卡變成「升級」，滿級顯示已擁有。
+  // 每級同級距：文案直接講「這一級→下一級」差在哪（秒數、份數），跨階那一級另外講換成什麼顏色
   for (const id of STATION_IDS) {
     const info = STATIONS[id];
     const lv = state.bakery.machines[id];
-    const maxed = lv >= MAX_MACHINE_LEVEL;
-    const price = maxed ? 0 : info.prices[lv]!;
+    const next = machinePrice(id, lv);
+    const maxed = next === null;
+    const price = next ?? 0;
+    const tierUp = lv > 0 && machineTier(lv + 1) > machineTier(lv);
     out.push({
       id: `machine:${id}`,
       tab: 'bakery',
@@ -152,10 +156,40 @@ export function shopCatalog(state: GameState): ShopEntry[] {
       arg: id,
       name: lv === 0 ? info.name : `${info.name} Lv.${lv}`,
       desc: maxed
-        ? `一盤 ${MACHINE_PORTIONS[lv]} 份，已經是最高級`
+        ? `一盤 ${machinePortions(lv)} 份、一站 ${secText(machineSeconds(id, lv))}，已經是最高級`
         : lv === 0
-          ? `${info.verb}一站 ${info.sec} 秒。Lv1 一盤 ${MACHINE_PORTIONS[1]} 份`
-          : `升到 Lv${lv + 1}：一盤 ${MACHINE_PORTIONS[lv + 1]} 份、較少失敗`,
+          ? `${info.verb}一站 ${secText(info.sec)}。Lv1 一盤最多 ${machinePortions(1)} 份`
+          : `升到 Lv${lv + 1}：一盤最多 ${machinePortions(lv)}→${machinePortions(lv + 1)} 份、一站 ${secText(machineSeconds(id, lv))}→${secText(machineSeconds(id, lv + 1))}${tierUp ? `，升上${MACHINE_TIER_NAMES[machineTier(lv + 1) - 1]}級` : ''}`,
+      price,
+      level: 1,
+      status: maxed ? 'owned' : 'available',
+      affordable: state.coins >= price,
+      machineLevel: lv,
+    });
+  }
+
+  // 店面人氣（D61）：需求那一條，跟機器同一頁、同一種升級卡
+  {
+    const lv = state.bakery.fame;
+    const next = famePrice(lv);
+    const maxed = next === null;
+    const price = next ?? 0;
+    const B = BALANCE.bakery;
+    const gap = (l: number) => secText(((B.customerIntervalMin + B.customerIntervalMax) / 2) * fameIntervalMult(l));
+    const perk = lv + 1 === FAME.staffLevel
+      ? '，請到店員（自動上架，離線也照賣）'
+      : lv + 1 === FAME.buy3Level
+        ? '，客人一次最多買 3 份'
+        : lv + 1 === FAME.buy4Level
+          ? '，客人一次最多買 4 份'
+          : '';
+    out.push({
+      id: 'fame',
+      tab: 'bakery',
+      action: 'buyFame',
+      arg: 'fame',
+      name: `店面人氣 Lv.${lv}`,
+      desc: maxed ? `客人約每 ${gap(lv)} 來一位，已經是最高級` : `升到 Lv${lv + 1}：客人約每 ${gap(lv)}→${gap(lv + 1)} 來一位${perk}`,
       price,
       level: 1,
       status: maxed ? 'owned' : 'available',
@@ -220,4 +254,9 @@ export function shopCatalog(state: GameState): ShopEntry[] {
 /** 升到某一級時新上架的商品（升級 toast 用） */
 export function unlockedAtLevel(state: GameState, level: number): ShopEntry[] {
   return shopCatalog(state).filter((e) => e.level === level && e.status !== 'owned');
+}
+
+/** 「45 秒」「4.3 秒」：十秒以下留一位小數，不然每升一級的差別會被四捨五入吃掉 */
+function secText(sec: number): string {
+  return sec >= 10 ? `${Math.round(sec)} 秒` : `${Math.round(sec * 10) / 10} 秒`;
 }

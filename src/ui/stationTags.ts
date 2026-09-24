@@ -1,5 +1,5 @@
 import { stationProgress, stationStatus } from '../game/bakery';
-import { MACHINE_PORTIONS, MAX_MACHINE_LEVEL, STATIONS, STATION_IDS, type StationId } from '../game/recipes';
+import { STATIONS, STATION_IDS, machinePortions, machinePrice, machineTier, type StationId } from '../game/recipes';
 import type { GameState } from '../game/state';
 
 /**
@@ -20,6 +20,12 @@ import type { GameState } from '../game/state';
 export class StationTags {
   readonly root: HTMLElement;
   private readonly tags = {} as Record<StationId, Tag>;
+  /**
+   * 有機器到兩位數等級（D61，Lv10–20）：「打蛋機Lv18」在 390px 的牌子裡塞不下（實測字寬 35 > 內寬 31），
+   * 改用窄版的兩行排法（名稱一行、Lv 一行）——同一套排法、同一條避讓規則，不另開第三種版型。
+   */
+  private twoDigit = false;
+  private lastPlace: [Record<StationId, { x: number; y: number }>, number] | null = null;
 
   constructor() {
     this.root = document.createElement('div');
@@ -55,6 +61,7 @@ export class StationTags {
    * 靠得太近的（不同排）把下面那個往下推，牌子之間不重疊。
    */
   place(points: Record<StationId, { x: number; y: number }>, keepBelow: number) {
+    this.lastPlace = [points, keepBelow];
     let gap = Infinity;
     for (const a of STATION_IDS) {
       for (const b of STATION_IDS) {
@@ -62,7 +69,7 @@ export class StationTags {
       }
     }
     const w = Math.max(MIN_W, Math.min(TAG_W, Math.floor(gap) - 3));
-    const narrow = w < WIDE_W;
+    const narrow = w < WIDE_W || this.twoDigit;
     const h = narrow ? TAG_H_NARROW : TAG_H;
     this.root.style.setProperty('--stag-w', `${w}px`);
     this.root.classList.toggle('narrow', narrow);
@@ -87,16 +94,22 @@ export class StationTags {
   }
 
   update(state: GameState) {
+    const twoDigit = STATION_IDS.some((id) => state.bakery.machines[id] >= 10);
+    if (twoDigit !== this.twoDigit) {
+      this.twoDigit = twoDigit;
+      if (this.lastPlace) this.place(...this.lastPlace);
+    }
     for (const id of STATION_IDS) {
       const t = this.tags[id];
       const b = state.bakery.stations[id].batch;
       const status = stationStatus(state, id);
       const lv = state.bakery.machines[id];
-      const maxed = lv >= MAX_MACHINE_LEVEL;
-      const affordable = !maxed && state.coins >= (STATIONS[id].prices[lv] ?? Infinity);
+      const price = machinePrice(id, lv);
+      const maxed = price === null;
+      const affordable = price !== null && state.coins >= price;
       const ready = status === 'ready';
       const qty = b && status !== 'idle' ? b.qty : 0;
-      const cap = MACHINE_PORTIONS[lv] ?? 0;
+      const cap = machinePortions(lv);
       const key = `${lv}:${qty}:${maxed ? 'max' : affordable ? 'up' : 'poor'}:${status}`;
       if (key !== t.key) {
         t.key = key;
@@ -108,6 +121,8 @@ export class StationTags {
         t.el.classList.toggle('off', lv === 0);
         t.el.classList.toggle('afford', affordable);
         t.el.classList.toggle('ready', ready);
+        // 階級（D61）：鐵／銅／銀／金，牌子左邊一條色帶跟機器前面的星星同色
+        t.el.dataset.tier = String(machineTier(lv));
         const name = STATIONS[id].name;
         t.el.setAttribute(
           'aria-label',

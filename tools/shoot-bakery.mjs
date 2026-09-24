@@ -49,7 +49,7 @@ await page.evaluate(() => {
   Object.assign(s.bakery.machines, { stove: 2, crack: 1, mix: 3, mold: 2, bake: 2, chill: 1, decorate: 1 });
   const plan = [['stove', 'caramel'], ['crack', 'custard'], ['mix', 'matcha'], ['mold', 'strawberry'], ['bake', 'hojicha'], ['chill', 'panna'], ['decorate', 'brulee']];
   plan.forEach(([id, sp], i) => {
-    s.bakery.stations[id] = { batch: { species: sp, qty: i % 2 ? 2 : 4 }, doneAt: s.time + 20 + i };
+    s.bakery.stations[id] = { batch: { species: sp, qty: i % 2 ? 2 : 4 }, startedAt: s.time, doneAt: s.time + 20 + i };
   });
   Object.assign(s.bakery.shelf, { caramel: 3, matcha: 2, strawberry: 2, custard: 1, sakura: 2 });
   Object.assign(s.desserts, { caramel: 2, panna: 2, hojicha: 1 });
@@ -67,7 +67,7 @@ await shot('bakery-customers');
 // ⑤ 菜單卡：材料給一部分，讓卡片有可按的也有缺料的
 await page.evaluate(() => {
   const s = window.__lpg.state;
-  for (const id of Object.keys(s.bakery.stations)) s.bakery.stations[id] = { batch: null, doneAt: 0 };
+  for (const id of Object.keys(s.bakery.stations)) s.bakery.stations[id] = { batch: null, startedAt: 0, doneAt: 0 };
   s.eggs = 6; s.stock.milk = 3; s.pantry.flour = 2; s.ingredients.caramel = 2; s.ingredients.panna = 1;
 });
 await step(2);

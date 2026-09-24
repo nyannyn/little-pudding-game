@@ -49,7 +49,7 @@ function cardHtml(e: ShopEntry): string {
   let foot: string;
   switch (e.status) {
     case 'owned':
-      foot = `<span class="owned">${e.action === 'buyEquip' ? '已安裝' : e.action === 'buyMachine' ? '已滿級' : '已擁有'}</span>`;
+      foot = `<span class="owned">${e.action === 'buyEquip' ? '已安裝' : e.action === 'buyMachine' || e.action === 'buyFame' ? '已滿級' : '已擁有'}</span>`;
       break;
     case 'locked':
       foot = `<span class="lockedtag"><img src="${ART.lock}" alt="">Lv.${e.level} 解鎖</span>`;

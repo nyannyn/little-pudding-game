@@ -10,8 +10,12 @@ import {
   blockerLines,
   dessertPrice,
   lineFailRate,
-  batchQty,
+  machinePrice,
+  machineTier,
+  maxBatch,
+  upgradePrice,
   recipeBlockers,
+  stationSeconds,
   takeRecipeMaterials,
   type StationId,
 } from './recipes';
@@ -37,6 +41,12 @@ export interface Batch {
 export interface Station {
   /** 這一站上的那一盤；null＝空站 */
   batch: Batch | null;
+  /**
+   * 這一盤進到這一站的遊戲時間（D60）。秒數看機器等級、而等級做到一半可能被升上去，
+   * 所以進度條要用「進站那一刻定下的長度」（doneAt − startedAt）算，不能拿當下等級的秒數重算——
+   * 否則升級那一瞬間進度條會往前跳。
+   */
+  startedAt: number;
   /** 這一站做完的遊戲時間（batch 為 null 時無意義） */
   doneAt: number;
 }
@@ -65,8 +75,43 @@ export interface BakeryState {
   lastDay: DayTally | null;
   /** 已經結算到第幾天（避免同一天結算兩次） */
   closedDay: number;
-  /** 每台機器的等級（0＝沒買，D57） */
+  /** 每台機器的等級（0＝沒買，D57；Lv1–20，D61） */
   machines: Record<StationId, number>;
+  /** 店面人氣 Lv1–20（D61）：客人間隔、一次買幾份、店員自動上架 */
+  fame: number;
+}
+
+/**
+ * 店面人氣（D61）：需求那一條。實測（2026-09-24）Lv3 之後產量就超過客流，
+ * 只加機器等級的話 Lv3 以後的升級買不到任何東西。每級同級距：客人間隔 ×`interval`。
+ * 跨階里程碑：`staffLevel` 起店員自動上架（離線也照賣）、`buy3Level`／`buy4Level` 起客人一次最多買 3／4 份。
+ */
+export const FAME = {
+  max: 20,
+  interval: 0.93,
+  staffLevel: 6,
+  buy3Level: 11,
+  buy4Level: 16,
+} as const;
+
+/** 從人氣 `lv` 升到 `lv + 1` 要多少錢；滿級 null */
+export function famePrice(lv: number): number | null {
+  if (lv >= FAME.max) return null;
+  return upgradePrice(lv);
+}
+
+/** 這個人氣下客人間隔的倍率 */
+export function fameIntervalMult(lv: number): number {
+  return FAME.interval ** (Math.max(1, lv) - 1);
+}
+
+/** 這個人氣下一位客人最多買幾份 */
+export function fameMaxBuy(lv: number): number {
+  return lv >= FAME.buy4Level ? 4 : lv >= FAME.buy3Level ? 3 : 2;
+}
+
+export function hasStaff(state: GameState): boolean {
+  return state.bakery.fame >= FAME.staffLevel;
 }
 
 export type StationStatus = 'idle' | 'working' | 'ready';
@@ -79,7 +124,7 @@ function zeroShelf(): Record<SpeciesId, number> {
 
 function emptyStations(): Record<StationId, Station> {
   const out = {} as Record<StationId, Station>;
-  for (const id of STATION_IDS) out[id] = { batch: null, doneAt: 0 };
+  for (const id of STATION_IDS) out[id] = { batch: null, startedAt: 0, doneAt: 0 };
   return out;
 }
 
@@ -99,6 +144,7 @@ export function createBakery(epoch: number): BakeryState {
     lastDay: null,
     closedDay: 0,
     machines: noMachines(),
+    fame: 1,
   };
 }
 
@@ -114,6 +160,18 @@ function tally(v: unknown, fallbackDay: number): DayTally {
     served: Math.max(0, num(src.served, 0)),
     missed: Math.max(0, num(src.missed, 0)),
   };
+}
+
+/**
+ * v9 的機器等級（D57，3 級：1/2/4 份、失敗 ×1/×0.6/×0.3）換成 D61 的 20 級：**每一項都不能比舊的差**。
+ * 舊 Lv2＝2 份／×0.6 → 新 Lv3（3 份／×0.49）；舊 Lv3＝4 份／×0.3 → 新 Lv5（5 份／×0.24）；秒數新版只會更快。
+ * 照原數字留（舊 Lv3 → 新 Lv3＝3 份）等於上線當天默默少一份，而且不會有測試紅。
+ */
+export const V9_MACHINE_LEVEL = [0, 1, 3, 5] as const;
+
+/** 存檔裡的工坊是 D61 以前的 3 級版：沒有 `fame` 欄（看形狀不看 schemaVersion，D45 的教訓） */
+export function isV9Bakery(raw: unknown): boolean {
+  return typeof raw === 'object' && raw !== null && 'machines' in raw && !('fame' in raw);
 }
 
 /** 存檔裡的工坊是 D57 以前的五站版（沒有 `machines` 欄）：看形狀不看 schemaVersion（D45 的教訓） */
@@ -156,15 +214,23 @@ export function restoreBakery(raw: unknown, now: number): BakeryState {
   const r = raw as Partial<BakeryState>;
   const out = createBakery(num(r.epoch, now));
   if (!isLegacyBakery(raw)) {
+    const v9 = isV9Bakery(raw);
     for (const id of STATION_IDS) {
       const src = (r.stations as Record<string, Partial<Station> | undefined> | undefined)?.[id];
       const b = src?.batch;
       if (b && SPECIES_IDS.includes(b.species as SpeciesId) && num(b.qty, 0) > 0) {
-        out.stations[id] = { batch: { species: b.species as SpeciesId, qty: Math.floor(num(b.qty, 1)) }, doneAt: num(src?.doneAt, now) };
+        const doneAt = num(src?.doneAt, now);
+        // v9 沒有 startedAt：那一盤是用 Lv1 的固定秒數排的（D57 的秒數不隨等級變）
+        const startedAt = Math.min(doneAt, num(src?.startedAt, doneAt - STATIONS[id].sec));
+        out.stations[id] = { batch: { species: b.species as SpeciesId, qty: Math.floor(num(b.qty, 1)) }, startedAt, doneAt };
       }
     }
     const m = r.machines as Record<string, unknown> | undefined;
-    for (const id of STATION_IDS) out.machines[id] = Math.min(MAX_MACHINE_LEVEL, Math.max(0, Math.floor(num(m?.[id], 0))));
+    for (const id of STATION_IDS) {
+      const lv = Math.max(0, Math.floor(num(m?.[id], 0)));
+      out.machines[id] = Math.min(MAX_MACHINE_LEVEL, v9 ? (V9_MACHINE_LEVEL[Math.min(3, lv)] ?? 0) : lv);
+    }
+    out.fame = Math.min(FAME.max, Math.max(1, Math.floor(num(r.fame, 1))));
   }
   const shelf = r.shelf as Record<string, unknown> | undefined;
   for (const id of SPECIES_IDS) out.shelf[id] = Math.max(0, Math.floor(num(shelf?.[id], 0)));
@@ -213,8 +279,9 @@ export function stationStatus(state: GameState, id: StationId): StationStatus {
 export function stationProgress(state: GameState, id: StationId): number {
   const st = state.bakery.stations[id];
   if (!st.batch) return 0;
-  const total = STATIONS[id].sec;
-  return Math.min(1, Math.max(0, 1 - (st.doneAt - state.time) / total));
+  const total = st.doneAt - st.startedAt;
+  if (total <= 0) return 1;
+  return Math.min(1, Math.max(0, (state.time - st.startedAt) / total));
 }
 
 /** 這一盤在自己的路線上，下一站是哪裡（null＝這一站是最後一站） */
@@ -245,39 +312,63 @@ export type BakeryResult = { ok: true } | { ok: false; error: string };
 const OK: BakeryResult = { ok: true };
 const fail = (error: string): BakeryResult => ({ ok: false, error });
 
+/** 一盤進到某一站：這一站要多久在這一刻定下（看這台當下的等級，D60） */
+function enterStation(state: GameState, id: StationId, b: Batch): void {
+  const st = state.bakery.stations[id];
+  st.batch = b;
+  st.startedAt = state.time;
+  st.doneAt = state.time + stationSeconds(state, id);
+}
+
 /**
- * 從菜單把一盤放上線（D56）。機器、材料（至少 1 份）、起始站三項都要過，原料開工時一次扣齊；
- * 一盤份數＝min(這條線最低那台的份數, 材料夠做的份數)（D57）。
+ * 從菜單把一盤放上線（D56）。機器、材料（至少 1 份）、起始站三項都要過，原料開工時一次扣齊。
+ * **份數由玩家疊**（D60）：1 ≤ qty ≤ `maxBatch`（這條線最低那台的上限、材料夠做的份數取小）。
+ * 超過就拒絕、不夾到上限——夾了等於 UI 算錯的時候靜默少做，玩家看到「按了 5 份、出爐 3 份」。
  */
-export function startBatch(state: GameState, species: SpeciesId, emit: EventSink): BakeryResult {
+export function startBatch(state: GameState, species: SpeciesId, qty: number, emit: EventSink): BakeryResult {
   const lines = blockerLines(recipeBlockers(state, species));
   if (lines.length) return fail(lines.join('；'));
-  const qty = batchQty(state, species);
+  const max = maxBatch(state, species);
+  if (!Number.isInteger(qty) || qty < 1) return fail('至少要做 1 份');
+  if (qty > max) return fail(`這一盤最多 ${max} 份`);
   takeRecipeMaterials(state, species, qty);
   const first = RECIPES[species].route[0]!;
-  const st = state.bakery.stations[first];
-  st.batch = { species, qty };
-  st.doneAt = state.time + STATIONS[first].sec;
+  enterStation(state, first, { species, qty });
   emit({ type: 'bakeStep', station: first, species, auto: false });
   return OK;
 }
 
-/** 買機器或升一級（D57）：價錢在 `STATIONS[id].prices`，商店目錄讀同一份 */
+/**
+ * 買機器或升一級（D57／D61）：價錢由 `machinePrice` 照公比算，商店目錄讀同一個函式。
+ * 正在這一站做的那一盤不受影響（它的 doneAt 在進站時就定了），下一盤才照新等級。
+ */
 export function buyMachine(state: GameState, id: StationId, emit: EventSink): BakeryResult {
   const lv = state.bakery.machines[id];
-  if (lv >= MAX_MACHINE_LEVEL) return fail(`${STATIONS[id].name}已經是最高級`);
-  const price = STATIONS[id].prices[lv]!;
+  const price = machinePrice(id, lv);
+  if (price === null) return fail(`${STATIONS[id].name}已經是最高級`);
   if (state.coins < price) return fail('焦糖幣不夠');
   state.coins -= price;
   state.bakery.machines[id] = lv + 1;
   emit({ type: 'buy', what: lv === 0 ? STATIONS[id].name : `${STATIONS[id].name} Lv.${lv + 1}`, cost: price, auto: false });
+  if (lv > 0 && machineTier(lv + 1) > machineTier(lv)) emit({ type: 'tierUp', what: STATIONS[id].name, tier: machineTier(lv + 1) });
   return OK;
 }
 
 /** 下一級要多少錢；滿級回 null */
 export function machineNextPrice(state: GameState, id: StationId): number | null {
-  const lv = state.bakery.machines[id];
-  return lv >= MAX_MACHINE_LEVEL ? null : STATIONS[id].prices[lv]!;
+  return machinePrice(id, state.bakery.machines[id]);
+}
+
+/** 升店面人氣一級（D61） */
+export function buyFame(state: GameState, emit: EventSink): BakeryResult {
+  const lv = state.bakery.fame;
+  const price = famePrice(lv);
+  if (price === null) return fail('店面人氣已經是最高級');
+  if (state.coins < price) return fail('焦糖幣不夠');
+  state.coins -= price;
+  state.bakery.fame = lv + 1;
+  emit({ type: 'buy', what: `店面人氣 Lv.${lv + 1}`, cost: price, auto: false });
+  return OK;
 }
 
 /**
@@ -358,7 +449,7 @@ function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
     if (r < 0) { species = id; break; }
   }
   if (bk.shelf[species] <= 0) species = SPECIES_IDS.find((id) => bk.shelf[id] > 0) as SpeciesId;
-  const qty = bk.shelf[species] >= 2 && rng.next() < BALANCE.bakery.customerDoubleChance ? 2 : 1;
+  const qty = customerQty(state, bk.shelf[species], rng);
   const coins = dessertPrice(species) * qty;
   bk.shelf[species] -= qty;
   state.coins += coins;
@@ -368,6 +459,16 @@ function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
   bk.today.served++;
   emit({ type: 'customer', species, qty, coins });
   grantXp(state, BALANCE.xp.sellDessert * qty, emit);
+}
+
+/**
+ * 一位客人買幾份：人氣 Lv11 以前照舊（`customerDoubleChance` 的機率買 2 份）；
+ * 之後在 1…最多份數之間平均擲（Lv11 最多 3、Lv16 最多 4），不超過架上那一種有的份數。
+ */
+function customerQty(state: GameState, onShelf: number, rng: Rng): number {
+  const max = fameMaxBuy(state.bakery.fame);
+  const want = max <= 2 ? (rng.next() < BALANCE.bakery.customerDoubleChance ? 2 : 1) : 1 + Math.floor(rng.next() * max);
+  return Math.max(1, Math.min(want, onShelf));
 }
 
 /** 最後一站做完：每份獨立擲失敗（D56），成功的進成品櫃 */
@@ -400,8 +501,7 @@ function runLine(state: GameState, rng: Rng, emit: EventSink): void {
       continue;
     }
     if (st[next].batch) continue;
-    st[next].batch = b;
-    st[next].doneAt = state.time + STATIONS[next].sec;
+    enterStation(state, next, b);
     st[id].batch = null;
     emit({ type: 'bakeStep', station: next, species: b.species, auto: true });
   }
@@ -409,6 +509,8 @@ function runLine(state: GameState, rng: Rng, emit: EventSink): void {
 
 export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
   runLine(state, rng, emit);
+  // 店員（人氣 Lv6 起）：成品櫃有貨、架上有空就補——離線結算也照跑，所以離線那幾小時賣得到東西
+  if (hasStaff(state)) stockShelf(state, emit, true);
 
   const B = BALANCE.bakery;
   const bk = state.bakery;
@@ -429,5 +531,6 @@ export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
   if (bk.today.day !== c.day) bk.today = { day: c.day, revenue: 0, served: 0, missed: 0 };
   if (state.time < bk.nextCustomerAt) return;
   serveCustomer(state, rng, emit);
-  bk.nextCustomerAt = state.time + range(rng, B.customerIntervalMin, B.customerIntervalMax);
+  const k = fameIntervalMult(bk.fame);
+  bk.nextCustomerAt = state.time + range(rng, B.customerIntervalMin * k, B.customerIntervalMax * k);
 }

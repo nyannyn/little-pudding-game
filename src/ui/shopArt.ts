@@ -32,6 +32,7 @@ import mcMix from '../assets/shop/mcMix.svg';
 import mcMold from '../assets/shop/mcMold.svg';
 import mcOven from '../assets/shop/mcOven.svg';
 import mcStove from '../assets/shop/mcStove.svg';
+import fame from '../assets/shop/fame.svg';
 import milkCarton from '../assets/shop/milkCarton.svg';
 import riceFlour from '../assets/shop/riceFlour.svg';
 import sakura from '../assets/shop/sakura.webp';
@@ -49,7 +50,7 @@ export const ART = {
   eqAutoFill, eqCollector, eqRestock,
   bathtub, window, store,
   ingCaramel, ingPanna, jar, custard, hojicha, candy, sakura, lock, star, egg,
-  mcStove, mcCrack, mcMix, mcMold, mcOven, mcChill, mcDecorate, flour, riceFlour,
+  mcStove, mcCrack, mcMix, mcMold, mcOven, mcChill, mcDecorate, flour, riceFlour, fame,
 } as const;
 
 export type ArtKey = keyof typeof ART;
@@ -95,6 +96,7 @@ export function artFor(e: ShopEntry): ArtSpec {
     case 'buyStock': return { main: LIQUID_ART[e.arg as LiquidId] };
     case 'buyPantry': return { main: PANTRY_ART[e.arg as PantryId] };
     case 'buyMachine': return { main: MACHINE_ART[e.arg as StationId] };
+    case 'buyFame': return { main: 'fame' };
     case 'buyEquip': return { main: EQUIPMENT_ART[e.arg as EquipmentId] };
     case 'buyBasin': return { main: 'bathtub', corner: LIQUID_ART[e.arg as LiquidId] };
     case 'unlockZone': return { main: e.arg.startsWith('c0') ? 'window' : 'store' };

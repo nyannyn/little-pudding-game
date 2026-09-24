@@ -15,6 +15,7 @@ import {
   lineFailRate,
   linePortions,
   materialHave,
+  maxBatch,
   materialName,
   recipeBlockers,
   recipeMaterials,
@@ -40,8 +41,10 @@ export interface HudActions {
   pickAll(): void;
   /** 切換農場／甜點工坊（D51：兩個獨立場景） */
   setView(view: GameView): void;
-  /** 從菜單把一盤放上流水線（D56；之後自己一站一站走完） */
-  startBatch(species: SpeciesId): void;
+  /** 從菜單把一盤放上流水線（D56；之後自己一站一站走完）；份數由玩家在菜單上疊（D60） */
+  startBatch(species: SpeciesId, qty: number): void;
+  /** 升店面人氣一級（D61） */
+  buyFame(): void;
   /** 買工坊機器或升一級（D57） */
   buyMachine(id: StationId): void;
   /** 點機器頭上的標籤（份數／進度條／升級圖示） */
@@ -130,6 +133,17 @@ export class Hud {
   private readonly orderCard: HTMLElement;
   private readonly ordBadge: HTMLElement;
   private menuSig = '';
+  /**
+   * 菜單上正在疊的那一盤（D60）：點卡片 ＋1 份，按「開始製作」才扣材料。
+   * 只存在 HUD、不進 `GameState`——關掉菜單就清掉，所以不用 migrate、也不會有「半盤」卡在存檔裡。
+   */
+  private draft: { id: SpeciesId; qty: number } | null = null;
+  /** 出爐字卡（D60）：同一幀的幾盤先累加在這裡 */
+  private readonly bakePending = new Map<string, number>();
+  private readonly bakeCard: HTMLElement;
+  private bakeTimer = 0;
+  /** 每道甜點這一盤最多幾份（syncMenu 算好，點擊時用；點擊處理拿不到 state） */
+  private menuMax = new Map<SpeciesId, number>();
   private view: GameView = 'farm';
   private readonly shop = new ShopView();
   /** 工坊機器頭上的標籤；main.ts 給位置、每幀更新 */
@@ -263,10 +277,11 @@ export class Hud {
             </div>
           </div>
         </div>
+        <div class="bakebanner bakery-only" hidden aria-live="polite"></div>
         <div class="welcome menucard" hidden>
           <div class="card">
             <h2>菜單</h2>
-            <p class="lead">挑一道甜點放上流水線，機器會自己一站一站做完。</p>
+            <p class="lead">點一道甜點的卡片，點一下多做一份；疊好了按「開始製作」，機器會自己一站一站做完。</p>
             <div class="rlist"></div>
             <button data-a="closeMenu" class="ghost">關閉</button>
           </div>
@@ -321,6 +336,7 @@ export class Hud {
     this.dayBar = q('.daybar');
     this.achBadge = q('.achbtn .badge');
     this.menuCard = q('.menucard');
+    this.bakeCard = q('.bakebanner');
     this.shopLvl = q('.shopbtn .lvl');
     this.hint = q('.hint');
     this.toasts = q('.toasts');
@@ -360,12 +376,20 @@ export class Hud {
       case 'goBakery': this.act.setView('bakery'); break;
       case 'goFarm': this.act.setView('farm'); break;
       case 'openMenu': this.openMenu(); break;
-      case 'startBatch':
+      case 'addPortion': this.addPortion(arg as SpeciesId, +1); break;
+      case 'portionMinus': this.addPortion(arg as SpeciesId, -1); break;
+      case 'portionMax': this.addPortion(arg as SpeciesId, Infinity); break;
+      case 'startBatch': {
+        const d = this.draft;
+        if (!d || d.id !== arg || d.qty < 1) break;
         this.menuCard.hidden = true;
-        this.act.startBatch(arg as SpeciesId);
+        this.draft = null;
+        this.act.startBatch(d.id, d.qty);
         break;
-      case 'closeMenu': this.menuCard.hidden = true; break;
+      }
+      case 'closeMenu': this.menuCard.hidden = true; this.draft = null; break;
       case 'buyMachine': this.act.buyMachine(arg as StationId); break;
+      case 'buyFame': this.act.buyFame(); break;
       case 'stationTag': this.act.stationTag(arg as StationId); break;
       case 'buyPantry': this.act.buyPantry(arg as PantryId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
       case 'stockShelf': this.act.stockShelf(); break;
@@ -567,6 +591,27 @@ export class Hud {
     }
   }
 
+  /**
+   * 出爐字卡（D60）：「出爐！焦糖布丁塔 ×8」。同一幀進來好幾盤（下游先動，一個 tick 可能同時出爐兩三盤）
+   * 先累加、等這一輪事件處理完（microtask）才畫一張——不用時間節流，節流會把同一幀的其他幾盤吃掉（D42 的教訓）。
+   */
+  bakeBanner(dessert: string, qty: number) {
+    const first = this.bakePending.size === 0;
+    this.bakePending.set(dessert, (this.bakePending.get(dessert) ?? 0) + qty);
+    if (!first) return;
+    queueMicrotask(() => {
+      const rows = [...this.bakePending];
+      this.bakePending.clear();
+      this.bakeCard.innerHTML = `<b>出爐！</b>${rows.map(([d, n]) => `<span>${d} <em>×${n}</em></span>`).join('')}`;
+      this.bakeCard.hidden = false;
+      this.bakeCard.classList.remove('pop');
+      void this.bakeCard.offsetWidth;
+      this.bakeCard.classList.add('pop');
+      clearTimeout(this.bakeTimer);
+      this.bakeTimer = window.setTimeout(() => { this.bakeCard.hidden = true; }, 1800);
+    });
+  }
+
   toast(message: string, bad = false) {
     const node = el(`<div class="toast${bad ? ' bad' : ''}"></div>`);
     node.textContent = message;
@@ -629,6 +674,7 @@ export class Hud {
   openMenu() {
     this.menuCard.hidden = false;
     this.menuSig = '';
+    this.draft = null;
     this.lastRefresh = -1;
   }
 
@@ -655,43 +701,92 @@ export class Hud {
   }
 
   /**
-   * 菜單（D56）：十道食譜一道一張卡——原料有／需、總時長、失敗率、售價、這條線一盤幾份；
-   * 機器與原料都齊、起始站空著才能按「開始製作」，不然卡片下面逐條寫缺什麼。
+   * 疊份數（D60）：`delta` ＋1／－1，Infinity＝直接疊到最多。換點別道＝那一道從 1 份起（草稿一次只有一盤）。
+   * 上限＝`maxBatch`（這條線最低那台的上限、材料夠做幾份取小），疊到頂就停在頂、不跳錯誤。
+   */
+  private addPortion(id: SpeciesId, delta: number) {
+    const max = this.menuMax.get(id) ?? 0;
+    if (max <= 0) return;
+    const cur = this.draft?.id === id ? this.draft.qty : 0;
+    const next = delta === Infinity ? max : Math.max(0, Math.min(max, cur + delta));
+    this.draft = next > 0 ? { id, qty: next } : null;
+    if (delta > 0 && cur === max) {
+      // 已經疊到頂：卡片上的數字抖一下，講清楚為什麼沒有再多
+      const q = this.menuCard.querySelector<HTMLElement>(`.rcard[data-id="${id}"] .qty`);
+      q?.classList.remove('bump');
+      void q?.offsetWidth;
+      q?.classList.add('bump');
+    }
+    this.paintDraft();
+  }
+
+  /** 草稿的數字就地改（不重建卡片：連點的時候手指底下的節點不能被換掉，D55 的教訓） */
+  private paintDraft() {
+    for (const card of this.menuCard.querySelectorAll<HTMLElement>('.rcard')) {
+      const id = card.dataset.id as SpeciesId;
+      const max = this.menuMax.get(id) ?? 0;
+      const qty = this.draft?.id === id ? Math.min(this.draft.qty, max) : 0;
+      if (this.draft?.id === id && qty !== this.draft.qty) this.draft = qty > 0 ? { id, qty } : null;
+      card.classList.toggle('picked', qty > 0);
+      const q = card.querySelector<HTMLElement>('.qty b');
+      if (!q) continue;
+      q.textContent = String(qty);
+      (card.querySelector('.qmax') as HTMLElement).textContent = String(max);
+      (card.querySelector('[data-a="portionMinus"]') as HTMLButtonElement).disabled = qty <= 0;
+      (card.querySelector('[data-a="portionMax"]') as HTMLButtonElement).disabled = qty >= max;
+      const go = card.querySelector('[data-a="startBatch"]') as HTMLButtonElement;
+      go.disabled = qty <= 0;
+      go.textContent = qty > 0 ? `開始製作 ×${qty}` : '點卡片加份數';
+    }
+  }
+
+  /**
+   * 菜單（D56／D60）：十道食譜一道一張卡——原料有／需、總時長、失敗率、售價、這條線一盤最多幾份；
+   * 做得出來的卡片點一下 ＋1 份（`addPortion`），按「開始製作 ×N」才放上線；
+   * 做不出來的卡片下面逐條寫缺什麼。
    *
-   * 結構（能不能開工、缺哪幾樣、份數上限）變了才重建；持有數每 160ms 就地改字——
-   * 收集手一直在撿，把持有數放進 sig（包括「缺原料：蛋 3/4」這種字）等於一兩秒重建一次，
+   * 結構（能不能開工、缺哪幾樣、機器上限、總時長）變了才重建；持有數、這一盤最多幾份、疊了幾份
+   * 每 160ms 就地改字——收集手一直在撿，把持有數放進 sig 等於一兩秒重建一次，
    * 手指底下的按鈕會被換掉（D55 的教訓）。所以缺料那行只寫材料名，數字在晶片上。
    */
   private syncMenu(state: GameState) {
     const rows = SPECIES_IDS.map((id) => {
       const b = recipeBlockers(state, id);
-      return { id, ok: canStartRecipe(state, id), lines: blockerLines(b, false), qty: linePortions(state, id), fail: lineFailRate(state, id) };
+      return { id, ok: canStartRecipe(state, id), lines: blockerLines(b, false), qty: linePortions(state, id), fail: lineFailRate(state, id), secs: Math.round(recipeSeconds(state, id)) };
     });
+    for (const r of rows) this.menuMax.set(r.id, r.ok ? maxBatch(state, r.id) : 0);
     const sig = JSON.stringify(rows);
     if (sig !== this.menuSig) {
       this.menuSig = sig;
       const list = this.menuCard.querySelector('.rlist') as HTMLElement;
       const scroll = list.scrollTop;
       list.innerHTML = rows
-        .map(({ id, ok, lines, qty, fail }) => {
+        .map(({ id, ok, lines, qty, fail, secs }) => {
           const info = SPECIES[id];
           const r = RECIPES[id];
-          const secs = recipeSeconds(id);
           const time = secs >= 60 ? `${Math.floor(secs / 60)} 分 ${secs % 60} 秒` : `${secs} 秒`;
-          // 晶片寫「一份要幾個」：份數是上限（D57），夠 1 份就開得了工
+          // 晶片寫「一份要幾個」：份數由玩家疊（D60），夠 1 份就開得了工
           const mats = recipeMaterials(id)
             .map(([k, n]) => `<span class="mat" data-k="${k}" data-need="${n}">${materialName(k)} <b>0</b>/${n}</span>`)
             .join('');
-          return `<div class="rcard" data-id="${id}" data-ok="${ok}">
+          const foot = ok
+            ? `<div class="rfoot">
+                <button class="mini" data-a="portionMinus" data-arg="${id}" aria-label="少一份">−</button>
+                <span class="qty">×<b>0</b></span>
+                <button class="mini" data-a="portionMax" data-arg="${id}">最多 <span class="qmax">0</span></button>
+                <button class="buy" data-a="startBatch" data-arg="${id}" disabled>點卡片加份數</button>
+              </div>`
+            : '';
+          return `<div class="rcard" data-id="${id}" data-ok="${ok}"${ok ? ` data-a="addPortion" data-arg="${id}"` : ''}>
             <div class="rhead">
               ${artHtml(INGREDIENT_ART[id])}
               <div class="txt"><b>${info.dessert}</b><small>${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
               <span class="price">${dessertPrice(id)}</span>
             </div>
-            <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>${qty > 0 ? `一盤最多 ${qty} 份` : '還沒有機器'}</span></div>
+            <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>${qty > 0 ? `機器一盤最多 ${qty} 份` : '還沒有機器'}</span></div>
             <div class="mats">${mats}</div>
             ${lines.map((t) => `<p class="miss">${t}</p>`).join('')}
-            <button class="buy" data-a="startBatch" data-arg="${id}"${ok ? '' : ' disabled'}>開始製作</button>
+            ${foot}
           </div>`;
         })
         .join('');
@@ -702,6 +797,7 @@ export class Hud {
       (m.querySelector('b') as HTMLElement).textContent = String(have);
       m.classList.toggle('short', have < Number(m.dataset.need));
     }
+    this.paintDraft();
   }
 
   /** 倉庫卡：一件一格（圖＋名字＋數量）；只在內容變了才重建 DOM（每幀重建會吃掉按到一半的點擊） */

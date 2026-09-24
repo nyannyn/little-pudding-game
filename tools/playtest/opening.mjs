@@ -71,8 +71,17 @@ while (Date.now() < endAt) {
     await page.evaluate(() => document.querySelector('[data-a="openMenu"]').click());
     await page.waitForTimeout(200);
     const started = await page.evaluate(() => {
-      const b = document.querySelector('.menucard [data-a="startBatch"]:not([disabled])');
-      if (b) { const n = b.closest('.rcard').querySelector('.txt b').textContent; b.click(); return n; }
+      // D60：點做得出來的那張卡片疊到最多，再按開工
+      const card = document.querySelector('.menucard .rcard[data-ok="true"]');
+      const max = card?.querySelector('[data-a="portionMax"]');
+      if (card && max) {
+        card.querySelector('.rhead').click();
+        if (!max.disabled) max.click();
+        const b = card.querySelector('[data-a="startBatch"]');
+        const n = `${card.querySelector('.txt b').textContent} ${b.textContent}`;
+        b.click();
+        return n;
+      }
       document.querySelector('[data-a="closeMenu"]').click();
       return null;
     });
