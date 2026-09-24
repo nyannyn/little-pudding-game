@@ -62,7 +62,7 @@ const CASES = [
     file: 'src/game/pudding.ts',
     from: 'if (state.drops.filter((d) => d.zone === zone).length >= BALANCE.dropCap) return false;',
     to: 'if (state.drops.filter((d) => d.zone === zone).length >= 9999) return false;',
-    test: '地上已經 5 份時',
+    test: '地上堆到上限就不再掉',
   },
   {
     ac: 'AC3-1',
@@ -403,8 +403,13 @@ function runTest(filter) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  // `-t` 一條都沒篩到時 vitest 照樣 exit 0（全部 skipped）：測試改過名，這條對照就會永遠「綠→綠」空轉。
+  // 2026-09-25 抓到 AC2-9 就是這樣（測試名早就改了），所以篩不到當成錯誤，不當成通過
+  if (!/\b[1-9]\d* passed\b/.test(`${r.stdout}${r.stderr}`) && r.status === 0) return NO_MATCH;
   return r.status ?? 1;
 }
+
+const NO_MATCH = -1;
 
 let failures = 0;
 for (const c of CASES) {
@@ -418,6 +423,11 @@ for (const c of CASES) {
 
   // 先確認「沒改壞之前」那條測試是綠的，否則紅了也證明不了什麼
   const before = runTest(c.test);
+  if (before === NO_MATCH) {
+    console.error(`[X] ${c.ac} -t "${c.test}" 一條測試都篩不到（測試改名了？）`);
+    failures++;
+    continue;
+  }
   if (before !== 0) {
     console.error(`[X] ${c.ac} 基準線就不是綠的，先修測試：-t "${c.test}"`);
     failures++;

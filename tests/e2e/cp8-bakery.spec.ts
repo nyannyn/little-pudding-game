@@ -94,8 +94,10 @@ test('AC9-8／9-9／9-3：商店買機器 → 菜單開工 → 線上自己走�
   for (const id of ['stove', 'mold', 'chill'] as const) expect(s.bakery.stations[id].batch).toBeNull();
   expect(s.desserts.panna.reduce((a, b) => a + b, 0) + s.bakery.shelf.panna.reduce((a, b) => a + b, 0)).toBe(1);
 
-  // 上架 → 營業中客人買走
-  await page.getByRole('button', { name: /上架/ }).click();
+  // 上架 → 營業中客人買走（D70 起「上架」開上架卡，卡上「全部上架」照店員那套先上低星）
+  await page.getByRole('button', { name: /上架/ }).first().click();
+  await page.locator('[data-a="shelfAll"]').click();
+  await page.locator('[data-a="closeShelf"]').click();
   s = await S(page);
   expect(s.bakery.shelf.panna.reduce((a, b) => a + b, 0)).toBe(1);
   const coins = s.coins;

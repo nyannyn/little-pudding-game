@@ -448,6 +448,17 @@ export function stockShelf(state: GameState, emit: EventSink, auto = false, want
   return moved;
 }
 
+/**
+ * 上架卡的「上架 1」（D70）：從成品櫃把某一星的一份擺上架。預訂單要留的那幾份不能動（同 `stockShelf`）。
+ */
+export function shelfOne(state: GameState, id: DessertId, star: Star, emit: EventSink): BakeryResult {
+  if (shelfCount(state) >= BALANCE.bakery.shelfCap) return fail(`展示架滿了（${BALANCE.bakery.shelfCap} 份）`);
+  if ((spareDesserts(state, id)[star - 1] ?? 0) <= 0) return fail('這一種都留給預訂單了');
+  moveStock(state, 'desserts', 'shelf', id, star, 1);
+  emit({ type: 'shelfStocked', qty: 1, auto: false });
+  return OK;
+}
+
 /** 這張訂單現在手上夠格的有幾份（成品櫃＋展示架，不低於訂單的最低星級） */
 export function orderHave(state: GameState, o: { species: DessertId; star?: Star }): number {
   const min = o.star ?? 1;

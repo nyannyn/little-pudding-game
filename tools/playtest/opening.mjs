@@ -86,7 +86,14 @@ while (Date.now() < endAt) {
       return null;
     });
     if (started) log(s.t, `[bake] ${started}`);
-    await page.evaluate(() => { const b = document.querySelector('[data-a="stockShelf"]'); if (b && !b.disabled) b.click(); });
+    // D70：「上架」開上架卡，按卡上的「全部上架」再關掉
+    await page.evaluate(() => {
+      const b = document.querySelector('[data-a="stockShelf"]');
+      if (!b || b.disabled) return;
+      b.click();
+      document.querySelector('[data-a="shelfAll"]')?.click();
+      document.querySelector('[data-a="closeShelf"]')?.click();
+    });
     // 工坊沒事做（線上沒東西、也開不了新的一盤）就回農場撿原料
     if (!busy && !started) await tap(page, '回農場');
   }

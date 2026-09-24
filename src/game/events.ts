@@ -15,6 +15,8 @@ export type SimEvent =
   | { type: 'mutate'; puddingId: string; from: SpeciesId; to: SpeciesId; x: number; z: number }
   | { type: 'birth'; puddingId: string; zone: string; species: SpeciesId; parents: [string, string]; x: number; z: number }
   | { type: 'move'; puddingId: string; zone: string }
+  /** 一區切成量產／精養（D62） */
+  | { type: 'zoneMode'; zone: string; mode: 'mass' | 'elite' }
   /** 升星（D62）：照顧點數滿了，或用了升星藥（D67） */
   | { type: 'starUp'; puddingId: string; star: number; byTonic: boolean }
   // ── 甜點工坊（D51／D52）──

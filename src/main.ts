@@ -6,17 +6,20 @@ import {
   buySpecialBasin,
   buyStock,
   fillBasin,
+  movePudding,
   pickAllDrops,
   pickDrop,
   puddingSaleBlock,
   sellEggs,
   sellIngredient,
   sellPudding,
+  setZoneMode,
   switchZone,
   unlockZone,
 } from './game/actions';
+import { useStarTonic } from './game/stars';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
-import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
+import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, shelfOne, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
 import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
 import { MACHINE_TIER_NAMES } from './game/recipes';
 import type { SimEvent } from './game/events';
@@ -223,7 +226,8 @@ function statusesFor(cabinet: number): TankStatus[] {
     const n = puddingsIn(state, z.id).length;
     out.push({
       title: z.name.split('・')[1] ?? z.name,
-      sub: z.unlocked ? `住客 ${n} 隻` : `${z.price} 焦糖幣`,
+      // 精養區（D62）在名牌上講清楚：上限 5 隻、只有這裡會長星
+      sub: !z.unlocked ? `${z.price} 焦糖幣` : z.mode === 'elite' ? `精養 ${n}/${BALANCE.eliteCapacity} 隻` : `住客 ${n} 隻`,
       locked: !z.unlocked,
     });
   }
@@ -365,7 +369,19 @@ const hudActions: HudActions = {
     hud.update(state, performance.now(), true);
   },
   setView: (v) => setView(v),
-  startBatch: (species, qty) => report(startBatch(state, species, qty, world.emit)),
+  startBatch: (species, qty, star) => report(startBatch(state, species, qty, world.emit, star)),
+  shelfOne: (id, star) => report(shelfOne(state, id, star, world.emit)),
+  movePudding: (pid, zone) => {
+    if (!report(movePudding(state, pid, zone, world.emit))) return;
+    refreshShells(); // 名牌上的住客數
+    hud.toast(`搬到${findZone(state, zone)?.shortName ?? ''}了`);
+  },
+  useTonic: (pid) => report(useStarTonic(state, pid, world.emit)),
+  sellPuddingById: (pid) => report(sellPudding(state, pid, world.emit)),
+  setZoneMode: (zone, mode) => {
+    if (!report(setZoneMode(state, zone, mode, world.emit))) return;
+    refreshShells();
+  },
   buyMachine: (id) => report(buyMachine(state, id, world.emit)),
   buyFame: () => report(buyFame(state, world.emit)),
   // 機器頭上的標籤：還能升級＝開商店工坊頁、捲到這台並標亮；滿級了就跟點 3D 機器一樣講它在做什麼
@@ -481,6 +497,23 @@ function handle(e: SimEvent) {
       sfx.coin(0.3);
       break;
     }
+    case 'starUp': {
+      // 升星（D62）：頭上冒一圈金色星星。不在看的那一區只給 toast（畫面上看不到牠）
+      const p = state.puddings.find((x) => x.id === e.puddingId);
+      if (!p) break;
+      if (p.zone === state.activeZone) {
+        views.get(p.id)?.pulse();
+        particles.burst(ox + p.pos.x, oy + 0.22, p.pos.z, 0xf7c95a, 26);
+      }
+      sfx.coin(0.45);
+      hud.toast(`${e.byTonic ? '喝了升星藥，' : ''}${SPECIES[p.species].name}升到 ★${e.star}！`);
+      break;
+    }
+    case 'zoneMode':
+      hud.toast(e.mode === 'elite'
+        ? `${findZone(state, e.zone)?.shortName ?? ''}改成精養區：泡本命液的布丁會慢慢升星`
+        : `${findZone(state, e.zone)?.shortName ?? ''}改回量產`);
+      break;
     case 'sell':
       sfx.coin(0.26);
       hud.toast(`賣給商店，+${e.coins}`);
@@ -652,7 +685,7 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
     // 點機器＝點 HUD 上那一站；點展示櫃／成品櫃＝上架
     raycaster.setFromCamera(pointer, bakery.camera);
     const hit = bakery.pick(raycaster);
-    if (hit === 'shelf' || hit === 'rack') hudActions.stockShelf();
+    if (hit === 'shelf' || hit === 'rack') hud.openShelf();
     else if (hit) tapStation(hit as StationId);
     return;
   }
@@ -663,6 +696,16 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
     const id = drops.idAt(hitDrop.instanceId);
     if (id) {
       report(pickDrop(state, id, world.emit));
+      return;
+    }
+  }
+
+  // 點布丁＝布丁卡（D70）：星級、照顧進度、搬家。instance 的順序跟這一幀 pool.add 的順序一樣（`poolIds`）
+  const hitPud = pool && pool.body.visible ? raycaster.intersectObject(pool.body, false)[0] : undefined;
+  if (hitPud && hitPud.instanceId !== undefined) {
+    const id = poolIds[hitPud.instanceId];
+    if (id) {
+      hud.openPudding(id);
       return;
     }
   }
@@ -1009,6 +1052,8 @@ const noPudding = params.get('noPudding') === '1';
 let creating = false;
 /** 所有布丁共用的 InstancedMesh（D41）；GLB 載好才有 */
 let pool: PuddingPool | null = null;
+/** 這一幀 pool 裡第 i 個 instance 是哪一隻布丁（點布丁開布丁卡用，D70） */
+const poolIds: string[] = [];
 /** 頭頂小圖示（D48）：想泡澡／幼布丁，取代原本左側的狀態卡 */
 const moodIcons = new MoodIcons();
 scene.add(moodIcons.mesh);
@@ -1161,6 +1206,7 @@ function frame(dt: number, now: number) {
 
   pool?.begin();
   moodIcons.begin(dt);
+  poolIds.length = 0;
   for (const p of state.puddings) {
     const view = views.get(p.id);
     if (!view) continue;
@@ -1170,7 +1216,8 @@ function frame(dt: number, now: number) {
     const mood = puddingMood(p, state.time);
     view.update(p, dt, ox, oy, BASIN_SINK, mood);
     pool?.add(view);
-    moodIcons.add(view.root, mood, camera);
+    poolIds.push(p.id);
+    moodIcons.add(view.root, mood, camera, p.star);
   }
   pool?.commit();
   moodIcons.commit();

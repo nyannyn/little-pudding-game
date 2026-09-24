@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { GameState } from '../../src/game/state';
+import { SCHEMA_VERSION, type GameState } from '../../src/game/state';
 import { DRAW_CALL_BUDGET } from './helpers';
 
 /**
@@ -139,7 +139,8 @@ test('AC10-4：v9 存檔（3 級機器、站上一盤沒有 startedAt）走「�
     bk.machines = { stove: 1, crack: 2, mix: 3, mold: 3, bake: 3, chill: 0, decorate: 3 };
     const st = bk.stations as Record<string, Record<string, unknown>>;
     for (const id of Object.keys(st)) st[id] = { batch: null, doneAt: 0 };
-    st.bake = { batch: { species: 'caramel', qty: 4, star: 1 }, doneAt: s.time + 20 };
+    // v9 的盤子沒有 star（D71 才加）：舊檔形狀照原樣，還原後補 ★1
+    st.bake = { batch: { species: 'caramel', qty: 4 }, doneAt: s.time + 20 };
     return s;
   });
   const { exportCode } = await import('../../src/game/savecode');
@@ -149,7 +150,7 @@ test('AC10-4：v9 存檔（3 級機器、站上一盤沒有 startedAt）走「�
   await Promise.all([page.waitForEvent('load'), page.locator('[data-a="restoreSave"]').click()]);
   await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
   let s = await S(page);
-  expect(s.schemaVersion).toBe(10);
+  expect(s.schemaVersion).toBe(SCHEMA_VERSION);
   expect(s.bakery.machines).toMatchObject({ stove: 1, crack: 3, mix: 5, mold: 5, bake: 5, chill: 0, decorate: 5 });
   expect(s.bakery.fame).toBe(1);
   const bake = s.bakery.stations.bake;

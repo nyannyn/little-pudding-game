@@ -8,7 +8,7 @@ import { LIQUIDS, SPECIES, puddingPrice, type LiquidId, type SpeciesId } from '.
 import { residents, starMult, zoneCap } from './stars';
 import type { GameState, Vec2 } from './state';
 import { addStock, takeStock, type Star } from './stock';
-import { findZone } from './zones';
+import { findZone, type ZoneMode } from './zones';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -289,6 +289,23 @@ export function sellPudding(state: GameState, puddingId: string, emit: EventSink
   state.stats.puddingsSold++;
   emit({ type: 'puddingSold', puddingId: p.id, species: p.species, coins });
   grantXp(state, BALANCE.xp.sellPudding, emit);
+  return OK;
+}
+
+/**
+ * 把一區切成量產或精養（D62）。切成精養時已經超過上限**不趕人**（趕誰走交給玩家），
+ * 只是那一區不長點數、也搬不進來，直到降回上限以內。至少要留一區量產：全場都精養＝寶寶沒地方生。
+ */
+export function setZoneMode(state: GameState, zoneId: string, mode: ZoneMode, emit: EventSink): ActionResult {
+  const z = findZone(state, zoneId);
+  if (!z) return fail('沒有這個櫥窗');
+  if (!z.unlocked) return fail('這一區還沒解鎖');
+  if (z.mode === mode) return OK;
+  if (mode === 'elite' && !state.zones.some((x) => x.unlocked && x.id !== zoneId && x.mode === 'mass')) {
+    return fail('至少要留一區量產：小布丁要有地方生');
+  }
+  z.mode = mode;
+  emit({ type: 'zoneMode', zone: zoneId, mode });
   return OK;
 }
 
