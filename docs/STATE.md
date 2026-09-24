@@ -31,16 +31,14 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
-## CP11 星級布丁與常客（2026-09-25 開工，使用者「計劃開工 請一次完成一整個計劃」，分支 `feat/regulars`，worktree `../lpg-wt-regulars`，基底 `origin/docs/regulars-plan` 3b6555d＝PR #34 未 merge）
+## CP11 星級布丁與常客（2026-09-25，使用者「計劃開工 請一次完成一整個計劃」，分支 `feat/regulars`，worktree `../lpg-wt-regulars`，基底 `origin/docs/regulars-plan` 3b6555d＝PR #34 未 merge）
 
-- **進度表**（計畫檔 CP11 的 WP）：
-  - WP11-0 基準線 ✅（數字已寫進計畫 CP11「基準線實測」；v10 存檔**暫代**＝v10 程式自己玩出來的 `tests/fixtures/v10-save.*`，**使用者手機那份還沒拿到**）
-  - WP11-1／11-2 ✅ commit `71eddf0`：`stock.ts` 單一出入口＋掃描測試（AC11-4，掃 src 與 tools，含 `Object.assign(x.shelf…)`）、`stars.ts`（本命液、精養、照顧點數、升星藥）、`clock.ts`（從 bakery 抽出）、存檔 v11、散客上限與先拿低星、`startBatch(…, star)`。vitest 301 全過；3 小時量表跟基準線**逐行相同**（全 ★1 時行為沒變）；負向對照 CP11 13 條全紅過（在拋棄式 worktree `../lpg-wt-cp11-nc` 跑）；e2e 97/99（兩條紅是測試寫死 v10／賣出鈕 arg，已在 `dab8697` 改）。
-  - WP11-3 常客規則：**派 sonnet 工人**在 `../lpg-wt-cp11-rules`（分支 `feat/regulars-rules`，基底 71eddf0），只准動 `regulars.ts`／`regularStories.ts`／`events.ts`／`tests/unit/regulars.test.ts`；接進 `sim.ts` 由主對話合流時做。
-  - WP11-4 方塊常客 ✅（未簽核）`dab8697`：`scene/regularLooks.ts`（8 位外觀資料）、`scene/voxelAnimal.ts`、工坊 `regularCame()`／`regularAnchors()`、名冊頭像 `ui/regularPortrait.ts`（2D 正面投影）。
-  - WP11-5 介面：布丁卡（`ui/puddingCard.ts`，點布丁開）、上架卡（`ui/shelfCard.ts`，「上架」鈕改開卡）、菜單星級分頁、櫥窗名牌旁量產／精養切換、頭頂 ★2–★5 徽章 ✅；**名冊卡、名字泡泡、「你不在的時候」、特別訂單標示待合流後做**。
-  - WP11-6 故事定稿、WP11-7 招牌甜點、WP11-8 量表校準：未開始。
-- **踩到的**：①`tools/check-negative-controls.mjs` 被 `import()` 就會真的跑（頂層程式），探結構別 import 它；②它的 AC2-9 條目早就空轉（`-t` 篩到 0 條＝全 skipped＝exit 0 被當綠），已改測試名並讓工具把「篩不到」當錯；③機械轉換測試時把 `star` 塞進了**舊格式存檔** literal（v8／v9），測舊檔的 literal 要保持舊形狀。
+- **狀態**：WP11-0～11-8 全部做完、commit 在 `feat/regulars`；詳細結果與校準紀錄在計畫檔 CP11「實作紀錄」表。**未 push、未開 PR 前先看本段「待使用者」**。
+- **待使用者**：①手機 v10 存檔碼（AC11-10 目前用 v10 程式自己玩出來的暫代夾具 `tests/fixtures/v10-save.*`）；②故事改稿（`docs/plans/regulars-stories.md` → `src/game/regularStories.ts`）；③AC11-16 手機簽核（只能在 merge 上線後看）；④AC11-12 剩兩條貼邊界沒過（seed 7 ★3 第 3 天、seed 99 企鵝郵差沒解鎖），要不要再調由使用者決定。
+- **校準後的數字（計畫原值不適用的原因：計畫估月玩家一天 8.75 遊戲小時，實測約 21）**：`starCare` [200, 480, 2880, 16000]、常客每 13 個營業日來一次（±2）、升星藥佔禮物 1/3、特別訂單 8 個營業日。
+- **新規則（量表逼出來的）**：今天要來的常客，架上符合他條件的那一份散客不拿（`heldForRegulars`）；生不出寶寶的提示講「到商店賣掉幾隻空出位子」。
+- **踩到的**：①`tools/check-negative-controls.mjs` 被 `import()` 就會真的跑，探結構別 import；②它的 AC2-9 早就空轉（`-t` 篩到 0 條＝exit 0 被當綠），已讓工具把「篩不到」當錯；③機械轉換測試時把 `star` 塞進了**舊格式存檔** literal，測舊檔的 literal 要保持舊形狀；④InstancedMesh 的 raycast 用第一次算的包圍球，點會動的東西前要 `computeBoundingSphere()`；⑤月玩家 bot 的策略會直接決定量到的節奏（精養區倒錯液體、住滿不賣、只做最貴的甜點都讓常客整個月沒進展）——量表不過先查 bot 再動數字。
+- **拋棄式 worktree**（收尾可刪）：`../lpg-wt-regulars-base`（基準樹，含未提交的量測腳本）、`../lpg-wt-cp11-nc`、`../lpg-wt-cp11-e2e`、`../lpg-wt-cp11-rules`（工人分支 `feat/regulars-rules`，已 merge 進 `feat/regulars`）。
 
 ## 破圖修正＋大改版需求（2026-09-25，分支 `fix/bakery-broken-art`，worktree `../lpg-wt-bakery-fix`，PR #32 已上線）
 
