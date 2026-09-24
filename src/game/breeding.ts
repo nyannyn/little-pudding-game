@@ -69,9 +69,10 @@ function birthPos(parent: Pudding, ctx: SimContext): Vec2 {
 /** 生不出來的時候給玩家看的原因（AC11-2：全場只剩精養區有空位也要講得出為什麼） */
 export function birthBlockReason(state: GameState, homeZone: string): string {
   const eliteRoom = state.zones.some((z) => z.unlocked && z.mode === 'elite' && residents(state, z.id) < zoneCap(state, z.id));
-  if (eliteRoom) return '量產的櫥窗都住滿了（精養區不收新生兒），生不出新的小布丁';
-  if (findZone(state, homeZone)?.mode === 'elite') return '精養區的寶寶要送到別區，但其他櫥窗都住滿了';
-  return '櫥窗住滿了，生不出新的小布丁';
+  // 出口一定要講：住滿之後唯一的辦法是在商店「賣出」賣掉幾隻，或解鎖新櫥窗（D63 的世代鏈靠這一步才走得下去）
+  if (eliteRoom) return '量產的櫥窗都住滿了（精養區不收新生兒），生不出新的小布丁：到商店賣掉幾隻空出位子';
+  if (findZone(state, homeZone)?.mode === 'elite') return '精養區的寶寶要送到別區，但其他櫥窗都住滿了：到商店賣掉幾隻空出位子';
+  return '櫥窗住滿了，生不出新的小布丁：到商店賣掉幾隻空出位子，或解鎖新的櫥窗';
 }
 
 function newborn(state: GameState, zone: string, genes: Genes, pos: Vec2, ctx: SimContext, parent: Pudding): Pudding {

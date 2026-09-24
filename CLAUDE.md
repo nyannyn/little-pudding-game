@@ -12,7 +12,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `npm run preview`：跑正式建置（**Service Worker 只在 PROD 註冊，要驗 SW／離線就用這個**）
 - `npm test`：vitest（`tests/unit/**`，覆蓋率只算 `src/game`）
 - `npm run e2e`：Playwright（iPhone 視口，無頭 WebGL）
-- `npm run pacing`：無頭跑 3 小時遊戲時間，印每個里程碑在第幾分鐘（調數值前後各跑一次）
+- `npm run pacing`：無頭跑 3 小時遊戲時間，印每個里程碑在第幾分鐘（調數值前後各跑一次）；`PACING_ONLY=month PACING_JSON=<檔> npm run pacing` 跑 30 天月玩家（約 5 分鐘），再 `node tools/pacing/ac11-12.mjs <檔>` 判星級與常客節奏（AC11-12）
 - `npm run playtest`：從頭試玩找 bug 的整套腳本（`tools/playtest/`）；流程與判讀見 `.claude/skills/playtest/SKILL.md`
 - `npm run smoke:live`：對正式建置或線上網址跑整頁煙霧測（`LPG_BASE` 指定網址）
 - `npm run models:optimize`：壓縮 `public/models/*.glb` 並檢查資產預算（超標 exit 1）
@@ -24,6 +24,7 @@ three.js 網頁 3D 手機遊戲；先在 iPhone Safari 玩，後期用 Expo WebV
 - `src/game/`：純邏輯，**零 three.js 依賴**，所有規則（跳去哪、何時泡澡、何時突變）在這裡，vitest 全覆蓋；亂數走 `rng.ts` 可注入種子。
 - `src/scene/`：只讀 state、播動畫，不改規則。
 - `src/ui/`：HTML/CSS 疊層；圖示用 SVG，**不用 emoji**。
+- **原料／成品櫃／展示架帶星級（D64），讀寫一律經 `src/game/stock.ts`**：`tests/unit/stockAccess.test.ts` 掃 `src/` 與 `tools/`，直接索引 `ingredients[`／`.desserts.`／`shelf[` 就紅。`tools/` 在瀏覽器裡改庫存用 `window.__lpg.stock.set/add/of`（`tools/` 不在 tsconfig，tsc 管不到，寫錯只會靜默算錯）。
 
 ## 存檔
 - localStorage，玩家那格 key 是 `lpg.save.v1`（`src/game/storage.ts`）；每 5 秒（真實時間）＋切到背景＋關分頁各存一次。

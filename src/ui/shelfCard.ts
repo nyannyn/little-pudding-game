@@ -1,6 +1,6 @@
 import { shelfCount, spareDesserts, walkInPrice } from '../game/bakery';
 import { BALANCE } from '../game/balance';
-import { DESSERT_IDS, dessertName, dessertPrice, type DessertId } from '../game/recipes';
+import { DESSERT_IDS, dessertName, dessertPrice, isSignature, type DessertId } from '../game/recipes';
 import { REGULAR_BALANCE } from '../game/regulars';
 import type { GameState } from '../game/state';
 import { STARS, stockOf, type Star } from '../game/stock';
@@ -56,7 +56,7 @@ export class ShelfCard {
         ? rows
             .map(({ id, star }) => `<div class="srow" data-id="${id}" data-star="${star}">
               ${artHtml(dessertArt(id))}
-              <div class="txt"><b>${dessertName(id)}</b>${starsHtml(star, star, 'sm')}<small>散客付 ${walkInPrice(id, star)}・常客付 ${Math.round(dessertPrice(id, star) * REGULAR_BALANCE.tip)}</small></div>
+              <div class="txt"><b>${dessertName(id)}</b>${starsHtml(star, star, 'sm')}<small>${isSignature(id) ? '散客不買' : `散客付 ${walkInPrice(id, star)}`}・常客付 ${Math.round(dessertPrice(id, star) * REGULAR_BALANCE.tip)}</small></div>
               <span class="cnt">櫃 <b class="back">0</b>・架 <b class="front">0</b></span>
               <button class="one" data-a="shelfOne" data-arg="${id}:${star}">上架 1</button>
             </div>`)

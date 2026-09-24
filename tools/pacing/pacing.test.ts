@@ -3,16 +3,20 @@ import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../../src/g
 import {
   buyEquipment,
   buyPantry,
+  buySpecialBasin,
   buyStock,
   fillBasin,
   movePudding,
   pickAllDrops,
+  puddingSaleBlock,
   sellEggs,
   sellIngredient,
+  sellPudding,
   setZoneMode,
   unlockZone,
 } from '../../src/game/actions';
 import { REGULAR_IDS, REGULARS, deliverOrder, regularWants } from '../../src/game/regulars';
+import { placeFromStorage, storeFurniture } from '../../src/game/furniture';
 import { growsCare, isEliteZone, useStarTonic } from '../../src/game/stars';
 import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
 import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, orderHave, startBatch, stockShelf } from '../../src/game/bakery';
@@ -132,29 +136,71 @@ function run(profile: Profile, seed: number) {
   const manageElite = () => {
     if (profile !== 'month' || state.time - lastElite < 60) return;
     lastElite = state.time;
+    // 液體：月玩家一次買大桶、維持夠用（離線那 8 小時 60 隻布丁泡掉的量很大，補貨合約一次只補到 20）
+    for (const l of ['caramel', 'milk'] as LiquidId[]) {
+      for (let g = 0; state.stock[l] < 200 && g < 10; g++) if (!pay(() => buyStock(state, l, BALANCE.stockBulkQty, noop)).ok) break;
+    }
+    // 風味澡盆（D30）：買得起就買，擺在量產區、一直倒著——抹茶系／草莓系的布丁才養得出來（兔子太太、青蛙小弟要）
+    const spots: Record<string, string> = { matcha: 'c0t0', strawberry: 'c1t1' };
+    for (const l of ['matcha', 'strawberry'] as LiquidId[]) {
+      const zone = spots[l]!;
+      if (!state.ownedBasins.includes(l) && state.zones.find((x) => x.id === zone)?.unlocked && state.coins > BALANCE.specialBasinPrice * 3) {
+        pay(() => buySpecialBasin(state, l, { x: -0.3, z: -0.2 }, zone, noop));
+      }
+      if (state.ownedBasins.includes(l)) {
+        for (let g = 0; state.stock[l] < 30 && g < 5; g++) if (!pay(() => buyStock(state, l, BALANCE.stockBuyQty, noop)).ok) break;
+        state.basins.forEach((b, i) => { if (b.preferredLiquid === l && b.units === 0 && state.stock[l] > 0) fillBasin(state, i, l, noop); });
+      }
+    }
     const ELITE = 'c0t2';
     const z = state.zones.find((x) => x.id === ELITE);
     if (!z?.unlocked) return;
     if (z.mode !== 'elite' && !setZoneMode(state, ELITE, 'elite', noop).ok) return;
-    const score = (p: (typeof state.puddings)[number]) => (p.star < p.potential ? 100 + p.potential * 10 + p.star : p.star * 10);
+    // 精養區專養焦糖系（熊先生、貓頭鷹、狐狸、小豬四位的口味都含焦糖），盆裡倒熱焦糖＝牠們的本命液
+    const caramelLine = (p: (typeof state.puddings)[number]) => p.genes.includes('caramel');
+    const score = (p: (typeof state.puddings)[number]) =>
+      (caramelLine(p) ? 1000 : 0) + (p.star < p.potential ? 100 + p.potential * 10 + p.star : p.star * 10);
     const ranked = [...state.puddings].filter((p) => p.mode !== 'bathing').sort((a, b) => score(b) - score(a));
     const want = new Set(ranked.slice(0, BALANCE.eliteCapacity).map((p) => p.id));
-    // 先搬出去（騰位子）再搬進來
+    // 最不值錢的量產區布丁（量產區滿了要騰位子時賣掉牠）
+    const sellCheapest = (keep: Set<string>) => {
+      const cheap = state.puddings
+        .filter((p) => !isEliteZone(state, p.zone) && !keep.has(p.id) && puddingSaleBlock(state, p.id) === null)
+        .sort((a, b) => a.potential - b.potential || a.star - b.star)[0];
+      return cheap ? sellPudding(state, cheap.id, noop).ok : false;
+    };
+    // 先搬出去（騰位子）再搬進來；量產區滿了就先賣一隻最不值錢的（真人換精養名單也是這樣騰位子）
     for (const p of state.puddings.filter((q) => q.zone === ELITE && !want.has(q.id))) {
-      const dest = unlockedZones(state).find((q) => q.id !== ELITE && state.puddings.filter((r) => r.zone === q.id).length < BALANCE.zoneCapacity);
+      const roomy = () => unlockedZones(state).find((q) => q.id !== ELITE && state.puddings.filter((r) => r.zone === q.id).length < BALANCE.zoneCapacity);
+      if (!roomy()) sellCheapest(want);
+      const dest = roomy();
       if (dest) movePudding(state, p.id, dest.id, noop);
     }
     for (const id of want) {
       const p = state.puddings.find((q) => q.id === id);
       if (p && p.zone !== ELITE) movePudding(state, p.id, ELITE, noop);
     }
-    // 精養區的盆：有長到頂的高星媽媽就倒牛奶（生高潛力寶寶），否則倒熱焦糖（焦糖系的本命液）
+    // 精養區的盆：平常倒熱焦糖；有長到頂的高星媽媽、而且量產區沒有比牠潛力更高的下一代時才倒牛奶（生下一代）。
+    // 量產區住滿就先賣掉一隻最不值錢的騰位子——不賣，寶寶生不出來，世代鏈就斷在這裡
     const elite = state.puddings.filter((p) => p.zone === ELITE);
-    const breeder = elite.some((p) => p.star >= p.potential && p.star >= 2);
-    const growingPanna = elite.some((p) => growsCare(state, p) && p.genes.includes('panna'));
+    const top = Math.max(0, ...elite.filter((p) => p.star >= p.potential).map((p) => p.star));
+    const nextGen = state.puddings.some((p) => !isEliteZone(state, p.zone) && p.potential > top && caramelLine(p));
+    const breed = top >= 2 && !nextGen;
+    if (breed) {
+      const massFull = unlockedZones(state).filter((q) => q.mode === 'mass').every((q) => state.puddings.filter((p) => p.zone === q.id).length >= BALANCE.zoneCapacity);
+      if (massFull) sellCheapest(want);
+    }
     state.basins.forEach((b, i) => {
-      if (b.zone !== ELITE || b.units > 0) return;
-      const liquid = breeder || growingPanna ? 'milk' : 'caramel';
+      if (b.zone !== ELITE) return;
+      const liquid: LiquidId = breed ? 'milk' : 'caramel';
+      if (b.units > 0 && b.liquid === liquid) return;
+      if (b.units > 0) {
+        // 換液體要先倒掉：遊戲裡的做法是「收進倉庫＝倒掉」再擺回原位（D49），bot 走同一條路
+        const ref = { kind: 'basin' as const, index: i };
+        const pos = { ...b.pos };
+        if (!storeFurniture(state, ELITE, ref).ok) return;
+        if (!placeFromStorage(state, ELITE, ref, pos).ok) return;
+      }
       if (state.stock[liquid] > 0) fillBasin(state, i, liquid, noop);
     });
     // 升星藥（D67）：給精養區卡在上限、星級最高的那隻
@@ -181,6 +227,8 @@ function run(profile: Profile, seed: number) {
     state.basins.forEach((b, i) => {
       if (b.units > 0) return;
       if (profile === 'month' && isEliteZone(state, b.zone)) return; // 精養區的盆由 manageElite 決定倒什麼
+      // 風味澡盆（抹茶／草莓）只倒它自己那一種（manageElite 管）；在這裡倒牛乳的話之後自動注液閥就一直補牛乳
+      if (b.preferredLiquid === 'matcha' || b.preferredLiquid === 'strawberry') return;
       if (wantMore && state.stock.milk > 0) fillBasin(state, i, 'milk', noop);
       else if (state.stock.caramel > 0) fillBasin(state, i, 'caramel', noop);
     });
@@ -299,7 +347,9 @@ function run(profile: Profile, seed: number) {
     // 月玩家（D61）：每天三次、每次實玩 15 分鐘（08:00／13:00／21:00），中間離線照 offlineCapSec 上限結算，跑 30 天
     const SESSIONS = [8, 13, 21];
     const PLAY = 15 * 60;
-    for (let day = 0; day < 30; day++) {
+    // PACING_DAYS：只跑前幾天（除錯用）；PACING_DEBUG=1 每場結束印精養區的狀態
+    const DAYS = Number(process.env.PACING_DAYS ?? 30);
+    for (let day = 0; day < DAYS; day++) {
       for (let i = 0; i < SESSIONS.length; i++) {
         for (let t = 0; t < PLAY; t += REACT_SEC) {
           advance(w, REACT_SEC);
@@ -311,6 +361,10 @@ function run(profile: Profile, seed: number) {
         advance(w, Math.min(gap, BALANCE.offlineCapSec));
         // 離線上限之外的時間不算數，但時鐘要走到下一次開遊戲那一刻（天數才對得上）
         if (gap > BALANCE.offlineCapSec) state.time += gap - BALANCE.offlineCapSec;
+        if (process.env.PACING_DEBUG) {
+          const el = state.puddings.filter((p) => isEliteZone(state, p.zone));
+          console.log(`d${day + 1}s${i} t=${(state.time / 3600).toFixed(1)}h zones=${unlockedZones(state).map((z) => `${z.id}:${z.mode}:${state.puddings.filter((p) => p.zone === z.id).length}`).join(',')} elite=${el.map((p) => `${p.species}★${p.star}/${p.potential}c${Math.floor(p.care)}`).join(' ')} basins=${state.basins.map((b) => `${b.zone}:${b.liquid ?? b.preferredLiquid}:${b.units}`).join(',')} stock=${state.stock.caramel}/${state.stock.milk} baths=${state.stats.baths}`);
+        }
       }
       earnedByDay.push(state.coins + spent);
       heartsByDay.push(REGULAR_IDS.map((id) => (state.regulars[id].unlocked ? state.regulars[id].hearts : '-')).join(','));

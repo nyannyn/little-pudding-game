@@ -18,11 +18,11 @@ import {
   unlockZone,
 } from './game/actions';
 import { useStarTonic } from './game/stars';
-import { REGULARS, awaySummary, deliverOrder, markStorySeen } from './game/regulars';
+import { REGULARS, awaySummary, deliverOrder, markStorySeen, regularWants } from './game/regulars';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
 import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, shelfOne, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
 import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
-import { MACHINE_TIER_NAMES, dessertLook, dessertName } from './game/recipes';
+import { MACHINE_TIER_NAMES, SIGNATURE_IDS, dessertLook, dessertName } from './game/recipes';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -412,7 +412,8 @@ const hudActions: HudActions = {
   buyPantry: (id, qty) => report(buyPantry(state, id, qty, world.emit)),
   stockShelf: () => {
     // 什麼都沒擺上去一定要講為什麼（D39 的教訓：按了沒反應＝玩家以為壞了）
-    if (stockShelf(state, world.emit) === 0) hud.toast(shelfNothingReason(), true);
+    // 「全部上架」跟店員同一套（D70）：先替今天要來的常客擺一份，其餘先上低星
+    if (stockShelf(state, world.emit, false, regularWants(state)) === 0) hud.toast(shelfNothingReason(), true);
     hud.update(state, performance.now(), true);
   },
   claimAchievement: (id) => report(claimAchievement(state, id, world.emit)),
@@ -695,6 +696,9 @@ function shelfNothingReason(): string {
   if (total === 0) return '成品櫃是空的：做完一盤甜點（裝飾台做完點一下）才有東西上架。';
   const onShelf = totalStock(state, 'shelf');
   if (onShelf >= BALANCE.bakery.shelfCap) return `展示架滿了（${BALANCE.bakery.shelfCap} 份），等客人買走再補。`;
+  // 招牌甜點（D68）不會自動上架：散客買不起，只替今天要來的主人留。成品櫃裡只剩它就講這個，不要說成「留給預訂單」
+  const onlySignatures = SIGNATURE_IDS.reduce((n, id) => n + stockOf(state, 'desserts', id), 0) === total;
+  if (onlySignatures) return '招牌甜點散客買不起，不會自動上架：主人今天要來會替他留一份，想現在擺就按那一列的「上架 1」。';
   return '成品櫃裡的甜點都留給預訂單了，交完訂單再上架。';
 }
 

@@ -942,7 +942,7 @@ export class Hud {
               <div class="txt"><b>${dessertName(id)}</b><small>${r.owner ? `${REGULARS[r.owner].name}的招牌・散客不買・` : ''}${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
               <span class="price">${dessertPrice(id)}</span>
             </div>
-            <div class="stabs">${tabs}<small>散客只付到 ★${BALANCE.walkInStarCap}</small></div>
+            <div class="stabs">${tabs}<small>${r.owner ? '散客不買' : `散客只付到 ★${BALANCE.walkInStarCap}`}</small></div>
             <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>${qty > 0 ? `機器一盤最多 ${qty} 份` : '還沒有機器'}</span></div>
             <div class="mats">${mats}</div>
             ${lines.map((t) => `<p class="miss">${t}</p>`).join('')}
