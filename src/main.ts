@@ -701,6 +701,9 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   }
 
   // 點布丁＝布丁卡（D70）：星級、照顧進度、搬家。instance 的順序跟這一幀 pool.add 的順序一樣（`poolIds`）
+  // InstancedMesh 的 raycast 先用包圍球篩，而包圍球只在第一次算、之後不會跟著 instance 矩陣更新——
+  // 布丁一直在跳，不重算的話點得到點不到看運氣。最多 16 個 instance，重算很便宜
+  if (pool?.body.visible) pool.body.computeBoundingSphere();
   const hitPud = pool && pool.body.visible ? raycaster.intersectObject(pool.body, false)[0] : undefined;
   if (hitPud && hitPud.instanceId !== undefined) {
     const id = poolIds[hitPud.instanceId];

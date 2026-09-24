@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { storageReport } from '../game/storage';
 import type { GameState } from '../game/state';
 import type { Star, StockKind } from '../game/stock';
+import type { RegularId } from '../game/regulars';
+import type { SpeciesId } from '../game/species';
 
 export interface LpgStats {
   fps: number;
@@ -53,7 +55,15 @@ declare global {
       /** 測試用：啟用區的區域座標（x, 高度, z）投到螢幕上的 CSS 像素——e2e 拿來長按拖家具（D49） */
       toScreen?: (x: number, y: number, z: number) => { x: number; y: number };
       /** 甜點工坊場景（D51）：e2e 讀客人數、工坊的 scene graph */
-      bakery?: { scene: THREE.Scene; camera: THREE.PerspectiveCamera; customerCount: number; lampLevel: number; regularCount: number };
+      bakery?: {
+        scene: THREE.Scene;
+        camera: THREE.PerspectiveCamera;
+        customerCount: number;
+        lampLevel: number;
+        /** 常客（D69）：店裡幾位（不含門外排隊）；`regularCame` 讓 e2e 直接叫一位進店 */
+        regularCount: number;
+        regularCame(id: RegularId, bought: boolean, dessert: SpeciesId | null): void;
+      };
       /** 測試用：切換農場／工坊（等同按 HUD 的「甜點店」「回農場」） */
       setView?: (view: 'farm' | 'bakery') => void;
       three?: {
