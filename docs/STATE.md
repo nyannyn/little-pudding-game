@@ -38,8 +38,10 @@
 - **破圖兩處（已修，PR #32）**：①頂列膠囊五位數時工坊第四顆整顆跑到齒輪與商店鈕底下（375px 農場也會，舊測試只測 320px＋小數字）；②菜單卡片圖示被商店卡 `.card .art .main { inset:10px }` 推出圓框 10px。修法：`chipNumber` 一萬以上寫「1.3萬」（無條件捨去）、兩畫面頂列都固定三顆（工坊不放原料總數）、440px 以下膠囊收窄但鈕維持 42px、`.rcard .art .main { inset:0 }`。證據：`cp3-hud-band` 六種寬度×兩畫面×兩組數字＋菜單圖示，負向對照三組紅過；整套 e2e 第一版 94 過 1 紅（cp5-tips 點第四顆，已改測試），受影響 4 支 41 條綠；vitest 265、build 綠。
 - **已上線（2026-09-25）**：使用者回「好 合併」，PR #32 squash merge，master＝`14055a3`（`ls-remote` 相符）；Pages workflow 綠；線上 bundle `index-DYmFS3h8.js` 含「萬」短寫、CSS 含 `max-width:439px`；`npm run smoke:live` 對線上全過。**待使用者**用手機看一次。
 - **大改版使用者已選（AskUserQuestion）**：視角＝**操控角色走動**；程式化生成＝**地圖與店面／櫥窗兩個都要**（種子決定、每個存檔不同）；第一批＝**選址（配地圖一起）**。
+- **方向改了（同日）**：使用者「改掉選址 跟我討論哪些是讓遊戲變得更有趣的機制」→「我希望更有養成、策略跟商業經營」→ 選定**星級布丁與常客**，要求「寫的龐大一點」。計畫寫進 `docs/plans/game-plan-v1.md`：設計節「星級布丁與常客」、決策 **D62–D72**、**CP11**（現況盤點、WP11-0～11-8、AC11-1～11-16）、派工表 27–35、風險 6 條；故事草稿 `docs/plans/regulars-stories.md`（8 位 × 3 章，待使用者改稿）。常客外觀用原創方塊動物（使用者給的《Crossy Road》角色圖只取風格，角色不能用），原型 `tools/proto-regulars/`（4 位＋地板 9 draw calls；截圖不進版控，用 `tools/proto-regulars/shot.mjs` 重拍）。未答三題採預設並已告知：★5 上限、沒買到不扣心、Claude 先寫故事。**CP11 待使用者核准才動 code**。
+- **盤點抓到的兩個交互作用（已寫進 D62／D66）**：①鮮奶酪系本命液＝牛奶＝繁殖，精養區不送走寶寶就會塞爆 → 精養區出生的一律送到別區；②一個營業日 20 分鐘、離線 8 小時＝24 天，常客若每 2 天來一次一晚就刷滿 → 改 8 天。
 - **引擎決定：留在 three.js**（理由：現有 TS 規則層、存檔 `migrate()`、存檔碼、e2e 全部要重寫；目標平台是 iPhone Safari＋GitHub Pages＋Expo WebView，換引擎風險大且程式化生成與角色走動 three.js 都做得到）。
-- **下一步**：寫計畫（改 `game-plan-v1.md` 設計表→派工拆解→現況盤點→驗收條件）給使用者核准才動 code。盤點要列：依賴現在鏡頭的 e2e（cp3-hud-band 投影、cp9 `stationNdc` 標籤、點擊射線）、draw calls ≤ 35、甜點店面數已超 50k。決策編號先查 origin/master 最大號（目前見到 D61）。
+- **下一步**：CP11 核准後從 WP11-0 基準線開始（開新分支，不要疊在 docs 分支上）。角色走動／程式化小鎮／程式化店面排到 CP12／CP13。盤點要列：依賴現在鏡頭的 e2e（cp3-hud-band 投影、cp9 `stationNdc` 標籤、點擊射線）、draw calls ≤ 35、甜點店面數已超 50k。決策編號先查 origin/master 最大號（目前見到 D61）。
 
 ## 一批一批做＋長線升級 D60–D61（2026-09-24，分支 `feat/machine-batch`，worktree `../lpg-wt-machine-batch`，計畫檔 CP10）
 
