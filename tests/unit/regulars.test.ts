@@ -23,6 +23,7 @@ import {
   tickRegulars,
 } from '../../src/game/regulars';
 import { advance } from '../../src/game/sim';
+import { tickBakery } from '../../src/game/bakery';
 import { useStarTonic } from '../../src/game/stars';
 import { addStock, stockOf } from '../../src/game/stock';
 import { makeWorld, only } from './helpers';
@@ -427,3 +428,22 @@ describe('tasteMatches／tasteDesserts', () => {
   });
 });
 
+
+describe('D70 替今天的常客保留', () => {
+  it('散客不拿替今天的常客保留的那份（架上只剩那份＝散客撲空），常客來了買得到', () => {
+    const w = makeWorld({ puddings: 1 });
+    const s = w.state;
+    s.time = 100;
+    s.regulars.bear.unlocked = true;
+    s.regulars.bear.nextVisitAt = 200; // 今天稍後
+    addStock(s, 'shelf', 'caramel', 1, 1);
+    s.bakery.nextCustomerAt = s.time;
+    const ev: SimEvent[] = [];
+    tickBakery(s, w.rng, (e) => ev.push(e), regularWants(s));
+    expect(ev.some((e) => e.type === 'customerMissed')).toBe(true);
+    expect(stockOf(s, 'shelf', 'caramel', 1)).toBe(1);
+    s.time = 201;
+    tickRegulars(s, w.rng, sink);
+    expect(s.regulars.bear.lastResult?.bought).toBe(true);
+  });
+});

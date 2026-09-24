@@ -32,6 +32,7 @@ import {
   clampStar,
   lowestStar,
   moveStock,
+  takeStock,
   restoreTable,
   starCounts,
   stockAtLeast,
@@ -513,10 +514,47 @@ export function walkInPrice(id: DessertId, star: Star): number {
  * 一位散客：按架上份數加權挑一種、**拿那一種最低星的那一份**（D65），買 1 份（有時更多）；
  * 付的是 `walkInPrice`（最多 ★2 的價）。架空就記一次錯過。
  */
-function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
+/**
+ * 架上替今天要來的常客「保留」的那幾份（D70）：每位常客、架上符合他條件裡最低星的那一份。
+ * 從 state 當場推導、不存檔。只擺上架而不保留的話，散客（需求遠大於產量）一擺出來就買走，
+ * 月玩家量表量到熊先生整個月 0 顆心（2026-09-25）。
+ */
+export function heldForRegulars(state: GameState, wants: readonly ShelfWant[]): Map<DessertId, number[]> {
+  const held = new Map<DessertId, number[]>();
+  for (const w of wants) {
+    let best: { id: DessertId; star: Star } | null = null;
+    for (const id of w.accepts) {
+      const have = starCounts(state, 'shelf', id);
+      const already = held.get(id) ?? [0, 0, 0, 0, 0];
+      for (let i = w.minStar - 1; i < 5; i++) {
+        if ((have[i] ?? 0) - (already[i] ?? 0) <= 0) continue;
+        if (!best || i + 1 < best.star) best = { id, star: (i + 1) as Star };
+        break;
+      }
+    }
+    if (!best) continue;
+    const row = held.get(best.id) ?? [0, 0, 0, 0, 0];
+    row[best.star - 1]!++;
+    held.set(best.id, row);
+  }
+  return held;
+}
+
+/**
+ * 一位散客：按架上份數加權挑一種、**拿那一種最低星的那一份**（D65），買 1 份（有時更多）；
+ * 付的是 `walkInPrice`（最多 ★2 的價）。替今天的常客保留的那幾份不拿（`heldForRegulars`）。架空就記一次錯過。
+ */
+function serveCustomer(state: GameState, rng: Rng, emit: EventSink, wants: readonly ShelfWant[] = []): void {
   const bk = state.bakery;
-  // 散客只買物種甜點（招牌甜點散客買不起，D68）：架上只剩招牌甜點＝對散客來說是空架
-  const total = SPECIES_IDS.reduce((n, id) => n + stockOf(state, 'shelf', id), 0);
+  const held = heldForRegulars(state, wants);
+  // 散客能拿的：物種甜點（招牌甜點散客買不起，D68）扣掉保留的
+  const avail = (id: SpeciesId): number[] => {
+    const have = starCounts(state, 'shelf', id);
+    const h = held.get(id);
+    return have.map((n, i) => Math.max(0, n - (h?.[i] ?? 0)));
+  };
+  const sum = (a: number[]) => a.reduce((n, x) => n + x, 0);
+  const total = SPECIES_IDS.reduce((n, id) => n + sum(avail(id)), 0);
   if (total <= 0) {
     bk.today.missed++;
     state.stats.missed++;
@@ -526,14 +564,22 @@ function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
   let r = rng.next() * total;
   let species: SpeciesId = SPECIES_IDS[0] as SpeciesId;
   for (const id of SPECIES_IDS) {
-    r -= stockOf(state, 'shelf', id);
+    r -= sum(avail(id));
     if (r < 0) { species = id; break; }
   }
-  if (stockOf(state, 'shelf', species) <= 0) species = SPECIES_IDS.find((id) => stockOf(state, 'shelf', id) > 0) as SpeciesId;
-  const qty = customerQty(state, stockOf(state, 'shelf', species), rng);
-  const stars = takeLowest(state, 'shelf', species, qty) ?? [];
+  if (sum(avail(species)) <= 0) species = SPECIES_IDS.find((id) => sum(avail(id)) > 0) as SpeciesId;
+  const can = avail(species);
+  const qty = customerQty(state, sum(can), rng);
+  const stars: Star[] = [];
+  for (let i = 0; i < 5 && stars.length < qty; i++) {
+    while (can[i]! > 0 && stars.length < qty) {
+      takeStock(state, 'shelf', species, (i + 1) as Star, 1);
+      can[i]!--;
+      stars.push((i + 1) as Star);
+    }
+  }
   const coins = stars.reduce((n, s) => n + walkInPrice(species, s), 0);
-  const star = stars[0] ?? lowestStar(state, 'shelf', species) ?? 1;
+  const star = stars[0] ?? 1;
   state.coins += coins;
   state.stats.sold += qty;
   state.stats.served++;
@@ -613,7 +659,7 @@ export function tickBakery(state: GameState, rng: Rng, emit: EventSink, wants: r
   }
   if (bk.today.day !== c.day) bk.today = { day: c.day, revenue: 0, served: 0, missed: 0 };
   if (state.time < bk.nextCustomerAt) return;
-  serveCustomer(state, rng, emit);
+  serveCustomer(state, rng, emit, wants);
   const k = fameIntervalMult(bk.fame);
   bk.nextCustomerAt = state.time + range(rng, B.customerIntervalMin * k, B.customerIntervalMax * k);
 }

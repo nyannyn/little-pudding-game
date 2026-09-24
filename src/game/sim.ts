@@ -1,5 +1,5 @@
 import { BALANCE } from './balance';
-import { hasStaff, tickBakery } from './bakery';
+import { tickBakery } from './bakery';
 import { runAutomation } from './equipment';
 import type { EventSink, SimEvent } from './events';
 import { tickOrders } from './orders';
@@ -58,8 +58,8 @@ function step(w: World, dt: number, ctx: SimContext): void {
   for (const p of s.puddings) tickPudding(s, p, dt, ctx);
   runAutomation(s, w.emit);
   tickOrders(s, w.rng, w.emit);
-  // 店員上架時先替今天要來的常客擺一份（D70）；沒有店員就不必算
-  tickBakery(s, w.rng, w.emit, hasStaff(s) ? regularWants(s) : []);
+  // 今天要來的常客（D70）：店員上架時先替他擺一份、散客不拿替他保留的那份
+  tickBakery(s, w.rng, w.emit, regularWants(s));
   // 常客（D66）：解鎖、到店結算、排下一次。離線照樣跑，回來時「你不在的時候」卡從 state 推導
   tickRegulars(s, w.rng, w.emit);
   noteSpecies(s);

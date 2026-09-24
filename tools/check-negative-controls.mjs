@@ -373,9 +373,9 @@ const CASES = [
   {
     ac: 'AC11-6b',
     why: '散客改拿最高星，高星被散客以 ★2 價買走',
-    file: 'src/game/stock.ts',
-    from: '  for (let i = minStar - 1; i < MAX_STAR && out.length < n; i++) {',
-    to: '  for (let i = MAX_STAR - 1; i >= minStar - 1 && out.length < n; i--) {',
+    file: 'src/game/bakery.ts',
+    from: '  for (let i = 0; i < 5 && stars.length < qty; i++) {',
+    to: '  for (let i = 4; i >= 0 && stars.length < qty; i--) {',
     test: '散客先拿最低星',
   },
   {
@@ -426,6 +426,14 @@ const CASES = [
     from: "  emit({ type: 'regularVisit', id, bought, dessert, star, coins, hearts: reg.hearts, gift });",
     to: "  emit({ type: 'orderNew', orderId: 'x', species: dessert ?? 'caramel', qty: 1, price: coins });",
     test: '每次到店一個 regularVisit',
+  },
+  {
+    ac: 'D70-hold',
+    why: '替今天的常客保留的那份散客照拿（散客需求遠大於產量，保留等於沒保留，常客整個月撲空）',
+    file: 'src/game/bakery.ts',
+    from: '  const held = heldForRegulars(state, wants);',
+    to: '  const held = heldForRegulars(state, []);',
+    test: '散客不拿替今天的常客保留的那份',
   },
 ];
 

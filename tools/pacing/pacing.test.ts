@@ -152,61 +152,69 @@ function run(profile: Profile, seed: number) {
         state.basins.forEach((b, i) => { if (b.preferredLiquid === l && b.units === 0 && state.stock[l] > 0) fillBasin(state, i, l, noop); });
       }
     }
-    const ELITE = 'c0t2';
-    const z = state.zones.find((x) => x.id === ELITE);
-    if (!z?.unlocked) return;
-    if (z.mode !== 'elite' && !setZoneMode(state, ELITE, 'elite', noop).ok) return;
-    // 精養區專養焦糖系（熊先生、貓頭鷹、狐狸、小豬四位的口味都含焦糖），盆裡倒熱焦糖＝牠們的本命液
-    const caramelLine = (p: (typeof state.puddings)[number]) => p.genes.includes('caramel');
-    const score = (p: (typeof state.puddings)[number]) =>
-      (caramelLine(p) ? 1000 : 0) + (p.star < p.potential ? 100 + p.potential * 10 + p.star : p.star * 10);
-    const ranked = [...state.puddings].filter((p) => p.mode !== 'bathing').sort((a, b) => score(b) - score(a));
-    const want = new Set(ranked.slice(0, BALANCE.eliteCapacity).map((p) => p.id));
-    // 最不值錢的量產區布丁（量產區滿了要騰位子時賣掉牠）
+    type Pud = (typeof state.puddings)[number];
+    const taken = new Set<string>();
+    /** 騰位子：賣掉量產區裡「數量最多的那一種」裡最不值錢的一隻（稀有的系留著，常客要它們） */
     const sellCheapest = (keep: Set<string>) => {
-      const cheap = state.puddings
-        .filter((p) => !isEliteZone(state, p.zone) && !keep.has(p.id) && puddingSaleBlock(state, p.id) === null)
-        .sort((a, b) => a.potential - b.potential || a.star - b.star)[0];
+      const pool = state.puddings.filter((p) => !isEliteZone(state, p.zone) && !keep.has(p.id) && !taken.has(p.id) && puddingSaleBlock(state, p.id) === null);
+      const count = new Map<string, number>();
+      for (const p of pool) count.set(p.species, (count.get(p.species) ?? 0) + 1);
+      const cheap = pool.sort((a, b) => (count.get(b.species)! - count.get(a.species)!) || a.potential - b.potential || a.star - b.star)[0];
       return cheap ? sellPudding(state, cheap.id, noop).ok : false;
     };
-    // 先搬出去（騰位子）再搬進來；量產區滿了就先賣一隻最不值錢的（真人換精養名單也是這樣騰位子）
-    for (const p of state.puddings.filter((q) => q.zone === ELITE && !want.has(q.id))) {
-      const roomy = () => unlockedZones(state).find((q) => q.id !== ELITE && state.puddings.filter((r) => r.zone === q.id).length < BALANCE.zoneCapacity);
-      if (!roomy()) sellCheapest(want);
-      const dest = roomy();
-      if (dest) movePudding(state, p.id, dest.id, noop);
-    }
-    for (const id of want) {
-      const p = state.puddings.find((q) => q.id === id);
-      if (p && p.zone !== ELITE) movePudding(state, p.id, ELITE, noop);
-    }
-    // 精養區的盆：平常倒熱焦糖；有長到頂的高星媽媽、而且量產區沒有比牠潛力更高的下一代時才倒牛奶（生下一代）。
-    // 量產區住滿就先賣掉一隻最不值錢的騰位子——不賣，寶寶生不出來，世代鏈就斷在這裡
-    const elite = state.puddings.filter((p) => p.zone === ELITE);
-    const top = Math.max(0, ...elite.filter((p) => p.star >= p.potential).map((p) => p.star));
-    const nextGen = state.puddings.some((p) => !isEliteZone(state, p.zone) && p.potential > top && caramelLine(p));
-    const breed = top >= 2 && !nextGen;
-    if (breed) {
-      const massFull = unlockedZones(state).filter((q) => q.mode === 'mass').every((q) => state.puddings.filter((p) => p.zone === q.id).length >= BALANCE.zoneCapacity);
-      if (massFull) sellCheapest(want);
-    }
-    state.basins.forEach((b, i) => {
-      if (b.zone !== ELITE) return;
-      const liquid: LiquidId = breed ? 'milk' : 'caramel';
-      if (b.units > 0 && b.liquid === liquid) return;
-      if (b.units > 0) {
-        // 換液體要先倒掉：遊戲裡的做法是「收進倉庫＝倒掉」再擺回原位（D49），bot 走同一條路
-        const ref = { kind: 'basin' as const, index: i };
-        const pos = { ...b.pos };
-        if (!storeFurniture(state, ELITE, ref).ok) return;
-        if (!placeFromStorage(state, ELITE, ref, pos).ok) return;
+    /**
+     * 一個精養區養一條血統：`inLine` 選誰、`basins` 決定每個盆倒什麼（`breed`＝要生下一代）。
+     * 5 格留給「還在長、潛力最高」的；長到頂的高星媽媽在量產區還沒有更高潛力的下一代時泡牛奶生下一代。
+     */
+    const runElite = (zoneId: string, inLine: (p: Pud) => boolean, liquidFor: (b: (typeof state.basins)[number], breed: boolean) => LiquidId) => {
+      const zz = state.zones.find((x) => x.id === zoneId);
+      if (!zz?.unlocked) return;
+      if (zz.mode !== 'elite' && !setZoneMode(state, zoneId, 'elite', noop).ok) return;
+      const score = (p: Pud) => (inLine(p) ? 1000 : 0) + (p.star < p.potential ? 100 + p.potential * 10 + p.star : p.star * 10);
+      const ranked = [...state.puddings].filter((p) => p.mode !== 'bathing' && !taken.has(p.id) && (p.zone === zoneId || !isEliteZone(state, p.zone))).sort((a, b) => score(b) - score(a));
+      const want = new Set(ranked.slice(0, BALANCE.eliteCapacity).map((p) => p.id));
+      for (const id of want) taken.add(id);
+      for (const p of state.puddings.filter((q) => q.zone === zoneId && !want.has(q.id))) {
+        const roomy = () => unlockedZones(state).find((q) => q.mode === 'mass' && state.puddings.filter((r) => r.zone === q.id).length < BALANCE.zoneCapacity);
+        if (!roomy()) sellCheapest(want);
+        const dest = roomy();
+        if (dest) movePudding(state, p.id, dest.id, noop);
       }
-      if (state.stock[liquid] > 0) fillBasin(state, i, liquid, noop);
-    });
-    // 升星藥（D67）：給精養區卡在上限、星級最高的那隻
-    if (state.items.starTonic > 0) {
-      const capped = elite.filter((p) => p.star >= p.potential && p.star < 5).sort((a, b) => b.star - a.star)[0];
-      if (capped) useStarTonic(state, capped.id, noop);
+      for (const id of want) {
+        const p = state.puddings.find((q) => q.id === id);
+        if (p && p.zone !== zoneId) movePudding(state, p.id, zoneId, noop);
+      }
+      const elite = state.puddings.filter((p) => p.zone === zoneId);
+      const top = Math.max(0, ...elite.filter((p) => p.star >= p.potential).map((p) => p.star));
+      const nextGen = state.puddings.some((p) => !isEliteZone(state, p.zone) && p.potential > top && inLine(p));
+      const breed = top >= 2 && !nextGen;
+      const massFull = unlockedZones(state).filter((q) => q.mode === 'mass').every((q) => state.puddings.filter((p) => p.zone === q.id).length >= BALANCE.zoneCapacity);
+      if (breed && massFull) sellCheapest(want);
+      state.basins.forEach((b, i) => {
+        if (b.zone !== zoneId) return;
+        const liquid = liquidFor(b, breed);
+        if (b.units > 0 && b.liquid === liquid) return;
+        if (b.units > 0) {
+          // 換液體要先倒掉：遊戲裡的做法是「收進倉庫＝倒掉」再擺回原位（D49），bot 走同一條路
+          const ref = { kind: 'basin' as const, index: i };
+          const pos = { ...b.pos };
+          if (!storeFurniture(state, zoneId, ref).ok) return;
+          if (!placeFromStorage(state, zoneId, ref, pos).ok) return;
+        }
+        if (state.stock[liquid] > 0) fillBasin(state, i, liquid, noop);
+      });
+      // 升星藥（D67）：給精養區卡在上限、星級最高的那隻
+      if (state.items.starTonic > 0) {
+        const capped = elite.filter((p) => p.star >= p.potential && p.star < 5).sort((a, b) => b.star - a.star)[0];
+        if (capped) useStarTonic(state, capped.id, noop);
+      }
+    };
+    // 第一條：上層專養焦糖系（熊先生、貓頭鷹、狐狸、小豬的口味都含焦糖），平常倒熱焦糖＝本命液，要生下一代才倒牛奶
+    runElite('c0t2', (p) => p.genes.includes('caramel'), (_b, breed) => (breed ? 'milk' : 'caramel'));
+    // 第二條（買了草莓澡盆之後）：二號櫥窗養沒有焦糖的那幾系（鮮奶酪／抹茶／草莓，綿羊奶奶、兔子太太、青蛙小弟、企鵝郵差）；
+    // 一般的盆倒牛奶（鮮奶酪的本命液，順便生下一代）、草莓盆倒草莓醬
+    if (state.ownedBasins.includes('strawberry')) {
+      runElite('c1t1', (p) => !p.genes.includes('caramel'), (b) => (b.preferredLiquid === 'strawberry' ? 'strawberry' : 'milk'));
     }
   };
   const noteGrowth = () => {
