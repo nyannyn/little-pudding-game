@@ -22,7 +22,7 @@ import { REGULARS, awaySummary, deliverOrder, markStorySeen } from './game/regul
 import { claimAchievement, claimAllAchievements } from './game/achievements';
 import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, shelfOne, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
 import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
-import { MACHINE_TIER_NAMES } from './game/recipes';
+import { MACHINE_TIER_NAMES, dessertLook, dessertName } from './game/recipes';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -328,7 +328,7 @@ function awayText(since: number): string {
   if (!rows.length) return '';
   return rows
     .map(({ id, result: r }) => (r.bought && r.dessert
-      ? `${REGULARS[id].name}來過，買了 ★${r.star} ${SPECIES[r.dessert].dessert}。`
+      ? `${REGULARS[id].name}來過，買了 ★${r.star} ${dessertName(r.dessert)}。`
       : `${REGULARS[id].name}來過，但架上沒有想買的。`))
     .join('');
 }
@@ -558,15 +558,15 @@ function handle(e: SimEvent) {
       // D57 起線上自己走，出爐一律是 auto；離線那幾百盤在 drainEvents 就丟了，這裡一盤最多一則
       sfx.coin(0.32);
       // D60：看著工坊時是一張大字卡（同一幀好幾盤出爐合併成一張）；在農場就只給一則 toast
-      if (view === 'bakery') hud.bakeBanner(SPECIES[e.species].dessert, e.qty);
-      else hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
+      if (view === 'bakery') hud.bakeBanner(dessertName(e.species), e.qty);
+      else hud.toast(`出爐！${dessertName(e.species)} ×${e.qty} 放進成品櫃`);
       break;
     case 'tierUp':
       sfx.coin(0.4);
       hud.toast(`${e.what}升上${MACHINE_TIER_NAMES[e.tier - 1]}級！機器前的星星換成${MACHINE_TIER_NAMES[e.tier - 1]}色`);
       break;
     case 'bakeFailed':
-      hud.toast(`${SPECIES[e.species].dessert}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);
+      hud.toast(`${dessertName(e.species)}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);
       break;
     case 'customer':
       // 客人演出只在看著工坊時播；離線結算的那幾百位早在 drainEvents 丟掉了
@@ -582,10 +582,10 @@ function handle(e: SimEvent) {
     case 'regularVisit': {
       const name = REGULARS[e.id].name;
       if (view === 'bakery') {
-        bakery.regularCame(e.id, e.bought, e.dessert);
+        bakery.regularCame(e.id, e.bought, e.dessert && dessertLook(e.dessert));
         if (e.bought) sfx.coin(0.3);
       } else {
-        hud.toast(e.bought && e.dessert ? `${name}來店裡買了 ★${e.star} ${SPECIES[e.dessert].dessert}，+${e.coins}` : `${name}來了，架上沒有想買的甜點`, !e.bought);
+        hud.toast(e.bought && e.dessert ? `${name}來店裡買了 ★${e.star} ${dessertName(e.dessert)}，+${e.coins}` : `${name}來了，架上沒有想買的甜點`, !e.bought);
       }
       if (e.gift) hud.toast(e.gift === 'tonic' ? `${name}送你一瓶升星藥！（布丁卡裡用）` : `${name}送你幾份原料`);
       break;
@@ -597,7 +597,8 @@ function handle(e: SimEvent) {
       hud.toast(`${REGULARS[e.id].name}下了一張特別訂單（預訂單裡看）`);
       break;
     case 'hearts':
-      if (e.reached === 2 || e.reached === 8 || e.reached === 10) hud.toast(`${REGULARS[e.id].name} ♥${e.reached}：解鎖新的故事章節`);
+      if (e.reached === 10) hud.toast(`${REGULARS[e.id].name} ♥10：故事完結章，招牌甜點上了菜單！`);
+      else if (e.reached === 2 || e.reached === 8) hud.toast(`${REGULARS[e.id].name} ♥${e.reached}：解鎖新的故事章節`);
       else if (e.reached === 4) hud.toast(`${REGULARS[e.id].name} ♥4：之後來店會下特別訂單`);
       else if (e.reached === 6) hud.toast(`${REGULARS[e.id].name} ♥6：之後買到有時會送禮`);
       break;
@@ -621,10 +622,10 @@ function handle(e: SimEvent) {
       hud.toast(`訂單成交，+${e.coins}`);
       break;
     case 'orderNew':
-      hud.toast(`新訂單：${SPECIES[e.species].dessert} × ${e.qty}`);
+      hud.toast(`新訂單：${dessertName(e.species)} × ${e.qty}`);
       break;
     case 'orderExpired':
-      hud.toast(`訂單過期了：${SPECIES[e.species].dessert}`, true);
+      hud.toast(`訂單過期了：${dessertName(e.species)}`, true);
       break;
     case 'buy':
       if (!e.auto) hud.toast(`購入${e.what}，−${e.cost}`);
@@ -679,7 +680,7 @@ function tapStation(id: StationId) {
   const b = state.bakery.stations[id].batch;
   if (b) {
     const left = Math.max(0, Math.ceil(state.bakery.stations[id].doneAt - state.time));
-    const what = SPECIES[b.species].dessert;
+    const what = dessertName(b.species);
     hud.toast(stationStatus(state, id) === 'working'
       ? `${STATIONS[id].name}正在${STATIONS[id].verb}${what}，再 ${left} 秒`
       : `${what}在${STATIONS[id].name}等下一台空出來`);

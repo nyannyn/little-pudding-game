@@ -22,6 +22,11 @@ import {
   recipeMaterials,
   recipeSeconds,
   starsAffordable,
+  DESSERT_IDS,
+  dessertName,
+  recipeMinStar,
+  recipeUnlocked,
+  type DessertId,
   type PantryId,
 } from '../game/recipes';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
@@ -38,7 +43,7 @@ import { RegularsCard } from './regularsCard';
 import { RegularTags } from './regularTags';
 import { REGULARS, unreadStories, type RegularId } from '../game/regulars';
 import { artHtml } from './shop';
-import { INGREDIENT_ART } from './shopArt';
+import { INGREDIENT_ART, dessertArt } from './shopArt';
 import { storageZoneLabel, storedRows, type StorageRow } from './storage';
 
 export type GameView = 'farm' | 'bakery';
@@ -49,7 +54,7 @@ export interface HudActions {
   /** 切換農場／甜點工坊（D51：兩個獨立場景） */
   setView(view: GameView): void;
   /** 從菜單把一盤放上流水線（D56；之後自己一站一站走完）；份數由玩家在菜單上疊（D60）、星級在分頁選（D64） */
-  startBatch(species: SpeciesId, qty: number, star: Star): void;
+  startBatch(species: DessertId, qty: number, star: Star): void;
   /** 上架卡的「上架 1」（D70） */
   shelfOne(id: SpeciesId, star: Star): void;
   /** 布丁卡（D70）：搬家、升星藥、賣掉這一隻 */
@@ -110,7 +115,7 @@ const el = (html: string): HTMLElement => {
 
 /** 成品櫃裡「可以上架」的份數：扣掉預訂單要留的，再受展示架剩餘空位限制 */
 function shelvable(s: GameState): number {
-  const spare = SPECIES_IDS.reduce((n, id) => n + spareDesserts(s, id).reduce((a, b) => a + b, 0), 0);
+  const spare = DESSERT_IDS.reduce((n, id) => n + spareDesserts(s, id).reduce((a, b) => a + b, 0), 0);
   return Math.min(spare, BALANCE.bakery.shelfCap - shelfCount(s));
 }
 /**
@@ -168,9 +173,9 @@ export class Hud {
    * 菜單上正在疊的那一盤（D60）：點卡片 ＋1 份，按「開始製作」才扣材料。
    * 只存在 HUD、不進 `GameState`——關掉菜單就清掉，所以不用 migrate、也不會有「半盤」卡在存檔裡。
    */
-  private draft: { id: SpeciesId; qty: number; star: Star } | null = null;
+  private draft: { id: DessertId; qty: number; star: Star } | null = null;
   /** 菜單每道甜點目前選的星級分頁（D70；只存在 HUD，關菜單不清——下次打開還停在同一頁） */
-  private menuStar = new Map<SpeciesId, Star>();
+  private menuStar = new Map<DessertId, Star>();
   /** 布丁卡與上架卡（D70） */
   private readonly pudCard = new PuddingCard();
   private readonly shelfCard = new ShelfCard();
@@ -183,7 +188,7 @@ export class Hud {
   private readonly bakeCard: HTMLElement;
   private bakeTimer = 0;
   /** 每道甜點這一盤最多幾份（syncMenu 算好，點擊時用；點擊處理拿不到 state） */
-  private menuMax = new Map<SpeciesId, number>();
+  private menuMax = new Map<DessertId, number>();
   private view: GameView = 'farm';
   private readonly shop = new ShopView();
   /** 工坊機器頭上的標籤；main.ts 給位置、每幀更新 */
@@ -424,9 +429,9 @@ export class Hud {
       case 'goBakery': this.act.setView('bakery'); break;
       case 'goFarm': this.act.setView('farm'); break;
       case 'openMenu': this.openMenu(); break;
-      case 'addPortion': this.addPortion(arg as SpeciesId, +1); break;
-      case 'portionMinus': this.addPortion(arg as SpeciesId, -1); break;
-      case 'portionMax': this.addPortion(arg as SpeciesId, Infinity); break;
+      case 'addPortion': this.addPortion(arg as DessertId, +1); break;
+      case 'portionMinus': this.addPortion(arg as DessertId, -1); break;
+      case 'portionMax': this.addPortion(arg as DessertId, Infinity); break;
       case 'startBatch': {
         const d = this.draft;
         if (!d || d.id !== arg || d.qty < 1) break;
@@ -438,7 +443,7 @@ export class Hud {
       case 'menuStar': {
         // 換星級分頁：那一道的草稿歸零（份數上限看的是那一星的原料，沿用舊份數會超過上限）
         const [sp, st] = arg.split(':');
-        const id = sp as SpeciesId;
+        const id = sp as DessertId;
         this.menuStar.set(id, clampStar(Number(st)));
         if (this.draft?.id === id) this.draft = null;
         this.menuSig = '';
@@ -841,7 +846,7 @@ export class Hud {
     (this.dayBar.querySelector('.onl') as HTMLElement).textContent = onLine ? `流水線上 ${onLine} 盤` : '';
 
     // 菜單鈕的徽章：現在就能開工的甜點有幾道
-    const startable = SPECIES_IDS.filter((id) => canStartRecipe(state, id)).length;
+    const startable = DESSERT_IDS.filter((id) => starsAffordable(state, id).some((st) => canStartRecipe(state, id, st))).length;
     (this.root.querySelector('[data-a="openMenu"] .n') as HTMLElement).textContent = startable ? String(startable) : '';
     const shelf = shelvable(state);
     this.btnShelf.disabled = shelf <= 0;
@@ -852,12 +857,12 @@ export class Hud {
    * 疊份數（D60）：`delta` ＋1／－1，Infinity＝直接疊到最多。換點別道＝那一道從 1 份起（草稿一次只有一盤）。
    * 上限＝`maxBatch`（這條線最低那台的上限、材料夠做幾份取小），疊到頂就停在頂、不跳錯誤。
    */
-  private addPortion(id: SpeciesId, delta: number) {
+  private addPortion(id: DessertId, delta: number) {
     const max = this.menuMax.get(id) ?? 0;
     if (max <= 0) return;
     const cur = this.draft?.id === id ? this.draft.qty : 0;
     const next = delta === Infinity ? max : Math.max(0, Math.min(max, cur + delta));
-    this.draft = next > 0 ? { id, qty: next, star: this.menuStar.get(id) ?? 1 } : null;
+    this.draft = next > 0 ? { id, qty: next, star: this.menuStar.get(id) ?? recipeMinStar(id) } : null;
     if (delta > 0 && cur === max) {
       // 已經疊到頂：卡片上的數字抖一下，講清楚為什麼沒有再多
       const q = this.menuCard.querySelector<HTMLElement>(`.rcard[data-id="${id}"] .qty`);
@@ -871,7 +876,7 @@ export class Hud {
   /** 草稿的數字就地改（不重建卡片：連點的時候手指底下的節點不能被換掉，D55 的教訓） */
   private paintDraft() {
     for (const card of this.menuCard.querySelectorAll<HTMLElement>('.rcard')) {
-      const id = card.dataset.id as SpeciesId;
+      const id = card.dataset.id as DessertId;
       const max = this.menuMax.get(id) ?? 0;
       const qty = this.draft?.id === id ? Math.min(this.draft.qty, max) : 0;
       if (this.draft?.id === id && qty !== this.draft.qty) this.draft = qty > 0 ? { id, qty, star: this.draft.star } : null;
@@ -898,10 +903,11 @@ export class Hud {
    * 手指底下的按鈕會被換掉（D55 的教訓）。所以缺料那行只寫材料名，數字在晶片上。
    */
   private syncMenu(state: GameState) {
-    const rows = SPECIES_IDS.map((id) => {
+    // 招牌甜點（D68）：那位常客 ♥10 才出現在菜單上
+    const rows = DESSERT_IDS.filter((id) => recipeUnlocked(state, id)).map((id) => {
       // 星級分頁（D70）：只亮有原料的星級；選的那一星用完了就退回最低的那一星
       const avail = starsAffordable(state, id);
-      let star = this.menuStar.get(id) ?? avail[0] ?? 1;
+      let star = this.menuStar.get(id) ?? avail[0] ?? recipeMinStar(id);
       if (!avail.includes(star) && avail.length) star = avail[0]!;
       this.menuStar.set(id, star);
       const b = recipeBlockers(state, id, star);
@@ -915,7 +921,6 @@ export class Hud {
       const scroll = list.scrollTop;
       list.innerHTML = rows
         .map(({ id, ok, lines, qty, fail, secs }) => {
-          const info = SPECIES[id];
           const r = RECIPES[id];
           const time = secs >= 60 ? `${Math.floor(secs / 60)} 分 ${secs % 60} 秒` : `${secs} 秒`;
           // 晶片寫「一份要幾個」：份數由玩家疊（D60），夠 1 份就開得了工
@@ -933,8 +938,8 @@ export class Hud {
           const tabs = STARS.map((s) => `<button class="st" data-a="menuStar" data-arg="${id}:${s}" aria-label="用 ${s} 星原料">★${s}</button>`).join('');
           return `<div class="rcard" data-id="${id}" data-ok="${ok}"${ok ? ` data-a="addPortion" data-arg="${id}"` : ''}>
             <div class="rhead">
-              ${artHtml(INGREDIENT_ART[id])}
-              <div class="txt"><b>${info.dessert}</b><small>${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
+              ${artHtml(dessertArt(id))}
+              <div class="txt"><b>${dessertName(id)}</b><small>${r.owner ? `${REGULARS[r.owner].name}的招牌・散客不買・` : ''}${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
               <span class="price">${dessertPrice(id)}</span>
             </div>
             <div class="stabs">${tabs}<small>散客只付到 ★${BALANCE.walkInStarCap}</small></div>
@@ -948,8 +953,8 @@ export class Hud {
       list.scrollTop = scroll;
     }
     for (const card of this.menuCard.querySelectorAll<HTMLElement>('.rcard')) {
-      const id = card.dataset.id as SpeciesId;
-      const star = this.menuStar.get(id) ?? 1;
+      const id = card.dataset.id as DessertId;
+      const star = this.menuStar.get(id) ?? recipeMinStar(id);
       const avail = starsAffordable(state, id);
       for (const t of card.querySelectorAll<HTMLButtonElement>('.stabs .st')) {
         const s = clampStar(Number(t.dataset.arg?.split(':')[1]));

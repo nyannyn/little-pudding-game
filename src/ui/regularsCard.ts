@@ -11,6 +11,7 @@ import {
   type RegularState,
 } from '../game/regulars';
 import { REGULAR_STORIES } from '../game/regularStories';
+import { dessertName } from '../game/recipes';
 import { SPECIES } from '../game/species';
 import type { GameState } from '../game/state';
 import { heartsHtml, starsHtml } from './icons';
@@ -145,7 +146,7 @@ function lastText(state: GameState, id: RegularId): string {
   if (!r) return '還沒來過';
   if (r.bought && r.dessert && r.star) {
     const gift = r.gift === 'tonic' ? '，還送了一瓶升星藥' : r.gift === 'ingredients' ? '，還送了幾份原料' : '';
-    return `上次（第 ${r.day} 天）買了 ★${r.star} ${SPECIES[r.dessert].dessert}，付 ${r.coins}${gift}`;
+    return `上次（第 ${r.day} 天）買了 ★${r.star} ${dessertName(r.dessert)}，付 ${r.coins}${gift}`;
   }
   const t = REGULARS[id].taste;
   const goods = t.kind === 'species' ? SPECIES[t.species].dessert : `${SPECIES[t.allele].shortName}系甜點`;

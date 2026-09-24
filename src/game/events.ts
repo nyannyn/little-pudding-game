@@ -23,10 +23,10 @@ export type SimEvent =
   /** 升星（D62）：照顧點數滿了，或用了升星藥（D67） */
   | { type: 'starUp'; puddingId: string; star: number; byTonic: boolean }
   // ── 甜點工坊（D51／D52）──
-  | { type: 'bakeStep'; station: StationId; species: SpeciesId; auto: boolean }
-  | { type: 'bakeDone'; species: SpeciesId; qty: number; auto: boolean; star: number }
+  | { type: 'bakeStep'; station: StationId; species: DessertId; auto: boolean }
+  | { type: 'bakeDone'; species: DessertId; qty: number; auto: boolean; star: number }
   /** 最後一站擲失敗（D56）：這一盤有幾份做壞了 */
-  | { type: 'bakeFailed'; species: SpeciesId; qty: number }
+  | { type: 'bakeFailed'; species: DessertId; qty: number }
   /** 機器跨階（Lv6／11／16，鐵→銅→銀→金，D61）：`tier` 是新的那一階（2–4） */
   | { type: 'tierUp'; what: string; tier: number }
   | { type: 'shelfStocked'; qty: number; auto: boolean }

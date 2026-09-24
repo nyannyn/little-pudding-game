@@ -18,6 +18,7 @@ import {
   recipeBlockers,
   stationSeconds,
   takeRecipeMaterials,
+  DESSERT_IDS,
   type DessertId,
   type StationId,
 } from './recipes';
@@ -54,7 +55,8 @@ export { clockText, dayClock, type DayClock } from './clock';
  */
 
 export interface Batch {
-  species: SpeciesId;
+  /** 做哪一道甜點（D68 起可以是招牌甜點；欄位名沿用 `species`，舊存檔不必轉換） */
+  species: DessertId;
   qty: number;
   /** 這一盤用的原料星級＝做出來的甜點星級（D64） */
   star: Star;
@@ -154,7 +156,7 @@ export function createBakery(epoch: number): BakeryState {
   return {
     epoch,
     stations: emptyStations(),
-    shelf: zeroTable(SPECIES_IDS),
+    shelf: zeroTable(DESSERT_IDS),
     nextCustomerAt: epoch + BALANCE.bakery.customerIntervalMin,
     today: { day: 1, revenue: 0, served: 0, missed: 0 },
     lastDay: null,
@@ -234,13 +236,13 @@ export function restoreBakery(raw: unknown, now: number): BakeryState {
     for (const id of STATION_IDS) {
       const src = (r.stations as Record<string, Partial<Station> | undefined> | undefined)?.[id];
       const b = src?.batch;
-      if (b && SPECIES_IDS.includes(b.species as SpeciesId) && num(b.qty, 0) > 0) {
+      if (b && DESSERT_IDS.includes(b.species as DessertId) && num(b.qty, 0) > 0) {
         const doneAt = num(src?.doneAt, now);
         // v9 沒有 startedAt：那一盤是用 Lv1 的固定秒數排的（D57 的秒數不隨等級變）
         const startedAt = Math.min(doneAt, num(src?.startedAt, doneAt - STATIONS[id].sec));
         // D71：v10 以前的盤子沒有星級 → ★1（原料當初就是 ★1 那一格扣的）
         const star = clampStar((b as Partial<Batch>).star);
-        out.stations[id] = { batch: { species: b.species as SpeciesId, qty: Math.floor(num(b.qty, 1)), star }, startedAt, doneAt };
+        out.stations[id] = { batch: { species: b.species as DessertId, qty: Math.floor(num(b.qty, 1)), star }, startedAt, doneAt };
       }
     }
     const m = r.machines as Record<string, unknown> | undefined;
@@ -251,7 +253,7 @@ export function restoreBakery(raw: unknown, now: number): BakeryState {
     out.fame = Math.min(FAME.max, Math.max(1, Math.floor(num(r.fame, 1))));
   }
   // D71：舊的數字全部放進 ★1
-  out.shelf = restoreTable(r.shelf, SPECIES_IDS);
+  out.shelf = restoreTable(r.shelf, DESSERT_IDS);
   out.nextCustomerAt = num(r.nextCustomerAt, out.nextCustomerAt);
   out.today = tally(r.today, 1);
   out.lastDay = r.lastDay ? tally(r.lastDay, Math.max(1, out.today.day - 1)) : null;
@@ -277,7 +279,7 @@ export function stationProgress(state: GameState, id: StationId): number {
 }
 
 /** 這一盤在自己的路線上，下一站是哪裡（null＝這一站是最後一站） */
-export function nextStationFor(species: SpeciesId, from: StationId): StationId | null {
+export function nextStationFor(species: DessertId, from: StationId): StationId | null {
   const route = RECIPES[species].route;
   return route[route.indexOf(from) + 1] ?? null;
 }
@@ -345,7 +347,7 @@ function enterStation(state: GameState, id: StationId, b: Batch): void {
  * **份數由玩家疊**（D60）：1 ≤ qty ≤ `maxBatch`（這條線最低那台的上限、材料夠做的份數取小）。
  * 超過就拒絕、不夾到上限——夾了等於 UI 算錯的時候靜默少做，玩家看到「按了 5 份、出爐 3 份」。
  */
-export function startBatch(state: GameState, species: SpeciesId, qty: number, emit: EventSink, star: Star = 1): BakeryResult {
+export function startBatch(state: GameState, species: DessertId, qty: number, emit: EventSink, star: Star = 1): BakeryResult {
   // D64：一盤只用一個星級的原料；那一星不夠就拒絕，不從別的星級湊（AC11-5）
   const lines = blockerLines(recipeBlockers(state, species, star));
   if (lines.length) return fail(`★${star} ${lines.join('；')}`);
@@ -513,7 +515,8 @@ export function walkInPrice(id: DessertId, star: Star): number {
  */
 function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
   const bk = state.bakery;
-  const total = shelfCount(state);
+  // 散客只買物種甜點（招牌甜點散客買不起，D68）：架上只剩招牌甜點＝對散客來說是空架
+  const total = SPECIES_IDS.reduce((n, id) => n + stockOf(state, 'shelf', id), 0);
   if (total <= 0) {
     bk.today.missed++;
     state.stats.missed++;

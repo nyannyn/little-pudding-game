@@ -1,6 +1,7 @@
 import { BALANCE } from './balance';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type SpeciesId } from './species';
 import { starMult } from './stars';
+import type { RegularId } from './regulars';
 import type { GameState } from './state';
 import { STARS, stockOf, takeStock, type Star } from './stock';
 
@@ -13,9 +14,22 @@ import { STARS, stockOf, takeStock, type Star } from './stock';
  */
 
 /**
- * 甜點的鍵（D68）。物種甜點沿用物種 id（舊存檔不必轉換）；招牌甜點另有自己的 id（WP11-7）。
+ * 甜點的鍵（D68）。物種甜點沿用物種 id（舊存檔不必轉換）；招牌甜點（常客 ♥10 的獎勵）另有自己的 id。
  */
-export type DessertId = SpeciesId;
+export type SignatureId = 'sig_bear' | 'sig_rabbit' | 'sig_sheep' | 'sig_frog' | 'sig_owl' | 'sig_fox' | 'sig_pig' | 'sig_penguin';
+export const SIGNATURE_IDS: SignatureId[] = ['sig_bear', 'sig_rabbit', 'sig_sheep', 'sig_frog', 'sig_owl', 'sig_fox', 'sig_pig', 'sig_penguin'];
+export type DessertId = SpeciesId | SignatureId;
+/** 全部甜點：物種甜點在前（菜單、散客挑貨的順序不變），招牌甜點在後 */
+export const DESSERT_IDS: DessertId[] = [...SPECIES_IDS, ...SIGNATURE_IDS];
+
+export function isSignature(id: DessertId): id is SignatureId {
+  return id.startsWith('sig_');
+}
+
+/** 招牌甜點要幾顆心才解鎖（D67：♥10 完結章的獎勵） */
+export const SIGNATURE_HEARTS = 10;
+/** 招牌甜點最低要用幾星的原料（D68：「兩種 ★4 以上的原料」） */
+export const SIGNATURE_MIN_STAR: Star = 4;
 
 export type StationId = 'stove' | 'crack' | 'mix' | 'mold' | 'bake' | 'chill' | 'decorate';
 export const STATION_IDS: StationId[] = ['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'];
@@ -183,16 +197,38 @@ function materialTake(state: GameState, key: MaterialKey, n: number, star: Star)
 // ── 食譜（D56）──────────────────────────────────
 
 export interface Recipe {
-  /** 甜點以物種為鍵（每個物種一道招牌甜點，名字在 `SPECIES[*].dessert`） */
+  /**
+   * 長相用哪個物種（杯子顏色、菜單圖）。物種甜點就是自己；招牌甜點借主料的物種（D68）。
+   * 欄位名沿用 `species`：D56 以來的程式都讀這一欄，改名只會多一堆無關的 diff。
+   */
   species: SpeciesId;
   route: StationId[];
   /** 每份用量 */
   materials: Partial<Record<MaterialKey, number>>;
   /** 每份失敗的機率（Lv1 機器） */
   failRate: number;
+  /** 招牌甜點才有：名字、哪一位常客的、售價倍率（D68：一般甜點的 3 倍） */
+  name?: string;
+  owner?: RegularId;
+  priceMult?: number;
 }
 
-export const RECIPES: Record<SpeciesId, Recipe> = {
+/**
+ * 招牌甜點（D68，配方照 `docs/plans/regulars-stories.md` 的故事）：兩種物種原料、都要 ★4 以上、售價 3 倍、
+ * 散客買不起（不上散客的貨架輪替，只替常客留、或交特別訂單）。路線照真實做法挑站，一律是 `STATION_IDS` 的子序列。
+ */
+const SIGNATURES: Record<SignatureId, Recipe> = {
+  sig_bear: { species: 'caramel', name: '蜂蜜焦糖千層', owner: 'bear', priceMult: 3, route: ['stove', 'crack', 'mix', 'mold', 'bake', 'decorate'], materials: { egg: 2, milk: 1, caramel: 1, custard: 1 }, failRate: 0.1 },
+  sig_rabbit: { species: 'strawberry', name: '草莓雲朵舒芙蕾', owner: 'rabbit', priceMult: 3, route: ['crack', 'mix', 'mold', 'bake', 'decorate'], materials: { egg: 2, strawberry: 1, berrymilk: 1 }, failRate: 0.12 },
+  sig_sheep: { species: 'panna', name: '奶奶的月光奶酪', owner: 'sheep', priceMult: 3, route: ['stove', 'mold', 'chill', 'decorate'], materials: { milk: 2, panna: 1, matchalatte: 1 }, failRate: 0.05 },
+  sig_frog: { species: 'matcha', name: '荷葉抹茶凍', owner: 'frog', priceMult: 3, route: ['stove', 'mold', 'chill'], materials: { milk: 1, matcha: 1, hojicha: 1 }, failRate: 0.05 },
+  sig_owl: { species: 'hojicha', name: '鐘樓焙茶塔', owner: 'owl', priceMult: 3, route: ['crack', 'mix', 'mold', 'bake', 'decorate'], materials: { egg: 2, flour: 1, hojicha: 1, caramel: 1 }, failRate: 0.1 },
+  sig_fox: { species: 'brulee', name: '焦糖火焰莓果塔', owner: 'fox', priceMult: 3, route: ['stove', 'crack', 'mix', 'mold', 'bake', 'decorate'], materials: { egg: 2, flour: 1, brulee: 1, strawberry: 1 }, failRate: 0.12 },
+  sig_pig: { species: 'custard', name: '雙層卡士達泡芙塔', owner: 'pig', priceMult: 3, route: ['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'], materials: { egg: 2, flour: 1, custard: 1, panna: 1 }, failRate: 0.15 },
+  sig_penguin: { species: 'sakura', name: '遠方的櫻花信', owner: 'penguin', priceMult: 3, route: ['stove', 'mold', 'chill', 'decorate'], materials: { rice: 1, sakura: 1, matcha: 1 }, failRate: 0.06 },
+};
+
+const SPECIES_RECIPES: Record<SpeciesId, Recipe> = {
   caramel: { species: 'caramel', route: ['stove', 'crack', 'mix', 'mold', 'bake', 'decorate'], materials: { egg: 2, milk: 1, flour: 1, caramel: 1 }, failRate: 0.08 },
   panna: { species: 'panna', route: ['stove', 'mold', 'chill'], materials: { milk: 2, panna: 1 }, failRate: 0.03 },
   custard: { species: 'custard', route: ['stove', 'crack', 'mix', 'mold', 'bake', 'decorate'], materials: { egg: 2, flour: 1, custard: 1 }, failRate: 0.15 },
@@ -205,7 +241,31 @@ export const RECIPES: Record<SpeciesId, Recipe> = {
   sakura: { species: 'sakura', route: ['stove', 'mold', 'decorate'], materials: { rice: 1, sakura: 1, matcha: 1 }, failRate: 0.06 },
 };
 
-export function recipeMaterials(species: SpeciesId): [MaterialKey, number][] {
+export const RECIPES: Record<DessertId, Recipe> = { ...SPECIES_RECIPES, ...SIGNATURES };
+
+/** 甜點名：物種甜點在 `SPECIES[*].dessert`，招牌甜點在配方上 */
+export function dessertName(id: DessertId): string {
+  const r = RECIPES[id];
+  return r.name ?? SPECIES[r.species].dessert;
+}
+
+/** 這道甜點長得像哪個物種（杯子顏色、圖） */
+export function dessertLook(id: DessertId): SpeciesId {
+  return RECIPES[id].species;
+}
+
+/** 菜單上看得到這一道嗎：物種甜點一律看得到；招牌甜點要那位常客 ♥10（D67） */
+export function recipeUnlocked(state: GameState, id: DessertId): boolean {
+  const owner = RECIPES[id].owner;
+  return !owner || (state.regulars[owner]?.hearts ?? 0) >= SIGNATURE_HEARTS;
+}
+
+/** 這道甜點最低要用幾星的原料（招牌甜點 ★4，其餘 ★1） */
+export function recipeMinStar(id: DessertId): Star {
+  return isSignature(id) ? SIGNATURE_MIN_STAR : 1;
+}
+
+export function recipeMaterials(species: DessertId): [MaterialKey, number][] {
   return Object.entries(RECIPES[species].materials) as [MaterialKey, number][];
 }
 
@@ -215,7 +275,7 @@ export function stationSeconds(state: GameState, id: StationId): number {
 }
 
 /** 這道甜點以目前機器等級走完整條路線要幾秒（遊戲秒） */
-export function recipeSeconds(state: GameState, species: SpeciesId): number {
+export function recipeSeconds(state: GameState, species: DessertId): number {
   return RECIPES[species].route.reduce((n, id) => n + stationSeconds(state, id), 0);
 }
 
@@ -223,9 +283,9 @@ export function recipeSeconds(state: GameState, species: SpeciesId): number {
  * 甜點售價（D53 → D56）：這一份的材料直接賣／買的價錢 × `dessertMarkup`。
  * 從材料推，不另開價目表：調材料價時甜點跟著走，永遠不會「做成甜點反而虧」。
  */
-export function dessertPrice(species: SpeciesId, star: Star = 1): number {
+export function dessertPrice(species: DessertId, star: Star = 1): number {
   const materials = recipeMaterials(species).reduce((n, [k, q]) => n + materialPrice(k) * q, 0);
-  return Math.round(materials * BALANCE.dessertMarkup * starMult(star));
+  return Math.round(materials * BALANCE.dessertMarkup * starMult(star) * (RECIPES[species].priceMult ?? 1));
 }
 
 // ── 機器 ─────────────────────────────────────────
@@ -235,41 +295,42 @@ export function machineLevel(state: GameState, id: StationId): number {
 }
 
 /** 這道甜點路線上等級最低的那台（0＝有沒買的） */
-export function lineLevel(state: GameState, species: SpeciesId): number {
+export function lineLevel(state: GameState, species: DessertId): number {
   return Math.min(...RECIPES[species].route.map((id) => machineLevel(state, id)));
 }
 
 /** 這條線一盤**最多**做幾份＝路線上最低那台的份數（D57「前期機器可以製作的甜點份數比較少」） */
-export function linePortions(state: GameState, species: SpeciesId): number {
+export function linePortions(state: GameState, species: DessertId): number {
   return machinePortions(lineLevel(state, species));
 }
 
 /** 手上 `star` 那一星的材料夠做幾份（最缺的那一種決定） */
-export function affordablePortions(state: GameState, species: SpeciesId, star: Star = 1): number {
+export function affordablePortions(state: GameState, species: DessertId, star: Star = 1): number {
   return Math.min(...recipeMaterials(species).map(([k, per]) => Math.floor(materialHave(state, k, star) / per)));
 }
 
 /** 這道甜點哪幾個星級的材料夠做至少 1 份（菜單的星級分頁只亮這些，D70） */
-export function starsAffordable(state: GameState, species: SpeciesId): Star[] {
-  return STARS.filter((s) => affordablePortions(state, species, s) >= 1);
+export function starsAffordable(state: GameState, species: DessertId): Star[] {
+  const min = recipeMinStar(species);
+  return STARS.filter((s) => s >= min && affordablePortions(state, species, s) >= 1);
 }
 
 /**
  * 這一盤**最多**能做幾份＝min(機器上限, 材料夠做的份數)；實際做幾份由玩家在菜單上疊（D60）。
  * **份數是上限不是門檻**：線升得再高，材料只夠 1 份也開得了工——不然升級等於花錢買降級。
  */
-export function maxBatch(state: GameState, species: SpeciesId, star: Star = 1): number {
+export function maxBatch(state: GameState, species: DessertId, star: Star = 1): number {
   return Math.min(linePortions(state, species), affordablePortions(state, species, star));
 }
 
 /** 目前機器下每份的失敗率 */
-export function lineFailRate(state: GameState, species: SpeciesId): number {
+export function lineFailRate(state: GameState, species: DessertId): number {
   const lv = Math.max(1, lineLevel(state, species));
   return RECIPES[species].failRate * machineFailMult(lv);
 }
 
 /** 把這道甜點還沒買的機器都買到 Lv1 要多少錢 */
-export function lineCost(state: GameState, species: SpeciesId): number {
+export function lineCost(state: GameState, species: DessertId): number {
   return RECIPES[species].route.filter((id) => machineLevel(state, id) === 0).reduce((n, id) => n + STATIONS[id].price, 0);
 }
 
@@ -287,22 +348,29 @@ export interface RecipeBlockers {
   materials: { key: MaterialKey; need: number; have: number }[];
   /** 起始站上還有一盤 */
   busy: StationId | null;
+  /** 招牌甜點：還沒解鎖（常客還沒 ♥10）、或選的星級低於 ★4（D68） */
+  locked: string | null;
 }
 
-export function recipeBlockers(state: GameState, species: SpeciesId, star: Star = 1): RecipeBlockers {
+export function recipeBlockers(state: GameState, species: DessertId, star: Star = 1): RecipeBlockers {
   const r = RECIPES[species];
+  const locked = !recipeUnlocked(state, species)
+    ? '常客的好感還沒到 ♥10'
+    : star < recipeMinStar(species)
+      ? `招牌甜點要用 ★${recipeMinStar(species)} 以上的原料`
+      : null;
   const machines = r.route.filter((id) => machineLevel(state, id) === 0);
   const materials = recipeMaterials(species)
     .map(([key, per]) => ({ key, need: per, have: materialHave(state, key, star) }))
     .filter((m) => m.have < m.need);
   const first = r.route[0]!;
   const busy = state.bakery.stations[first].batch ? first : null;
-  return { machines, materials, busy };
+  return { machines, materials, busy, locked };
 }
 
-export function canStartRecipe(state: GameState, species: SpeciesId, star: Star = 1): boolean {
+export function canStartRecipe(state: GameState, species: DessertId, star: Star = 1): boolean {
   const b = recipeBlockers(state, species, star);
-  return b.machines.length === 0 && b.materials.length === 0 && b.busy === null;
+  return b.machines.length === 0 && b.materials.length === 0 && b.busy === null && b.locked === null;
 }
 
 /**
@@ -312,6 +380,7 @@ export function canStartRecipe(state: GameState, species: SpeciesId, star: Star 
  */
 export function blockerLines(b: RecipeBlockers, withCounts = true): string[] {
   const out: string[] = [];
+  if (b.locked) out.push(b.locked);
   if (b.machines.length) out.push(`缺機器：${b.machines.map((id) => STATIONS[id].name).join('、')}`);
   if (b.materials.length) out.push(`缺原料：${b.materials.map((m) => (withCounts ? `${materialName(m.key)} ${m.have}/${m.need}` : materialName(m.key))).join('、')}`);
   if (b.busy) out.push(`${STATIONS[b.busy].name}上還有一盤，等它往下走`);
@@ -319,6 +388,6 @@ export function blockerLines(b: RecipeBlockers, withCounts = true): string[] {
 }
 
 /** 開工時一次扣齊整盤的材料（D56：不會做到一半缺料卡住）；物種原料只扣 `star` 那一星（D64） */
-export function takeRecipeMaterials(state: GameState, species: SpeciesId, qty: number, star: Star = 1): void {
+export function takeRecipeMaterials(state: GameState, species: DessertId, qty: number, star: Star = 1): void {
   for (const [key, per] of recipeMaterials(species)) materialTake(state, key, per * qty, star);
 }

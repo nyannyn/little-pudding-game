@@ -3,7 +3,7 @@ import { fulfillOrder, type BakeryResult, type ShelfWant } from './bakery';
 import { clockAt, dayClock, timeAt } from './clock';
 import type { EventSink } from './events';
 import { grantXp } from './level';
-import { anyLineReady, dessertPrice, type DessertId } from './recipes';
+import { DESSERT_IDS, RECIPES, SIGNATURE_IDS, anyLineReady, dessertPrice, type DessertId } from './recipes';
 import { intRange, range, type Rng } from './rng';
 import { SPECIES, SPECIES_IDS, type AlleleId, type SpeciesId } from './species';
 import type { GameState } from './state';
@@ -102,7 +102,7 @@ function restoreResult(v: unknown): VisitResult | null {
     at: num(r.at, 0),
     day: Math.max(1, Math.floor(num(r.day, 1))),
     bought: r.bought === true,
-    dessert: typeof r.dessert === 'string' && r.dessert in SPECIES ? (r.dessert as DessertId) : null,
+    dessert: typeof r.dessert === 'string' && (DESSERT_IDS as string[]).includes(r.dessert) ? (r.dessert as DessertId) : null,
     star: isStar(r.star) ? r.star : null,
     coins: Math.max(0, num(r.coins, 0)),
     gift: r.gift === 'tonic' || r.gift === 'ingredients' ? r.gift : null,
@@ -224,9 +224,31 @@ export function scheduleNextVisit(state: GameState, id: RegularId, rng: Rng): vo
   state.regulars[id].nextVisitAt = timeAt(state, today + days, hour);
 }
 
-/** 展示架上符合這位常客口味、星級夠格的甜點裡挑最低星那份（同星按 `SPECIES_IDS` 順序） */
+/**
+ * 這位常客的招牌甜點（D68）：♥10 才解鎖、只有他自己會買。還沒解鎖回 null。
+ */
+export function signatureOf(state: GameState, id: RegularId): DessertId | null {
+  if (state.regulars[id].hearts < MAX_HEARTS) return null;
+  return SIGNATURE_IDS.find((sig) => RECIPES[sig].owner === id) ?? null;
+}
+
+/** 這位常客吃得下的甜點：自己的招牌甜點（有的話，排第一）＋口味符合的物種甜點 */
+export function regularAccepts(state: GameState, id: RegularId): DessertId[] {
+  const sig = signatureOf(state, id);
+  return [...(sig ? [sig] : []), ...tasteDesserts(REGULARS[id].taste)];
+}
+
+/**
+ * 展示架上符合這位常客口味、星級夠格的甜點裡挑最低星那份（同星按 `SPECIES_IDS` 順序）。
+ * **自己的招牌甜點架上有就先買它**（D68：招牌甜點只擺給常客，他看到會先拿）。
+ */
 function bestShelfPick(state: GameState, id: RegularId): { species: DessertId; star: Star } | null {
   const minStar = minStarFor(id, state.regulars[id].hearts);
+  const sig = signatureOf(state, id);
+  if (sig) {
+    const star = lowestStar(state, 'shelf', sig, minStar);
+    if (star !== null) return { species: sig, star };
+  }
   let best: { species: DessertId; star: Star } | null = null;
   for (const species of SPECIES_IDS) {
     if (!tasteMatches(REGULARS[id].taste, species)) continue;
@@ -381,7 +403,7 @@ export function regularWants(state: GameState): ShelfWant[] {
     const reg = state.regulars[id];
     if (!reg.unlocked || reg.nextVisitAt < state.time) continue;
     if (clockAt(state, reg.nextVisitAt).day !== today) continue;
-    out.push({ accepts: tasteDesserts(REGULARS[id].taste), minStar: minStarFor(id, reg.hearts) });
+    out.push({ accepts: regularAccepts(state, id), minStar: minStarFor(id, reg.hearts) });
   }
   return out;
 }

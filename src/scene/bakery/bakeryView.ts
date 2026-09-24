@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { batchesOnLine, dayClock, stationProgress, stationStatus, type Batch } from '../../game/bakery';
 import { stockOf, totalStock } from '../../game/stock';
-import { MAX_MACHINE_LEVEL, RECIPES, STATIONS, STATION_IDS, type StationId } from '../../game/recipes';
+import { DESSERT_IDS, MAX_MACHINE_LEVEL, RECIPES, STATIONS, STATION_IDS, dessertLook, type StationId } from '../../game/recipes';
 import { SPECIES, SPECIES_IDS, type SpeciesId } from '../../game/species';
 import type { RegularId } from '../../game/regulars';
 import type { GameState } from '../../game/state';
@@ -603,7 +603,7 @@ export class BakeryView {
           const [along, across] = cupPos(i, n);
           const cx = Math.cos(p.dir) * along - Math.sin(p.dir) * across;
           const cz = Math.sin(p.dir) * along + Math.cos(p.dir) * across;
-          this.hops.push({ from: { x: p.x + cx, y: BELT.y, z: p.z + cz }, dest: slot, t: -i * HOP_GAP / 0.5, species: r.batch.species });
+          this.hops.push({ from: { x: p.x + cx, y: BELT.y, z: p.z + cz }, dest: slot, t: -i * HOP_GAP / 0.5, species: dessertLook(r.batch.species) });
         }
       }
     }
@@ -617,17 +617,18 @@ export class BakeryView {
 
     // ── 成品櫃與展示架 ──
     let k = 0;
-    for (const id of SPECIES_IDS) {
+    // 招牌甜點（D68）也要畫出來：長相借它主料的物種
+    for (const id of DESSERT_IDS) {
       for (let i = 0, n = stockOf(state, 'desserts', id); i < n && k < RACK_SLOTS.length; i++, k++) {
         const s = RACK_SLOTS[k]!;
-        this.putItem(s.x, s.y, s.z, id, k, 1, 1.35, 1, 0);
+        this.putItem(s.x, s.y, s.z, dessertLook(id), k, 1, 1.35, 1, 0);
       }
     }
     k = 0;
-    for (const id of SPECIES_IDS) {
+    for (const id of DESSERT_IDS) {
       for (let i = 0, n = stockOf(state, 'shelf', id); i < n && k < SHELF_SLOTS.length; i++, k++) {
         const s = SHELF_SLOTS[k]!;
-        this.putItem(s.x, s.y, s.z, id, k, 1, 1.35, 1, Math.sin(t * 1.3 + k) * 0.15);
+        this.putItem(s.x, s.y, s.z, dessertLook(id), k, 1, 1.35, 1, Math.sin(t * 1.3 + k) * 0.15);
       }
     }
 
@@ -718,12 +719,13 @@ export class BakeryView {
    */
   private putBatch(x: number, z: number, dir: number, b: Batch, at: StationId, k: number) {
     const idx = STATION_IDS.indexOf(at);
-    const info = SPECIES[b.species];
+    const look = dessertLook(b.species);
+    const info = SPECIES[look];
     if (idx < MOLD_IDX) {
       // 攪拌碗隨份數變大（D60：一次做一批要看得出來）；上限 ×1.4，再大就壓到帶子外面了
       const mixK = at === 'mix' ? k : idx > STATION_IDS.indexOf('mix') ? 1 : 0;
       const bowl = 2.3 * Math.min(1.4, 0.85 + 0.15 * Math.sqrt(b.qty));
-      this.putItem(x, BELT.y, z, b.species, 3, 0.7, 1, 0, 0, bowl, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
+      this.putItem(x, BELT.y, z, look, 3, 0.7, 1, 0, 0, bowl, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
       return;
     }
     const route = RECIPES[b.species].route;
@@ -737,7 +739,7 @@ export class BakeryView {
     const sc = cupScale(n);
     for (let i = 0; i < n; i++) {
       const [along, across] = cupPos(i, n);
-      this.putItem(x + cx * along - cz * across, BELT.y, z + cz * along + cx * across, b.species, i, fill, rise, top, 0, sc);
+      this.putItem(x + cx * along - cz * across, BELT.y, z + cz * along + cx * across, look, i, fill, rise, top, 0, sc);
     }
   }
 

@@ -1,13 +1,12 @@
 import { shelfCount, spareDesserts, walkInPrice } from '../game/bakery';
 import { BALANCE } from '../game/balance';
-import { dessertPrice, type DessertId } from '../game/recipes';
+import { DESSERT_IDS, dessertName, dessertPrice, type DessertId } from '../game/recipes';
 import { REGULAR_BALANCE } from '../game/regulars';
-import { SPECIES, SPECIES_IDS } from '../game/species';
 import type { GameState } from '../game/state';
 import { STARS, stockOf, type Star } from '../game/stock';
 import { starsHtml } from './icons';
 import { artHtml } from './shop';
-import { INGREDIENT_ART } from './shopArt';
+import { dessertArt } from './shopArt';
 
 /**
  * 上架卡（D70）：成品櫃與展示架按星級分列。
@@ -45,7 +44,7 @@ export class ShelfCard {
   sync(state: GameState) {
     if (this.root.hidden) return;
     const rows: { id: DessertId; star: Star }[] = [];
-    for (const id of SPECIES_IDS) {
+    for (const id of DESSERT_IDS) {
       for (const star of STARS) {
         if (stockOf(state, 'desserts', id, star) + stockOf(state, 'shelf', id, star) > 0) rows.push({ id, star });
       }
@@ -56,8 +55,8 @@ export class ShelfCard {
       this.list.innerHTML = rows.length
         ? rows
             .map(({ id, star }) => `<div class="srow" data-id="${id}" data-star="${star}">
-              ${artHtml(INGREDIENT_ART[id])}
-              <div class="txt"><b>${SPECIES[id].dessert}</b>${starsHtml(star, star, 'sm')}<small>散客付 ${walkInPrice(id, star)}・常客付 ${Math.round(dessertPrice(id, star) * REGULAR_BALANCE.tip)}</small></div>
+              ${artHtml(dessertArt(id))}
+              <div class="txt"><b>${dessertName(id)}</b>${starsHtml(star, star, 'sm')}<small>散客付 ${walkInPrice(id, star)}・常客付 ${Math.round(dessertPrice(id, star) * REGULAR_BALANCE.tip)}</small></div>
               <span class="cnt">櫃 <b class="back">0</b>・架 <b class="front">0</b></span>
               <button class="one" data-a="shelfOne" data-arg="${id}:${star}">上架 1</button>
             </div>`)

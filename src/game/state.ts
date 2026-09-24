@@ -1,6 +1,6 @@
 import { ACHIEVEMENT_IDS } from './achievements';
 import { createBakery, isLegacyBakery, refundLegacyBatches, restoreBakery, type BakeryState } from './bakery';
-import { PANTRY_IDS, type DessertId, type PantryId } from './recipes';
+import { DESSERT_IDS, PANTRY_IDS, type DessertId, type PantryId } from './recipes';
 import { createRegulars, restoreRegulars, type RegularId, type RegularState } from './regulars';
 import { BALANCE, EQUIPMENT_IDS, RETIRED_EQUIPMENT_PRICE, type EquipmentId } from './balance';
 import { isAllele, normalizeGenes, phenotype, type Genes } from './genetics';
@@ -368,7 +368,7 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     eggs: 0,
     pantry: startPantry(),
     ingredients: zeroTable(SPECIES_IDS),
-    desserts: zeroTable(SPECIES_IDS),
+    desserts: zeroTable(DESSERT_IDS),
     puddings,
     basins: [{ zone: START_ZONE, liquid: null, units: 0, preferredLiquid: null, pos: { ...basinPos }, occupantId: null }],
     zones,
@@ -466,7 +466,7 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
   for (const id of PANTRY_IDS) out.pantry[id] = rawPantry ? Math.max(0, num(rawPantry[id], 0)) : out.pantry[id];
   // D71：舊的數字全部放進 ★1、新的陣列逐星還原（`stock.restoreTable`）
   out.ingredients = restoreTable(r.ingredients, SPECIES_IDS);
-  out.desserts = restoreTable(r.desserts, SPECIES_IDS);
+  out.desserts = restoreTable(r.desserts, DESSERT_IDS);
   out.regulars = restoreRegulars(r.regulars);
   out.ownedBasins = Array.isArray(r.ownedBasins)
     ? (r.ownedBasins.filter((x) => LIQUID_IDS.includes(x as LiquidId)) as LiquidId[])
