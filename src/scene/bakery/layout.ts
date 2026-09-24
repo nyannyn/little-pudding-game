@@ -76,22 +76,7 @@ export const STATION_ANCHOR: Record<StationId, { x: number; y: number; z: number
   return out;
 })();
 
-/**
- * 名牌：貼在那一站正前方的輸送帶側板上（掛牆上會被頂列與罐子架擋住，2026-09-24 截圖）；
- * 烤箱那段帶子是直的，名牌立在隧道頂上。
- */
-const SKIRT = BELT.y - 0.13;
-export const STATION_LABEL: Record<StationId, { x: number; y: number; z: number }> = {
-  stove: { x: STATION_ANCHOR.stove.x, y: SKIRT, z: STATION_ANCHOR.stove.z + BELT.w / 2 + 0.04 },
-  crack: { x: STATION_ANCHOR.crack.x, y: SKIRT, z: STATION_ANCHOR.crack.z + BELT.w / 2 + 0.04 },
-  mix: { x: STATION_ANCHOR.mix.x, y: SKIRT, z: STATION_ANCHOR.mix.z + BELT.w / 2 + 0.04 },
-  mold: { x: STATION_ANCHOR.mold.x, y: SKIRT, z: STATION_ANCHOR.mold.z + BELT.w / 2 + 0.04 },
-  bake: { x: 0.98, y: BELT.y + 0.62, z: STATION_ANCHOR.bake.z + 0.2 },
-  chill: { x: STATION_ANCHOR.chill.x, y: SKIRT, z: STATION_ANCHOR.chill.z + BELT.w / 2 + 0.04 },
-  decorate: { x: STATION_ANCHOR.decorate.x, y: SKIRT, z: STATION_ANCHOR.decorate.z + BELT.w / 2 + 0.04 },
-};
-
-/** 進度條：浮在那一站的機器上方 */
+/** 機器頭上那一點（機身最高處附近）；e2e 拿來確認機器沒被 HUD 標籤擋住 */
 export const STATION_BAR: Record<StationId, { x: number; y: number; z: number }> = {
   stove: { x: STATION_ANCHOR.stove.x, y: 1.28, z: STATION_ANCHOR.stove.z - 0.1 },
   crack: { x: STATION_ANCHOR.crack.x, y: 1.3, z: STATION_ANCHOR.crack.z - 0.1 },
@@ -106,6 +91,24 @@ export const STATION_BAR: Record<StationId, { x: number; y: number; z: number }>
 export const OVEN = { x: 0.98, z: STATION_ANCHOR.bake.z, len: 0.62, w: 0.56, h: 0.42 } as const;
 /** 冷藏櫃：跨在前排帶子上的玻璃隧道 */
 export const CHILL = { x: STATION_ANCHOR.chill.x, z: -0.5, len: 0.54, w: 0.54, h: 0.4 } as const;
+
+/**
+ * 每台機器的「底座牌」（HUD 標籤：名稱／Lv／份數／進度條）貼在這裡：那一站正前方的輸送帶側板，
+ * 也就是 2026-09-24 以前 3D 名牌的位置。主流料理經營遊戲的排法——機器本身完整露出來，狀態寫在底座前面
+ * （同日使用者：「請改成可以看到機器的長相 現在這樣都被擋住了」；標籤原本浮在機器頭上）。
+ * 烤箱那段帶子是直的（沿 z），牌子放在隧道朝鏡頭那一端的下緣。
+ */
+const SKIRT = BELT.y - 0.13;
+const skirt = (id: StationId) => ({ x: STATION_ANCHOR[id].x, y: SKIRT, z: STATION_ANCHOR[id].z + BELT.w / 2 + 0.04 });
+export const STATION_PLATE: Record<StationId, { x: number; y: number; z: number }> = {
+  stove: skirt('stove'),
+  crack: skirt('crack'),
+  mix: skirt('mix'),
+  mold: skirt('mold'),
+  bake: { x: OVEN.x, y: SKIRT, z: OVEN.z + OVEN.len / 2 + 0.06 },
+  chill: skirt('chill'),
+  decorate: skirt('decorate'),
+};
 
 /** 展示櫃：兩層、每層 6 格＝`shelfCap` 12 */
 export const SHOWCASE = { x: -0.25, z: 1.2, w: 1.84, d: 0.6, baseH: 0.52, glassH: 0.46 } as const;
@@ -155,3 +158,22 @@ export const VIEW = {
   /** 要塞進畫面的寬度（房間寬＋一點邊） */
   fitWidth: 2.72,
 } as const;
+
+/**
+ * 壁燈（2026-09-24 使用者：「甜點店應該要開燈」）：天黑之後亮。
+ * 後牆上半段被頂列 HUD 蓋住，燈掛在左右兩面側牆才看得到；`nx` 是牆面朝室內的法線（x 方向）。
+ * 左牆避開窗（z −0.9〜0.1）與成品櫃上方；右牆避開店門。
+ */
+export const WALL_LAMPS: { x: number; y: number; z: number; nx: number }[] = [
+  { x: -ROOM.halfW, y: 1.5, z: -1.55, nx: 1 },
+  { x: -ROOM.halfW, y: 1.5, z: 0.95, nx: 1 },
+  { x: ROOM.halfW, y: 1.5, z: -1.95, nx: -1 },
+  { x: ROOM.halfW, y: 1.5, z: 0.35, nx: -1 },
+];
+
+/** 天花板燈照在地上的暖光圈（俯視看得到的「燈開著」）：中間走道、展示櫃前、咖啡座 */
+export const FLOOR_POOLS: { x: number; z: number; r: number }[] = [
+  { x: 0, z: -1.2, r: 0.95 },
+  { x: -0.1, z: 0.55, r: 0.95 },
+  { x: 0.2, z: 1.85, r: 0.9 },
+];

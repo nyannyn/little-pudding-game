@@ -16,7 +16,8 @@ import {
   unlockZone,
 } from './game/actions';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
-import { STATIONS, buyMachine, fulfillOrder, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
+import { STATIONS, STATION_IDS, buyMachine, fulfillOrder, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
+import { MAX_MACHINE_LEVEL } from './game/recipes';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -365,6 +366,11 @@ const hudActions: HudActions = {
   setView: (v) => setView(v),
   startBatch: (species) => report(startBatch(state, species, world.emit)),
   buyMachine: (id) => report(buyMachine(state, id, world.emit)),
+  // 機器頭上的標籤：還能升級＝開商店工坊頁、捲到這台並標亮；滿級了就跟點 3D 機器一樣講它在做什麼
+  stationTag: (id) => {
+    if (state.bakery.machines[id] < MAX_MACHINE_LEVEL) hud.openShop('bakery', `machine:${id}`);
+    else tapStation(id);
+  },
   buyPantry: (id, qty) => report(buyPantry(state, id, qty, world.emit)),
   stockShelf: () => {
     // 什麼都沒擺上去一定要講為什麼（D39 的教訓：按了沒反應＝玩家以為壞了）
@@ -1053,6 +1059,22 @@ function applyHudOffset() {
   }
   // 工坊的動作列比農場高（五站＋上架），可見段不一樣：切畫面時重框一次
   bakery.resize(w / h, (band.bottom - band.top) / h);
+  placeStationTags();
+}
+
+/**
+ * 機器頭上的標籤（份數／進度條／升級）跟著鏡頭定位：工坊鏡頭固定，只在重框後、日曆卡高度變了之後算一次。
+ * 整塊標籤要在日曆卡下緣以下——後排四台的頭頂剛好在日曆卡的高度。
+ */
+function placeStationTags() {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = bakery.stationNdc();
+  const pts = {} as Record<StationId, { x: number; y: number }>;
+  for (const id of STATION_IDS) {
+    pts[id] = { x: rect.left + ((ndc[id].x + 1) / 2) * rect.width, y: rect.top + ((1 - ndc[id].y) / 2) * rect.height };
+  }
+  const day = document.querySelector('.daybar')?.getBoundingClientRect();
+  hud.tags.place(pts, day && day.height > 0 ? day.bottom : 0);
 }
 
 function resize() {
@@ -1067,6 +1089,9 @@ function resize() {
 window.addEventListener('resize', resize);
 // 動作列高度會變（倒○○的按鈕隨解鎖的澡盆變多），變了就重算偏移
 applyHudOffset();
+// 日曆卡多一行「流水線上 N 盤」就長高：標籤要跟著往下讓
+const daybarEl = document.querySelector('.daybar');
+if (daybarEl && 'ResizeObserver' in window) new ResizeObserver(() => placeStationTags()).observe(daybarEl);
 if ('ResizeObserver' in window) {
   const dock = document.querySelector('.hud .dock');
   if (dock) new ResizeObserver(applyHudOffset).observe(dock);
@@ -1148,6 +1173,7 @@ function frame(dt: number, now: number) {
   }
 
   if (view === 'bakery') {
+    hud.tags.update(state);
     bakery.sync(state, dt);
     renderer.render(bakery.scene, bakery.camera);
   } else {

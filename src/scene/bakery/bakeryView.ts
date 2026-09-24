@@ -21,9 +21,10 @@ import {
   SHOWCASE,
   STATION_ANCHOR,
   STATION_AT,
-  STATION_BAR,
-  STATION_LABEL,
+  STATION_PLATE,
   VIEW,
+  WALL_LAMPS,
+  FLOOR_POOLS,
   pathPoint,
 } from './layout';
 import { buildMachines, machinesSignature } from './machines';
@@ -42,6 +43,13 @@ const STRIPE = 0.12;
 /** 裝模之前的盤子畫成一只攪拌碗；裝模之後才是一杯一杯 */
 const MOLD_IDX = STATION_IDS.indexOf('mold');
 const BAKE_IDX = STATION_IDS.indexOf('bake');
+
+/** 燈罩關燈時乘的灰（看得出是燈、但沒亮）與開燈的原色 */
+const LAMP_OFF = new THREE.Color(0xd8cdc4);
+const LAMP_ON = new THREE.Color(0xffffff);
+/** 夜間室內燈的暖色（半球光的天空色、主光） */
+const WARM_SKY = new THREE.Color(0xffe8cc);
+const WARM_SUN = new THREE.Color(0xffdcae);
 
 const CUP_COLORS = [0xffc4d2, 0xc9ecdf, 0xfff0b8, 0xe1d6fb];
 
@@ -92,8 +100,8 @@ function ease(t: number) {
  * 時畫它。只讀 state、播動畫，不改規則（分層鐵則）。
  *
  * draw call（2026-09-24 設計值，e2e `cp8-bakery` 量實際值）：房間 1、機身 1、帶面 1、窗景 1、烤箱光 1、
- * 冷藏光＋玻璃 2、展示櫃玻璃 1、名牌 1、營業牌 1、進度條 2、甜點杯三層 3、蛋殼 1、打蛋器 1、注模嘴 1、
- * 擠花袋 1、鍋蓋 1、客人 2 ＝ 23。
+ * 冷藏光＋玻璃 2、展示櫃玻璃 1、店招 1、營業牌 1、燈罩 1、光暈 1、甜點杯三層 3、蛋殼 1、打蛋器 1、注模嘴 1、
+ * 擠花袋 1、鍋蓋 1、客人 2 ＝ 23。進度條、份數與升級鈕是 HTML 疊層（`ui/stationTags.ts`），不吃 draw call。
  */
 export class BakeryView {
   readonly scene = new THREE.Scene();
@@ -104,6 +112,11 @@ export class BakeryView {
   private readonly windowMat: THREE.MeshBasicMaterial;
   private readonly glowMat: THREE.MeshBasicMaterial;
   private readonly chillMat: THREE.MeshBasicMaterial;
+  /** 壁燈燈罩＋展示櫃燈條（關燈＝乘上灰、開燈＝原色）與光暈（開燈才看得到） */
+  private readonly lampMat: THREE.MeshBasicMaterial;
+  private readonly haloMat: THREE.MeshBasicMaterial;
+  /** 燈開了多少（0 白天關、1 天黑全亮）；e2e 讀 */
+  lampLevel = 0;
   /** 烤箱與冷藏櫃的光／玻璃：機器沒買時整組藏起來 */
   private readonly ovenParts: THREE.Object3D[] = [];
   private readonly chillParts: THREE.Object3D[] = [];
@@ -118,8 +131,6 @@ export class BakeryView {
   private readonly fills: THREE.InstancedMesh;
   private readonly tops: THREE.InstancedMesh;
   private readonly eggs: THREE.InstancedMesh;
-  private readonly barBg: THREE.InstancedMesh;
-  private readonly barFill: THREE.InstancedMesh;
   private readonly whisk: THREE.Mesh;
   private readonly nozzle: THREE.Mesh;
   private readonly bag: THREE.Mesh;
@@ -141,7 +152,6 @@ export class BakeryView {
   private prev: Record<StationId, string> = emptyKeys();
   private prevBatch: Record<StationId, Batch | null> = emptyBatches();
   private prevDesserts = -1;
-  private readonly ready: Record<StationId, number> = emptyNums();
 
   constructor() {
     this.scene.name = 'Bakery';
@@ -213,7 +223,26 @@ export class BakeryView {
     caseGlass.name = 'ShowcaseGlass';
     this.scene.add(caseGlass);
 
-    // 名牌（七站＋店招）：一張 canvas 圖集、一個 mesh；機器等級變了重畫那張圖
+    // 燈（天黑自動開）：燈罩＋燈條一個 mesh、光暈一個 mesh
+    this.lampMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+    const lamps = new THREE.Mesh(lampGeometry(), this.lampMat);
+    lamps.name = 'BakeryLamps';
+    this.scene.add(lamps);
+    this.haloMat = new THREE.MeshBasicMaterial({
+      map: glowTexture(),
+      color: 0xffc98a,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const halo = new THREE.Mesh(haloGeometry(), this.haloMat);
+    halo.name = 'BakeryLampGlow';
+    halo.renderOrder = 1;
+    this.scene.add(halo);
+
+    // 店招＋營業牌：一張 canvas 圖集（機器名牌 2026-09-24 移到 HUD 標籤）
     this.labels = new LabelAtlas();
     this.scene.add(this.labels.mesh);
     this.openSign = this.labels.open;
@@ -236,15 +265,6 @@ export class BakeryView {
     this.eggs.name = 'BakeryEggs';
     this.eggs.frustumCulled = false;
     this.scene.add(this.eggs);
-
-    // 進度條（每站一條：底＋填滿）
-    const bar = new THREE.PlaneGeometry(1, 1);
-    this.barBg = this.instanced(bar, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }), 'BakeryBarBg', STATION_IDS.length);
-    const fillBar = new THREE.PlaneGeometry(1, 1);
-    fillBar.translate(0.5, 0, 0); // 左端對齊：scale.x 就是進度
-    this.barFill = this.instanced(fillBar, new THREE.MeshBasicMaterial({ color: 0xffffff }), 'BakeryBarFill', STATION_IDS.length);
-    this.barBg.renderOrder = 3;
-    this.barFill.renderOrder = 4;
 
     // 攪拌頭（三圈打蛋器）：吊在攪拌機的機頭下面
     const w = new Parts();
@@ -376,6 +396,22 @@ export class BakeryView {
     place(d);
   }
 
+  /**
+   * 各站底座牌那一點（機器正前方的輸送帶側板）投到畫面上的位置（NDC，x/y 在 −1〜1）；HUD 的站標籤貼在這裡。
+   * 工坊鏡頭是固定的，main.ts 只在 resize／HUD 偏移變了之後重算一次。
+   */
+  stationNdc(): Record<StationId, { x: number; y: number }> {
+    this.camera.updateMatrixWorld();
+    const out = {} as Record<StationId, { x: number; y: number }>;
+    const v = new THREE.Vector3();
+    for (const id of STATION_IDS) {
+      const p = STATION_PLATE[id];
+      v.set(p.x, p.y, p.z).project(this.camera);
+      out[id] = { x: v.x, y: v.y };
+    }
+    return out;
+  }
+
   /** 營業事件（main.ts 只在玩家正在看工坊時轉進來；離線結算的那幾百個不演） */
   customerCame(species: SpeciesId | null) {
     if (this.customers.length >= MAX_CUSTOMERS) return;
@@ -499,7 +535,6 @@ export class BakeryView {
       }
     }
 
-    this.syncBars(state, dt);
     this.syncCustomers(dt);
 
     for (const m of [this.cups, this.fills, this.tops]) {
@@ -510,25 +545,34 @@ export class BakeryView {
     this.eggs.instanceMatrix.needsUpdate = true;
   }
 
-  /** 機身與名牌：機器等級變了（買了／升級）才重建 */
+  /** 機身：機器等級變了（買了／升級）才重建 */
   private syncMachines(state: GameState) {
     const sig = machinesSignature(state.bakery.machines);
     if (sig === this.machineSig) return;
     this.machineSig = sig;
     this.machines.geometry.dispose();
     this.machines.geometry = buildMachines(state.bakery.machines);
-    this.labels.draw(state.bakery.machines);
     for (const o of this.ovenParts) o.visible = state.bakery.machines.bake > 0;
     for (const o of this.chillParts) o.visible = state.bakery.machines.chill > 0;
   }
 
-  /** 營業中亮、打烊暗；窗景白天藍、晚上深藍；門口牌子 OPEN／CLOSED */
+  /**
+   * 晝夜：窗景白天藍、晚上深藍；天黑燈就開（2026-09-24 使用者：「甜點店應該要開燈」——
+   * 原本 19 點後整間暗到一半，營業到 21 點客人卻在暗店裡買東西）。
+   * 燈一路亮到天亮：打烊後線上的機器照樣在做（離線也算），打烊靠門口的 CLOSED 牌表示，不靠關燈。
+   * 室內亮度維持接近白天、色溫轉暖；「是晚上」由窗外深藍與壁燈光暈講。
+   */
   private syncDaylight(state: GameState) {
     const c = dayClock(state);
     const night = c.hour < 6 || c.hour >= 19 ? 1 : c.hour >= 17 ? (c.hour - 17) / 2 : c.hour < 7 ? 1 - (c.hour - 6) : 0;
-    this.hemi.intensity = lerp(1.9, 1.05, night);
-    this.sun.intensity = lerp(1.3, 0.35, night);
+    this.lampLevel = night;
+    this.hemi.intensity = lerp(1.9, 1.7, night);
+    this.hemi.color.set(0xfffaf2).lerp(WARM_SKY, night);
+    this.sun.intensity = lerp(1.3, 1.0, night);
+    this.sun.color.set(0xfff0dc).lerp(WARM_SUN, night);
     this.windowMat.color.set(0xbfe6ff).lerp(new THREE.Color(0x2c3566), night);
+    this.lampMat.color.set(LAMP_OFF).lerp(LAMP_ON, night);
+    this.haloMat.opacity = 0.42 * night;
     this.openSign.visible = c.open;
     this.closedSign.visible = !c.open;
   }
@@ -645,41 +689,6 @@ export class BakeryView {
     this.eggs.setMatrixAt(this.eggs.count++, d.matrix);
   }
 
-  /** 每站上方一條進度條：工作中粉紅往右長、做完在等下一站變綠 */
-  private syncBars(state: GameState, dt: number) {
-    const d = this.dummy;
-    let n = 0;
-    for (const id of STATION_IDS) {
-      const status = stationStatus(state, id);
-      if (status === 'idle') {
-        this.ready[id] = 0;
-        continue;
-      }
-      const p = STATION_BAR[id];
-      const k = stationProgress(state, id);
-      const isReady = status === 'ready';
-      this.ready[id] = isReady ? this.ready[id] + dt : 0;
-      const W = 0.36, H = 0.045;
-      const y = p.y;
-      d.position.set(p.x, y, p.z + 0.02);
-      d.rotation.set(0, 0, 0);
-      d.scale.set(W + 0.03, H + 0.03, 1);
-      d.updateMatrix();
-      this.barBg.setMatrixAt(n, d.matrix);
-      d.position.set(p.x - W / 2, y, p.z + 0.025);
-      d.scale.set(Math.max(0.001, W * k), H, 1);
-      d.updateMatrix();
-      this.barFill.setMatrixAt(n, d.matrix);
-      this.barFill.setColorAt(n, this.color.set(isReady ? 0x6cc58a : 0xf08aa2));
-      n++;
-    }
-    this.barBg.count = n;
-    this.barFill.count = n;
-    this.barBg.instanceMatrix.needsUpdate = true;
-    this.barFill.instanceMatrix.needsUpdate = true;
-    if (this.barFill.instanceColor) this.barFill.instanceColor.needsUpdate = true;
-  }
-
   private syncCustomers(dt: number) {
     const d = this.dummy;
     const speed = 0.85;
@@ -742,10 +751,63 @@ function emptyBatches(): Record<StationId, Batch | null> {
   for (const id of STATION_IDS) out[id] = null;
   return out;
 }
-function emptyNums(): Record<StationId, number> {
-  const out = {} as Record<StationId, number>;
-  for (const id of STATION_IDS) out[id] = 0;
+
+/**
+ * 壁燈燈罩＋燈泡、展示櫃頂的燈條：頂點色、`MeshBasicMaterial`（不吃光照，開燈時就是原色＝讀得出「在發光」）。
+ * 壁燈的木頭托架是靜態的，在 room.ts。
+ */
+function lampGeometry(): THREE.BufferGeometry {
+  const p = new Parts();
+  for (const l of WALL_LAMPS) {
+    const x = l.x + l.nx * 0.11;
+    // 倒扣的燈罩（上窄下寬）＋底下露出一顆燈泡
+    p.cone(0xffdc9a, 0.085, 0.1, x, l.y + 0.02, l.z, 18);
+    p.sphere(0xfffbe8, 0.04, x, l.y - 0.04, l.z);
+  }
+  // 展示櫃：玻璃頂後緣一條燈條（俯視看得到的「櫥窗亮著」）
+  const { x, z, w, d, baseH, glassH } = SHOWCASE;
+  p.box(0xfff4d0, w - 0.1, 0.02, 0.04, x, baseH + glassH - 0.01, z - d / 2 + 0.05);
+  return p.merge();
+}
+
+/** 光暈：側牆上壁燈後面一圈、地上三個光圈；同一張放射漸層貼圖、一個 mesh */
+function haloGeometry(): THREE.BufferGeometry {
+  const list: THREE.BufferGeometry[] = [];
+  for (const l of WALL_LAMPS) {
+    const g = new THREE.PlaneGeometry(0.9, 0.9);
+    g.rotateY(l.nx > 0 ? Math.PI / 2 : -Math.PI / 2);
+    g.translate(l.x + l.nx * 0.012, l.y - 0.05, l.z);
+    list.push(g);
+  }
+  for (const f of FLOOR_POOLS) {
+    const g = new THREE.PlaneGeometry(f.r * 2, f.r * 2);
+    g.rotateX(-Math.PI / 2);
+    g.translate(f.x, 0.004, f.z);
+    list.push(g);
+  }
+  // 展示櫃裡的光：櫃內地板一片
+  const g = new THREE.PlaneGeometry(SHOWCASE.w * 1.1, SHOWCASE.d * 1.6);
+  g.rotateX(-Math.PI / 2);
+  g.translate(SHOWCASE.x, SHOWCASE.baseH + 0.018, SHOWCASE.z);
+  list.push(g);
+  const out = mergeGeometries(list, false);
+  if (!out) throw new Error('[lpg] halo merge failed');
   return out;
+}
+
+function glowTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)');
+  r.addColorStop(0.45, 'rgba(255,255,255,0.45)');
+  r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 /** 一盤畫幾杯（Lv3 一盤 4 份就畫 4 杯） */
@@ -821,7 +883,7 @@ function swirlGeometry(): THREE.BufferGeometry {
 }
 
 /**
- * 名牌：七站＋店招畫在同一張 canvas 上，一個 mesh（每塊平面的 UV 對到自己那一列）。
+ * 店招＋營業牌畫在同一張 canvas 上（每塊平面的 UV 對到自己那一列）。前七列是 2026-09-24 以前的機器名牌，已不貼到場景上。
  * 沒買的站畫灰底「○○・未購買」，買了畫白底「○○ Lv.N」；等級變了重畫同一張 canvas（不換 mesh）。
  * OPEN／CLOSED 牌也在同一張圖上，但各自一個小 mesh 才能切換顯示。
  */
@@ -856,12 +918,8 @@ class LabelAtlas {
       geo.translate(x, y, z);
       return geo;
     };
-    const parts = STATION_IDS.map((id, i) => {
-      const p = STATION_LABEL[id];
-      // 名牌盡量大：iPhone SE 上 0.4×0.1 的字只剩幾個像素（2026-09-24 截圖）
-      return plate(i, 0.46, 0.13, p.x, p.y, p.z);
-    });
-    parts.push(plate(STATION_IDS.length, 1.2, 0.3, 0, 1.92, ROOM.backZ + 0.02));
+    // 機器名牌拿掉了（2026-09-24 使用者：名稱與等級改寫在機器頭上的 HUD 標籤）；圖集前七列留著不畫上去，列號不必重排
+    const parts = [plate(STATION_IDS.length, 1.2, 0.3, 0, 1.92, ROOM.backZ + 0.02)];
     const merged = mergeGeometries(parts, false);
     if (!merged) throw new Error('[lpg] label merge failed');
     this.mesh = new THREE.Mesh(merged, mat);
