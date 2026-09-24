@@ -176,7 +176,9 @@ function run(profile: Profile, seed: number) {
     }
     // 麵粉與牛乳補到「最大那一盤」的兩倍（D60：一盤最多 20 份，一次只補 10 份的話 bot 自己卡自己，量到的是 bot 不是平衡）
     const bulk = levelFor(state.xp) >= BALANCE.stockBulkLevel ? BALANCE.stockBulkQty : BALANCE.stockBuyQty;
-    for (let guard = 0; bakery && state.pantry.flour < Math.max(4, portions * 2) && guard < 10; guard++) {
+    // 只有月玩家這樣補（3 小時連續玩的補這麼多只會把早期的錢卡住、延後買線——seed 固定，這是確定的差不是抖動）
+    const topUp = profile === 'month' ? portions * 2 : 0;
+    for (let guard = 0; bakery && state.pantry.flour < Math.max(4, topUp) && guard < 10; guard++) {
       if (!pay(() => buyPantry(state, 'flour', bulk, noop)).ok) break;
     }
     for (const a of ACHIEVEMENTS) {
@@ -190,7 +192,7 @@ function run(profile: Profile, seed: number) {
     for (const l of ['caramel', 'milk'] as LiquidId[]) {
       if (state.stock[l] < 2) pay(() => buyStock(state, l, 5, noop));
       // 牛乳也是甜點材料：一盤要疊到最多就得有那麼多
-      for (let guard = 0; bakery && l === 'milk' && state.stock.milk < portions * 2 && guard < 10; guard++) {
+      for (let guard = 0; bakery && l === 'milk' && state.stock.milk < topUp && guard < 10; guard++) {
         if (!pay(() => buyStock(state, 'milk', bulk, noop)).ok) break;
       }
     }

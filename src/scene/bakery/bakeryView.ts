@@ -154,6 +154,8 @@ export class BakeryView {
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
   private nItems = 0;
+  /** 奶油頂另外數：還沒裝飾的杯子不畫頂（D60：一盤 20 份時，全部畫一個縮成 0 的頂＝每杯白吃約 500 面） */
+  private nTops = 0;
   private time = 0;
   private rides: Ride[] = [];
   private hops: Hop[] = [];
@@ -449,6 +451,7 @@ export class BakeryView {
     this.time += dt;
     const t = this.time;
     this.nItems = 0;
+    this.nTops = 0;
 
     this.syncMachines(state);
     this.syncDaylight(state);
@@ -557,7 +560,7 @@ export class BakeryView {
     this.syncCustomers(dt);
 
     for (const m of [this.cups, this.fills, this.tops]) {
-      m.count = this.nItems;
+      m.count = m === this.tops ? this.nTops : this.nItems;
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
@@ -689,12 +692,14 @@ export class BakeryView {
     this.fills.setMatrixAt(i, d.matrix);
     this.fills.setColorAt(i, this.color.set(fillHex ?? info.bodyColor));
 
-    const s = Math.max(0.001, top * small);
+    if (top <= 0.01) return;
+    const s = top * small;
+    const j = this.nTops++;
     d.position.set(x, y + 0.006 + h, z);
     d.scale.set(s, s, s);
     d.updateMatrix();
-    this.tops.setMatrixAt(i, d.matrix);
-    this.tops.setColorAt(i, this.color.set(info.toppingColor).lerp(new THREE.Color(0xffffff), 0.35));
+    this.tops.setMatrixAt(j, d.matrix);
+    this.tops.setColorAt(j, this.color.set(info.toppingColor).lerp(new THREE.Color(0xffffff), 0.35));
   }
 
   /** 打蛋動畫的一格：phase 0–0.55 蛋從臂上落到碗口，0.55–1 裂成兩半往兩邊倒 */
@@ -915,7 +920,8 @@ function swirlGeometry(): THREE.BufferGeometry {
   const add = (g: THREE.BufferGeometry) => parts.push(g.index ? g.toNonIndexed() : g);
   for (let i = 0; i < 3; i++) {
     const r = 0.042 - i * 0.012;
-    const g = new THREE.TorusGeometry(r, 0.015 - i * 0.002, 8, 20);
+    // 6×14 段（原本 8×20）：杯子只有畫面上十幾 px，一盤 20 份時這一個頂就是面數大宗（D60 實測）
+    const g = new THREE.TorusGeometry(r, 0.015 - i * 0.002, 6, 14);
     g.rotateX(Math.PI / 2);
     g.translate(0, 0.012 + i * 0.018, 0);
     add(g);

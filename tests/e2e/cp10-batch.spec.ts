@@ -128,3 +128,46 @@ test('AC10-8 出爐字卡：整盤做完跳「出爐！… ×N」；同一刻兩
   await page.waitForTimeout(2200);
   await expect(banner).toBeHidden();
 });
+
+test('AC10-4：v9 存檔（3 級機器、站上一盤沒有 startedAt）走「還原」：等級換成 1/3/5、人氣 1、那一盤照原本的 doneAt 做完', async ({ page }) => {
+  await boot(page, '/?seed=8&pause=1');
+  const raw = await page.evaluate(() => {
+    const s = JSON.parse(JSON.stringify(window.__lpg.state)) as Record<string, unknown> & GameState;
+    s.schemaVersion = 9;
+    const bk = s.bakery as unknown as Record<string, unknown>;
+    delete bk.fame;
+    bk.machines = { stove: 1, crack: 2, mix: 3, mold: 3, bake: 3, chill: 0, decorate: 3 };
+    const st = bk.stations as Record<string, Record<string, unknown>>;
+    for (const id of Object.keys(st)) st[id] = { batch: null, doneAt: 0 };
+    st.bake = { batch: { species: 'caramel', qty: 4 }, doneAt: s.time + 20 };
+    return s;
+  });
+  const { exportCode } = await import('../../src/game/savecode');
+  const code = exportCode(raw as GameState);
+  await page.getByRole('button', { name: '設定' }).click();
+  await page.locator('.savecard .code').fill(code);
+  await Promise.all([page.waitForEvent('load'), page.locator('[data-a="restoreSave"]').click()]);
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+  let s = await S(page);
+  expect(s.schemaVersion).toBe(10);
+  expect(s.bakery.machines).toMatchObject({ stove: 1, crack: 3, mix: 5, mold: 5, bake: 5, chill: 0, decorate: 5 });
+  expect(s.bakery.fame).toBe(1);
+  const bake = s.bakery.stations.bake;
+  expect(bake.batch).toEqual({ species: 'caramel', qty: 4 });
+  expect(bake.doneAt - bake.startedAt).toBe(45); // 舊版烤箱固定 45 秒
+  // 走完烤箱與裝飾台：4 份進成品櫃（或有失敗）
+  await step(page, 40);
+  s = await S(page);
+  expect(s.bakery.stations.bake.batch).toBeNull();
+});
+
+test('兩位數等級（Lv10 起）：390px 底座牌的名稱＋Lv 不溢出牌子', async ({ page }) => {
+  await boot(page, '/?fresh=1&seed=8&view=bakery&pause=1');
+  await page.evaluate(() => {
+    const s = window.__lpg.state as GameState;
+    for (const id of Object.keys(s.bakery.machines) as (keyof typeof s.bakery.machines)[]) s.bakery.machines[id] = 18;
+  });
+  await step(page, 0.5);
+  const spill = await page.$$eval('.stag:not([hidden]) .nm', (els) => els.filter((e) => e.scrollWidth > e.clientWidth + 0.5).length);
+  expect(spill).toBe(0);
+});

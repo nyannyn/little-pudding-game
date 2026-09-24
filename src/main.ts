@@ -508,7 +508,7 @@ function handle(e: SimEvent) {
       break;
     case 'tierUp':
       sfx.coin(0.4);
-      hud.toast(`${e.what}升上${MACHINE_TIER_NAMES[e.tier - 1]}級！換了新顏色`);
+      hud.toast(`${e.what}升上${MACHINE_TIER_NAMES[e.tier - 1]}級！機器前的星星換成${MACHINE_TIER_NAMES[e.tier - 1]}色`);
       break;
     case 'bakeFailed':
       hud.toast(`${SPECIES[e.species].dessert}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);
