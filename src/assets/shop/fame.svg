@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <!-- 店面人氣（D61）：粉色條紋遮雨棚的小店面，門口冒愛心＝客人喜歡 -->
+  <ellipse cx="80" cy="146" rx="62" ry="8" fill="#5a3d28" opacity=".14"/>
+  <rect x="24" y="62" width="112" height="78" rx="8" fill="#fff4e4"/>
+  <rect x="24" y="130" width="112" height="10" rx="4" fill="#e7cfb0"/>
+  <path d="M16 46 h128 l-6 24 H22 z" fill="#f7a8bd"/>
+  <path d="M34 46 h16 l-2 24 h-16 z M66 46 h16 l0 24 h-16 z M98 46 h16 l2 24 h-16 z M130 46 h14 l-6 24 h-10 z" fill="#ffffff"/>
+  <path d="M22 70 q8 10 16 0 q8 10 16 0 q8 10 16 0 q8 10 16 0 q8 10 16 0 q8 10 16 0 q8 10 16 0" fill="#f28ea6"/>
+  <rect x="20" y="36" width="120" height="12" rx="6" fill="#e58a7b"/>
+  <rect x="36" y="86" width="34" height="30" rx="5" fill="#bfe3f2"/>
+  <rect x="36" y="86" width="34" height="30" rx="5" fill="none" stroke="#ffffff" stroke-width="3"/>
+  <ellipse cx="46" cy="110" rx="6" ry="4" fill="#ffc857"/>
+  <ellipse cx="60" cy="110" rx="6" ry="4" fill="#f7a8bd"/>
+  <rect x="86" y="84" width="34" height="56" rx="6" fill="#c98b5c"/>
+  <circle cx="113" cy="114" r="3" fill="#ffe08a"/>
+  <path d="M112 22 c-6 -10 -20 -4 -14 8 l14 12 l14 -12 c6 -12 -8 -18 -14 -8 z" fill="#ff6f91"/>
+  <path d="M136 10 c-3 -5 -10 -2 -7 4 l7 6 l7 -6 c3 -6 -4 -9 -7 -4 z" fill="#ff9fb4"/>
+</svg>

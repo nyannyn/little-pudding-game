@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buyEquipment, buyPantry, buySpecialBasin, buyStock, pickAllDrops, unlockZone } from '../../src/game/actions';
-import { buyMachine, startBatch, tickBakery } from '../../src/game/bakery';
+import { buyMachine, startBatch, tickBakery, buyFame } from '../../src/game/bakery';
 import { RECIPES, recipeSeconds } from '../../src/game/recipes';
 import { createRng } from '../../src/game/rng';
 import { BALANCE, EQUIPMENT } from '../../src/game/balance';
@@ -73,9 +73,9 @@ describe('D25 xp 來源', () => {
     for (const id of RECIPES.panna.route) s.bakery.machines[id] = 2;
     s.ingredients.panna = 2;
     s.stock.milk = 4;
-    expect(startBatch(s, 'panna', sink).ok).toBe(true);
+    expect(startBatch(s, 'panna', 2, sink).ok).toBe(true);
     const rng = createRng(4);
-    for (let i = 0; i < recipeSeconds('panna') + 3; i++) {
+    for (let i = 0; i < recipeSeconds(s, 'panna') + 3; i++) {
       s.time += 1;
       tickBakery(s, rng, sink);
     }
@@ -156,6 +156,7 @@ describe('D25 商店等級門檻（規則在 game 層，不只是 UI 鎖著）',
       e.action === 'buyStock' ? buyStock(st, e.arg as 'caramel', e.qty as number, sink)
       : e.action === 'buyPantry' ? buyPantry(st, e.arg as 'flour', e.qty as number, sink)
       : e.action === 'buyMachine' ? buyMachine(st, e.arg as 'bake', sink)
+      : e.action === 'buyFame' ? buyFame(st, sink)
       : e.action === 'buyEquip' ? buyEquipment(st, e.arg as 'restock', sink)
       : e.action === 'buyBasin' ? buySpecialBasin(st, e.arg as 'matcha', { x: 0, z: 0 }, START_ZONE, sink)
       : unlockZone(st, e.arg, SPAWN, sink);

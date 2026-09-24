@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { batchesOnLine, dayClock, stationProgress, stationStatus, type Batch } from '../../game/bakery';
-import { RECIPES, STATIONS, STATION_IDS, type StationId } from '../../game/recipes';
+import { MAX_MACHINE_LEVEL, RECIPES, STATIONS, STATION_IDS, type StationId } from '../../game/recipes';
 import { SPECIES, SPECIES_IDS, type SpeciesId } from '../../game/species';
 import type { GameState } from '../../game/state';
 import { toonGradient } from '../toon';
@@ -34,7 +34,11 @@ const DEG = Math.PI / 180;
 /** 甜點杯的尺寸：跟掉落原料同量級（0.05），iPhone 視口下才讀得出來（D42 的教訓） */
 const CUP_R = 0.05;
 const CUP_H = 0.055;
-const MAX_ITEMS = 64;
+/**
+ * 杯子 InstancedMesh 的容量（D60：一盤最多 20 份）。七站各 20 杯＋滑動中的盤子＋成品櫃＋展示架，
+ * 256 還有餘裕；真的滿了 `putItem` 會 console.error 一次，不可以靜默少畫（玩家會以為份數被吃掉）。
+ */
+const MAX_ITEMS = 256;
 const MAX_CUSTOMERS = 5;
 /** 帶子的速度（世界單位／秒）：盤子從一站滑到下一站 */
 const BELT_SPEED = 1.5;
@@ -71,9 +75,15 @@ interface Ride {
 interface Hop {
   from: V3;
   dest: V3;
+  /** < 0＝還在排隊（一杯接一杯跳，D60） */
   t: number;
   species: SpeciesId;
 }
+
+/** 一整盤出爐最多跳幾杯進成品櫃（再多只是排隊更久，畫面讀不出差別） */
+const MAX_HOPS = 8;
+/** 相鄰兩杯起跳的間隔（秒） */
+const HOP_GAP = 0.09;
 
 interface Customer {
   x: number;
@@ -144,9 +154,12 @@ export class BakeryView {
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
   private nItems = 0;
+  /** 奶油頂另外數：還沒裝飾的杯子不畫頂（D60：一盤 20 份時，全部畫一個縮成 0 的頂＝每杯白吃約 500 面） */
+  private nTops = 0;
   private time = 0;
   private rides: Ride[] = [];
   private hops: Hop[] = [];
+  private warnedFull = false;
   private customers: Customer[] = [];
   /** 上一幀每一站的那一盤（偵測「剛送過來」要播滑動） */
   private prev: Record<StationId, string> = emptyKeys();
@@ -438,6 +451,7 @@ export class BakeryView {
     this.time += dt;
     const t = this.time;
     this.nItems = 0;
+    this.nTops = 0;
 
     this.syncMachines(state);
     this.syncDaylight(state);
@@ -483,7 +497,7 @@ export class BakeryView {
       const n = cupsFor(moldB.qty);
       const k = stationProgress(state, 'mold');
       const which = Math.min(n - 1, Math.floor(k * n));
-      this.nozzle.position.x = mo.x + cupOffset(which, n) + Math.sin(t * 12) * 0.008;
+      this.nozzle.position.x = mo.x + cupPos(which, n)[0] + Math.sin(t * 12) * 0.008;
     } else {
       this.nozzle.position.x = lerp(this.nozzle.position.x || mo.x, mo.x, 0.1);
     }
@@ -507,14 +521,22 @@ export class BakeryView {
       const p = pathPoint(lerp(r.from, r.dest, ease(r.t)));
       this.putBatch(p.x, p.z, p.dir, r.batch, r.after, 1);
       if (r.t >= 1 && r.to === null) {
+        // D60：一整盤一杯接一杯跳進成品櫃（每杯落到自己的格子，最後一杯落在最新的那格）
         const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
-        const slot = RACK_SLOTS[Math.max(0, Math.min(total - 1, RACK_SLOTS.length - 1))]!;
-        this.hops.push({ from: { x: p.x, y: BELT.y, z: p.z }, dest: slot, t: 0, species: r.batch.species });
+        const n = Math.min(MAX_HOPS, r.batch.qty);
+        for (let i = 0; i < n; i++) {
+          const slot = RACK_SLOTS[Math.max(0, Math.min(total - n + i, RACK_SLOTS.length - 1))]!;
+          const [along, across] = cupPos(i, n);
+          const cx = Math.cos(p.dir) * along - Math.sin(p.dir) * across;
+          const cz = Math.sin(p.dir) * along + Math.cos(p.dir) * across;
+          this.hops.push({ from: { x: p.x + cx, y: BELT.y, z: p.z + cz }, dest: slot, t: -i * HOP_GAP / 0.5, species: r.batch.species });
+        }
       }
     }
     this.hops = this.hops.filter((h) => h.t < 1);
     for (const h of this.hops) {
       h.t = Math.min(1, h.t + dt / 0.5);
+      if (h.t < 0) continue;
       const k = ease(h.t);
       this.putItem(lerp(h.from.x, h.dest.x, k), lerp(h.from.y, h.dest.y, k) + Math.sin(Math.PI * h.t) * 0.3, lerp(h.from.z, h.dest.z, k), h.species, 0, 1, 1.35, 1, 0);
     }
@@ -538,7 +560,7 @@ export class BakeryView {
     this.syncCustomers(dt);
 
     for (const m of [this.cups, this.fills, this.tops]) {
-      m.count = this.nItems;
+      m.count = m === this.tops ? this.nTops : this.nItems;
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
@@ -623,8 +645,10 @@ export class BakeryView {
     const idx = STATION_IDS.indexOf(at);
     const info = SPECIES[b.species];
     if (idx < MOLD_IDX) {
+      // 攪拌碗隨份數變大（D60：一次做一批要看得出來）；上限 ×1.4，再大就壓到帶子外面了
       const mixK = at === 'mix' ? k : idx > STATION_IDS.indexOf('mix') ? 1 : 0;
-      this.putItem(x, BELT.y, z, b.species, 3, 0.7, 1, 0, 0, 2.3, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
+      const bowl = 2.3 * Math.min(1.4, 0.85 + 0.15 * Math.sqrt(b.qty));
+      this.putItem(x, BELT.y, z, b.species, 3, 0.7, 1, 0, 0, bowl, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
       return;
     }
     const route = RECIPES[b.species].route;
@@ -635,15 +659,20 @@ export class BakeryView {
     const n = cupsFor(b.qty);
     const cx = Math.cos(dir);
     const cz = Math.sin(dir);
+    const sc = cupScale(n);
     for (let i = 0; i < n; i++) {
-      const off = cupOffset(i, n);
-      this.putItem(x + cx * off, BELT.y, z + cz * off, b.species, i, fill, rise, top, 0);
+      const [along, across] = cupPos(i, n);
+      this.putItem(x + cx * along - cz * across, BELT.y, z + cz * along + cx * across, b.species, i, fill, rise, top, 0, sc);
     }
   }
 
   /** 一杯甜點：杯（粉彩）＋內容物（物種色，高度＝fill×rise）＋奶油頂（頂料色，大小＝top） */
   private putItem(x: number, y: number, z: number, species: SpeciesId, idx: number, fill: number, rise: number, top: number, rotY: number, scale = 1, fillHex?: number) {
-    if (this.nItems >= MAX_ITEMS) return;
+    if (this.nItems >= MAX_ITEMS) {
+      if (!this.warnedFull) console.error(`[bakery] 杯子超過 ${MAX_ITEMS} 個，後面的沒畫出來`);
+      this.warnedFull = true;
+      return;
+    }
     const i = this.nItems++;
     const d = this.dummy;
     d.position.set(x, y, z);
@@ -654,19 +683,23 @@ export class BakeryView {
     this.cups.setColorAt(i, this.color.set(scale > 1 ? PAL.metal : CUP_COLORS[idx % CUP_COLORS.length]!));
 
     const info = SPECIES[species];
-    const h = Math.max(0.004, CUP_H * 0.85 * fill * rise);
+    // 縮小的杯子（一盤排不下，D60）內容物與奶油頂跟著縮，不然會冒出杯口
+    const small = Math.min(1, scale);
+    const h = Math.max(0.004, CUP_H * 0.85 * fill * rise * Math.min(1, scale * 0.8 + 0.2));
     d.position.set(x, y + 0.006, z);
     d.scale.set(scale, h, scale);
     d.updateMatrix();
     this.fills.setMatrixAt(i, d.matrix);
     this.fills.setColorAt(i, this.color.set(fillHex ?? info.bodyColor));
 
-    const s = Math.max(0.001, top);
+    if (top <= 0.01) return;
+    const s = top * small;
+    const j = this.nTops++;
     d.position.set(x, y + 0.006 + h, z);
     d.scale.set(s, s, s);
     d.updateMatrix();
-    this.tops.setMatrixAt(i, d.matrix);
-    this.tops.setColorAt(i, this.color.set(info.toppingColor).lerp(new THREE.Color(0xffffff), 0.35));
+    this.tops.setMatrixAt(j, d.matrix);
+    this.tops.setColorAt(j, this.color.set(info.toppingColor).lerp(new THREE.Color(0xffffff), 0.35));
   }
 
   /** 打蛋動畫的一格：phase 0–0.55 蛋從臂上落到碗口，0.55–1 裂成兩半往兩邊倒 */
@@ -810,14 +843,33 @@ function glowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** 一盤畫幾杯（Lv3 一盤 4 份就畫 4 杯） */
+/** 一盤畫幾杯：幾份就畫幾杯（D60：一次做一批要看得到整批；份數上限 20） */
 function cupsFor(qty: number): number {
-  return Math.max(1, Math.min(4, qty));
+  return Math.max(1, Math.min(MAX_MACHINE_LEVEL, qty));
 }
 
-/** 第 i 杯沿行進方向的位移（一排置中） */
-function cupOffset(i: number, n: number): number {
-  return (i - (n - 1) / 2) * 0.11;
+/**
+ * 一盤杯子怎麼排：4 杯以內一排；8 杯以內兩排；再多三排。
+ * 一站能用的地方沿行進方向約 0.44（站距 0.5）、橫向約 0.32（帶寬 0.34），排不下就把杯子縮小。
+ */
+function trayGrid(n: number): { rows: number; cols: number; along: number; across: number } {
+  const rows = n <= 4 ? 1 : n <= 8 ? 2 : 3;
+  const cols = Math.ceil(n / rows);
+  return { rows, cols, along: Math.min(0.11, 0.44 / cols), across: Math.min(0.105, 0.3 / rows) };
+}
+
+/** 第 i 杯的位移：[沿行進方向, 橫向]，整盤置中 */
+function cupPos(i: number, n: number): [number, number] {
+  const g = trayGrid(n);
+  const col = i % g.cols;
+  const row = Math.floor(i / g.cols);
+  return [(col - (g.cols - 1) / 2) * g.along, (row - (g.rows - 1) / 2) * g.across];
+}
+
+/** 杯子縮放：排得下原尺寸就 1 */
+function cupScale(n: number): number {
+  const g = trayGrid(n);
+  return Math.min(1, g.along / 0.11, g.across / 0.105);
 }
 
 /** 帶面條紋：淺灰底＋深一點的橫條，重複鋪 */
@@ -868,7 +920,8 @@ function swirlGeometry(): THREE.BufferGeometry {
   const add = (g: THREE.BufferGeometry) => parts.push(g.index ? g.toNonIndexed() : g);
   for (let i = 0; i < 3; i++) {
     const r = 0.042 - i * 0.012;
-    const g = new THREE.TorusGeometry(r, 0.015 - i * 0.002, 8, 20);
+    // 6×14 段（原本 8×20）：杯子只有畫面上十幾 px，一盤 20 份時這一個頂就是面數大宗（D60 實測）
+    const g = new THREE.TorusGeometry(r, 0.015 - i * 0.002, 6, 14);
     g.rotateX(Math.PI / 2);
     g.translate(0, 0.012 + i * 0.018, 0);
     add(g);

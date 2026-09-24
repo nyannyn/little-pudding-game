@@ -101,7 +101,7 @@ describe('全自動生產線：不碰一下也會出貨到成品櫃', () => {
     w.state.stock.milk = 1;
     fillBasinDirect(w.state, 'caramel');
     const events: SimEvent[] = [];
-    expect(startBatch(w.state, 'caramel', (e) => events.push(e)).ok).toBe(true);
+    expect(startBatch(w.state, 'caramel', 1, (e: SimEvent) => events.push(e)).ok).toBe(true);
     const emit = w.emit;
     w.emit = (e) => { events.push(e); emit(e); };
 

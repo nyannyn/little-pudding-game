@@ -39,8 +39,12 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * ① **機器全部未購買**（不因為舊版五站免費就送）；② 舊線上做到一半的盤子**退回材料**——打蛋站只扣過蛋只退蛋、
  * 攪拌站以後蛋與原料都退（`bakery.refundLegacyBatches`）；③ 時鐘、展示架、成品櫃、營業紀錄原樣留；
  * ④ `pantry` 補開局那一份。分辨新舊看 `bakery` 有沒有 `machines` 欄，不看 schemaVersion。
+ * 10（2026-09-24）：機器 20 級＋店面人氣（D60／D61）。新增 `bakery.fame`、每站 `startedAt`。補值方向：
+ * ① 機器等級換算成**每一項都不比舊的差**的新等級（1→1、2→3、3→5，`bakery.V9_MACHINE_LEVEL`）；
+ * ② 人氣補 Lv1；③ 站上那一盤補 `startedAt`＝`doneAt`－舊的固定秒數，照原本的 `doneAt` 做完。
+ * 分辨新舊看 `bakery` 有沒有 `fame` 欄，不看 schemaVersion。
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /** 收進倉庫的澡盆的 `zone`。不是任何一個分區，所有「這一區的盆」查詢自然會略過它 */
 export const STORAGE_ZONE = 'storage';

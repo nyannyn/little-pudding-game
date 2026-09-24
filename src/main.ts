@@ -16,8 +16,8 @@ import {
   unlockZone,
 } from './game/actions';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
-import { STATIONS, STATION_IDS, buyMachine, fulfillOrder, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
-import { MAX_MACHINE_LEVEL } from './game/recipes';
+import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
+import { MACHINE_TIER_NAMES } from './game/recipes';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -364,11 +364,12 @@ const hudActions: HudActions = {
     hud.update(state, performance.now(), true);
   },
   setView: (v) => setView(v),
-  startBatch: (species) => report(startBatch(state, species, world.emit)),
+  startBatch: (species, qty) => report(startBatch(state, species, qty, world.emit)),
   buyMachine: (id) => report(buyMachine(state, id, world.emit)),
+  buyFame: () => report(buyFame(state, world.emit)),
   // 機器頭上的標籤：還能升級＝開商店工坊頁、捲到這台並標亮；滿級了就跟點 3D 機器一樣講它在做什麼
   stationTag: (id) => {
-    if (state.bakery.machines[id] < MAX_MACHINE_LEVEL) hud.openShop('bakery', `machine:${id}`);
+    if (machineNextPrice(state, id) !== null) hud.openShop('bakery', `machine:${id}`);
     else tapStation(id);
   },
   buyPantry: (id, qty) => report(buyPantry(state, id, qty, world.emit)),
@@ -501,7 +502,13 @@ function handle(e: SimEvent) {
     case 'bakeDone':
       // D57 起線上自己走，出爐一律是 auto；離線那幾百盤在 drainEvents 就丟了，這裡一盤最多一則
       sfx.coin(0.32);
-      hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
+      // D60：看著工坊時是一張大字卡（同一幀好幾盤出爐合併成一張）；在農場就只給一則 toast
+      if (view === 'bakery') hud.bakeBanner(SPECIES[e.species].dessert, e.qty);
+      else hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
+      break;
+    case 'tierUp':
+      sfx.coin(0.4);
+      hud.toast(`${e.what}升上${MACHINE_TIER_NAMES[e.tier - 1]}級！機器前的星星換成${MACHINE_TIER_NAMES[e.tier - 1]}色`);
       break;
     case 'bakeFailed':
       hud.toast(`${SPECIES[e.species].dessert}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);

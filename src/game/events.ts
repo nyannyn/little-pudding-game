@@ -20,6 +20,8 @@ export type SimEvent =
   | { type: 'bakeDone'; species: SpeciesId; qty: number; auto: boolean }
   /** 最後一站擲失敗（D56）：這一盤有幾份做壞了 */
   | { type: 'bakeFailed'; species: SpeciesId; qty: number }
+  /** 機器跨階（Lv6／11／16，鐵→銅→銀→金，D61）：`tier` 是新的那一階（2–4） */
+  | { type: 'tierUp'; what: string; tier: number }
   | { type: 'shelfStocked'; qty: number; auto: boolean }
   | { type: 'customer'; species: SpeciesId; qty: number; coins: number }
   | { type: 'customerMissed' }
