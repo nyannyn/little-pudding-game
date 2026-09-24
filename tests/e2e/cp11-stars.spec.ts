@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { BALANCE } from '../../src/game/balance';
 import type { GameState } from '../../src/game/state';
 import { DRAW_CALL_BUDGET } from './helpers';
 
@@ -93,7 +94,7 @@ test('AC11-14：點布丁開布丁卡；櫥窗切成精養；布丁卡「搬到�
     if (s.puddings.find((x) => x.id === p.id)!.care > 0) break;
   }
   expect(s.puddings.find((x) => x.id === p.id)!.care).toBe(3);
-  await expect(card.locator('.ctext')).toContainText('照顧 3／360');
+  await expect(card.locator('.ctext')).toContainText(`照顧 3／${BALANCE.starCare[0]}`);
 });
 
 test('AC11-14：菜單選 ★3 分頁 → 開工只扣 ★3 原料，那一盤是 ★3', async ({ page }) => {
