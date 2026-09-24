@@ -31,7 +31,7 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
-## 甜點店開燈＋機器頭上的標籤（取代名牌）D59（2026-09-24，分支 `feat/bakery-lights-hud`，worktree `../lpg-wt-bakery-lights`）
+## 甜點店開燈＋機器底座牌（取代名牌）D59（2026-09-24，已上線，PR #28）
 
 **使用者原話**：「甜點店應該要開燈 而且正在製作的地方上面應該顯示可容納數量跟可以升級的圖標跟進度條」（附 20:08 營業中、整間暗掉的手機截圖）。AskUserQuestion 選定：份數「這盤／上限」、升級圖示「開商店到那台」。
 
@@ -45,7 +45,7 @@
 - 第二版證據：cp9 8 條綠（新增名稱／Lv／0 份／未購買／3D 名牌只剩 4 個頂點／徽章不壓名稱）；負向對照：名牌放回去→紅、徽章放回 −10px→紅、不避日曆卡→紅。
 - **第三版（同日使用者）**：「請改成可以看到機器的長相 現在這樣都被擋住了 請參考主流甜點或餐廳遊戲的遊玩畫面做排版」。改成主流料理經營遊戲的排法：牌子從機器頭上搬到**機器正前方的輸送帶側板**（`STATION_PLATE`，舊 3D 名牌的位置；烤箱在隧道前端下緣），扁成兩行（名稱＋Lv／進度條＋`2/4`，去掉「份」字省寬度），**升級箭頭只在錢夠時冒出來**（不再常駐灰箭頭）。`STATION_BAR` 只剩 e2e 用來當「機頭」點。320px 時窄版名稱與 Lv 分兩行、牌子變高，壓到裝飾台機頭 1px（e2e 抓到）→ 窄版行高收緊。
 - 第三版證據：cp9 10 條綠，新增「390／320 兩視口、七台都買、錢夠、每站一盤：每台機器的機頭與機身中段 `elementFromPoint` 都是 canvas」；亮度量測先藏 HUD 牌子（白色 HTML 不吃燈光，會污染比值）。負向對照：牌子放回機器頭上→「stove head covered」紅、舊燈光→20 點 138 vs 中午 197 紅、箭頭常駐→紅。
-- **待使用者**：手機上看畫面簽核；merge 要使用者同意。
+- **已上線（2026-09-24）**：使用者看第三版截圖回「這個好 merge」＝視覺簽核通過。PR #28 squash merge，master＝`70edcef`（`ls-remote` 相符）；Pages workflow 綠；線上 bundle `index-zFb1L8SW.js` 含 `stationTag`／`BakeryLampGlow`／`未購買`，CSS 含 `.stag.off`；`npm run smoke:live` 對線上全過。
 
 ## 食譜制全自動流水線 D56–D58（2026-09-24，已上線，PR #26，計畫檔 CP9）
 
