@@ -18,14 +18,15 @@ async function ready(page: Page, query = '/') {
 }
 
 test('點頂列的四個數字，各跳一則小布丁的說明', async ({ page }) => {
-  // 甜點數只在工坊畫面顯示（D50 起農場不做甜點）；工坊在 390px 上四個都看得到
+  // 兩個畫面各三顆：甜點數只在工坊（D50 起農場不做甜點），原料總數只在農場（2026-09-25 工坊頂列塞不下四顆）
   await ready(page, '/?view=bakery');
 
   const bubble = page.locator('.tipbubble');
   await expect(bubble).toBeHidden();
 
   const seen = new Set<string>();
-  for (const k of ['coins', 'egg', 'ing', 'des']) {
+  for (const k of ['coins', 'egg', 'des', 'ing']) {
+    if (k === 'ing') await page.locator('[data-a="goFarm"]').click();
     await page.locator(`.chip[data-k="${k}"]`).click();
     await expect(bubble).toBeVisible();
     const text = (await bubble.locator('.t').textContent()) ?? '';

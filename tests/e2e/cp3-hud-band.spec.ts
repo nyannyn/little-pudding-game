@@ -93,31 +93,61 @@ test('點畫布上的原料撿得到（投影偏移有套進射線）', async ({
 });
 
 /**
- * 最窄的手機（320×568）：頂列四個數字不可以被右邊的鈕蓋住。
+ * 頂列的數字膠囊不可以被右邊的鈕蓋住，也不可以超出螢幕。
  *
  * 原本這裡測的是「訂單卡不蓋住布丁」——D50 起訂單搬進工坊、收進右欄的一顆鈕，農場畫面不再有訂單卡，
- * 那條風險整個消失了。換成這一條：2026-09-23 iPhone SE 截圖上齒輪鈕蓋掉了第四個數字（甜點數）。
- * 負向對照：拿掉 hud.css 的 `@media (max-width: 359px)` 那段 → 甜點膠囊的右緣壓到齒輪而紅。
+ * 那條風險整個消失了。換成這一條：2026-09-23 iPhone SE 截圖上齒輪鈕蓋掉了第四個數字（甜點數）；
+ * 2026-09-25 iPhone 14（390px）工坊畫面，蛋 13722 顆時甜點膠囊整顆跑到齒輪與商店鈕底下——
+ * （使用者的手機是 402px 寬）原本只測 320px＋小數字，量不到這個。所以六種寬度×中後期的數字×極端數字都跑。
+ * 負向對照：膠囊收窄的 `@media (max-width: 439px)` 改回 359px → 375px 以上紅；工坊的原料膠囊不藏 → 工坊紅；
+ * 頂列改回 `String(n)` → 極端數字紅。
  */
-test.describe('320px 寬', () => {
-  test.use({ viewport: { width: 320, height: 568 } });
+for (const [w, h] of [[320, 568], [375, 667], [390, 844], [402, 874], [414, 896], [430, 932]] as const) {
+  test.describe(`${w}px 寬`, () => {
+    test.use({ viewport: { width: w, height: h } });
 
-  for (const view of ['farm', 'bakery'] as const) {
-    test(`頂列的數字都沒有被按鈕蓋住（${view}）`, async ({ page }) => {
-      await page.goto(`/?fresh=1&seed=5${view === 'bakery' ? '&view=bakery' : ''}`);
-      await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
-      await page.evaluate(() => { const s = window.__lpg.state!; s.coins = 12345; s.eggs = 88; s.desserts.caramel = 12; });
-      await page.waitForTimeout(400);
-      const r = await page.evaluate(() => {
-        const box = (el: Element) => el.getBoundingClientRect();
-        // 只算看得到的膠囊（各畫面會藏掉用不到的那一個，見 hud.css）
-        const chips = [...document.querySelectorAll('.topbar .chip')].map(box).filter((b) => b.width > 0);
-        const btns = [...document.querySelectorAll('.topbar .iconbtn')].map(box);
-        const hit = chips.some((c) => btns.some((b) => c.right > b.left + 1 && c.left < b.right - 1 && c.bottom > b.top && c.top < b.bottom));
-        return { hit, chips: chips.length, lastRight: Math.round(chips[chips.length - 1]!.right), firstBtn: Math.round(btns[0]!.left) };
+    for (const view of ['farm', 'bakery'] as const) {
+      test(`頂列的數字都沒有被按鈕蓋住（${view}）`, async ({ page }) => {
+        await page.goto(`/?fresh=1&seed=5${view === 'bakery' ? '&view=bakery' : ''}`);
+        await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+        // 中後期實際存檔的量級（使用者截圖）與極端值各量一次
+        for (const [coins, eggs, ing, des] of [[7334, 13722, 7414, 4321], [987654321, 99999, 99999, 99999]] as const) {
+          await page.evaluate(({ c, e, i, d }) => {
+            const s = window.__lpg.state!;
+            s.coins = c; s.eggs = e;
+            for (const k of Object.keys(s.ingredients) as (keyof typeof s.ingredients)[]) s.ingredients[k] = 0;
+            for (const k of Object.keys(s.desserts) as (keyof typeof s.desserts)[]) s.desserts[k] = 0;
+            s.ingredients.caramel = i; s.desserts.caramel = d;
+          }, { c: coins as number, e: eggs as number, i: ing as number, d: des as number });
+          await page.waitForTimeout(400);
+          const r = await page.evaluate(() => {
+            const box = (el: Element) => el.getBoundingClientRect();
+            // 只算看得到的膠囊（各畫面會藏掉用不到的那一個，見 hud.css）
+            const chips = [...document.querySelectorAll('.topbar .chip')].map(box).filter((b) => b.width > 0);
+            const btns = [...document.querySelectorAll('.topbar .iconbtn')].map(box);
+            const hit = chips.some((c) => btns.some((b) => c.right > b.left + 1 && c.left < b.right - 1 && c.bottom > b.top && c.top < b.bottom));
+            const text = [...document.querySelectorAll('.topbar .chip b')].map((b) => b.textContent);
+            return { hit, chips: chips.length, lastRight: Math.round(chips[chips.length - 1]!.right), firstBtn: Math.round(btns[0]!.left), vw: innerWidth, text };
+          });
+          expect(r.chips).toBe(3);
+          expect(r.hit, JSON.stringify(r)).toBe(false);
+          expect(r.lastRight, JSON.stringify(r)).toBeLessThanOrEqual(r.vw);
+        }
       });
-      expect(r.chips).toBe(3);
-      expect(r.hit, JSON.stringify(r)).toBe(false);
-    });
-  }
+    }
+  });
+}
+
+/** 菜單卡片的甜點圖要待在自己的圓框裡（2026-09-25：商店卡片的 `inset: 10px` 漏進菜單，圖整張往右下偏 10px） */
+test('菜單卡片的圖示沒有偏出圓框', async ({ page }) => {
+  await page.goto('/?fresh=1&seed=5&view=bakery');
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+  await page.click('[data-a="openMenu"]');
+  await page.locator('.rcard .art').first().waitFor();
+  const off = await page.evaluate(() => [...document.querySelectorAll('.rcard .art')].map((a) => {
+    const b = a.getBoundingClientRect(), i = a.querySelector('.main')!.getBoundingClientRect();
+    return Math.max(Math.abs(i.left - b.left), Math.abs(i.top - b.top), Math.abs(i.right - b.right), Math.abs(i.bottom - b.bottom));
+  }));
+  expect(off.length).toBeGreaterThan(0);
+  expect(Math.max(...off)).toBeLessThanOrEqual(1);
 });
