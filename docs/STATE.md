@@ -31,6 +31,17 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
+## CP11 星級布丁與常客（2026-09-25 開工，使用者「計劃開工 請一次完成一整個計劃」，分支 `feat/regulars`，worktree `../lpg-wt-regulars`，基底 `origin/docs/regulars-plan` 3b6555d＝PR #34 未 merge）
+
+- **進度表**（計畫檔 CP11 的 WP）：
+  - WP11-0 基準線 ✅（數字已寫進計畫 CP11「基準線實測」；v10 存檔**暫代**＝v10 程式自己玩出來的 `tests/fixtures/v10-save.*`，**使用者手機那份還沒拿到**）
+  - WP11-1／11-2 ✅ commit `71eddf0`：`stock.ts` 單一出入口＋掃描測試（AC11-4，掃 src 與 tools，含 `Object.assign(x.shelf…)`）、`stars.ts`（本命液、精養、照顧點數、升星藥）、`clock.ts`（從 bakery 抽出）、存檔 v11、散客上限與先拿低星、`startBatch(…, star)`。vitest 301 全過；3 小時量表跟基準線**逐行相同**（全 ★1 時行為沒變）；負向對照 CP11 13 條全紅過（在拋棄式 worktree `../lpg-wt-cp11-nc` 跑）；e2e 97/99（兩條紅是測試寫死 v10／賣出鈕 arg，已在 `dab8697` 改）。
+  - WP11-3 常客規則：**派 sonnet 工人**在 `../lpg-wt-cp11-rules`（分支 `feat/regulars-rules`，基底 71eddf0），只准動 `regulars.ts`／`regularStories.ts`／`events.ts`／`tests/unit/regulars.test.ts`；接進 `sim.ts` 由主對話合流時做。
+  - WP11-4 方塊常客 ✅（未簽核）`dab8697`：`scene/regularLooks.ts`（8 位外觀資料）、`scene/voxelAnimal.ts`、工坊 `regularCame()`／`regularAnchors()`、名冊頭像 `ui/regularPortrait.ts`（2D 正面投影）。
+  - WP11-5 介面：布丁卡（`ui/puddingCard.ts`，點布丁開）、上架卡（`ui/shelfCard.ts`，「上架」鈕改開卡）、菜單星級分頁、櫥窗名牌旁量產／精養切換、頭頂 ★2–★5 徽章 ✅；**名冊卡、名字泡泡、「你不在的時候」、特別訂單標示待合流後做**。
+  - WP11-6 故事定稿、WP11-7 招牌甜點、WP11-8 量表校準：未開始。
+- **踩到的**：①`tools/check-negative-controls.mjs` 被 `import()` 就會真的跑（頂層程式），探結構別 import 它；②它的 AC2-9 條目早就空轉（`-t` 篩到 0 條＝全 skipped＝exit 0 被當綠），已改測試名並讓工具把「篩不到」當錯；③機械轉換測試時把 `star` 塞進了**舊格式存檔** literal（v8／v9），測舊檔的 literal 要保持舊形狀。
+
 ## 破圖修正＋大改版需求（2026-09-25，分支 `fix/bakery-broken-art`，worktree `../lpg-wt-bakery-fix`，PR #32 已上線）
 
 **使用者原話**：「破圖了，修好」（附菜單與甜點店截圖，手機 402px 寬）＋「希望可以由內部視角看外面甜點店而不是俯視視角，請參考我傳給你的圖片來製作開放式地圖」（附 Fae Farm 類戶外斜俯瞰小鎮圖）＋「參考 3D 商業模擬經營遊戲，從選址、裝潢店面到設計獨家咖啡配方一手包辦」＋「甜點店跟小布丁櫥窗全部改成程式化生成，有必要時請使用 Unreal／Unity／Godot」。
