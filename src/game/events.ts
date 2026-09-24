@@ -1,5 +1,8 @@
 import type { LiquidId, SpeciesId } from './species';
 import type { StationId } from './bakery';
+import type { DessertId } from './recipes';
+import type { RegularId } from './regulars';
+import type { Star } from './stock';
 import type { DropKind } from './state';
 
 /**
@@ -41,6 +44,11 @@ export type SimEvent =
   | { type: 'pour'; basinIndex: number; liquid: LiquidId; units: number; auto: boolean }
   | { type: 'buy'; what: string; cost: number; auto: boolean }
   | { type: 'levelUp'; level: number; from: number }
+  // ── 常客（D66／D67）：常駐名冊卡讀 state 推導，這裡只給演出用 ──
+  | { type: 'regularUnlocked'; id: RegularId }
+  | { type: 'regularVisit'; id: RegularId; bought: boolean; dessert: DessertId | null; star: Star | null; coins: number; hearts: number; gift: 'tonic' | 'ingredients' | null }
+  | { type: 'regularOrder'; id: RegularId; orderId: string }
+  | { type: 'hearts'; id: RegularId; hearts: number; reached: number | null }
   | { type: 'error'; message: string };
 
 export type EventSink = (e: SimEvent) => void;
