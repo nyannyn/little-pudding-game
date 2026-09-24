@@ -918,7 +918,7 @@
 .rcard .price { flex: none; font-weight: 700; color: #b8741a; background: #fff1c9; border-radius: 999px; padding: 2px 9px; font-size: 13px; }
 .rcard .price::before { content: '售價 '; font-weight: 500; font-size: 11px; }
 .rcard .art { position: relative; width: 40px; height: 40px; flex: none; }
-.rcard .art .main { width: 40px; height: 40px; object-fit: contain; }
+.rcard .art .main { inset: 0; width: 40px; height: 40px; object-fit: contain; }
 .rcard .art .corner { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; object-fit: contain; }
 .rcard .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: var(--ink-soft); }
 .rcard .mats { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -972,22 +972,23 @@
 .ordercard .empty[hidden] { display: none; }
 .hud .ordercard .order button { width: 100%; }
 
-/* 最窄的手機（320px）：頂列四個數字＋兩顆鈕塞不下，數字膠囊收窄 */
-@media (max-width: 359px) {
+/* 440px 以下（所有 iPhone 直拿）：數字膠囊收窄。原本只管 320px；375px 農場在金幣四位數、蛋 1.3萬 時
+   第三顆就壓到齒輪（2026-09-25 e2e 量到）。鈕的大小不跟著縮，只有 320px 才縮到 38px（手指要按得到） */
+@media (max-width: 439px) {
   .chips { gap: 4px; }
   .chip { padding: 2px 7px 2px 3px; gap: 3px; font-size: 13.5px; }
   .chip .ic.bubble { width: 1.5em; height: 1.5em; }
+}
+@media (max-width: 359px) {
   .topbar { gap: 4px; }
   .hud .topbar .iconbtn { width: 38px; min-height: 38px; padding: 7px; }
 }
 
-/* 頂列的數字按畫面挑：農場用不到甜點數（D50 起農場不做甜點）；
-   工坊在最窄的手機上藏原料總數（開工選單裡逐種都列著）。
-   320px 上四個數字＋兩顆鈕塞不下：金幣五位數時甜點膠囊會壓到齒輪 20px（2026-09-23 e2e 量到）。 */
+/* 頂列的數字按畫面挑，兩邊都是三顆：農場用不到甜點數（D50 起農場不做甜點）；
+   工坊不放原料總數（菜單卡片逐種都列著）。工坊原本四顆：2026-09-25 使用者截圖（iPhone 402px 寬）
+   蛋 13722 顆時第四顆整個跑到齒輪與商店鈕底下；量過 390px 窄版四顆也要 298px、只有 284px 可用。 */
 .hud[data-view="farm"] .chip[data-k="des"] { display: none; }
-@media (max-width: 359px) {
-  .hud[data-view="bakery"] .chip[data-k="ing"] { display: none; }
-}
+.hud[data-view="bakery"] .chip[data-k="ing"] { display: none; }
 
 /* ── 成就抽屜（D55）───────────────────────────
    樣式跟商店共用（上面的 :is(.sheet, .achsheet)），但**不掛 .sheet**：e2e 與試玩腳本都把 .sheet 當商店。一列＝一個系列：左邊獎章（銅／銀／金底）、中間名字＋星星＋進度、右邊領取。

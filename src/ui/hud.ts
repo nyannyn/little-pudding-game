@@ -95,6 +95,19 @@ function shelvable(s: GameState): number {
   const spare = SPECIES_IDS.reduce((n, id) => n + Math.max(0, s.desserts[id] - reservedForOrders(s, id)), 0);
   return Math.min(spare, BALANCE.bakery.shelfCap - shelfCount(s));
 }
+/**
+ * 頂列膠囊的數字：一萬以上改寫成「1.3萬」「25萬」「1.2億」，一律無條件捨去（不可以把 13,721 寫成 1.4萬、多報給玩家）。
+ * 甜點店的頂列要塞四顆膠囊＋兩顆鈕，五位數原樣寫會把第四顆推到齒輪底下（2026-09-25 使用者截圖：13722 顆蛋）。
+ */
+export function chipNumber(n: number): string {
+  const v = Math.max(0, Math.floor(n));
+  if (v < 10_000) return String(v);
+  if (v < 100_000) return `${Math.floor(v / 1_000) / 10}萬`;
+  if (v < 100_000_000) return `${Math.floor(v / 10_000)}萬`;
+  if (v < 1_000_000_000) return `${Math.floor(v / 10_000_000) / 10}億`;
+  return `${Math.floor(v / 100_000_000)}億`;
+}
+
 function totalDesserts(s: GameState): number {
   return SPECIES_IDS.reduce((n, id) => n + s.desserts[id], 0);
 }
@@ -627,10 +640,10 @@ export class Hud {
     if (!force && nowMs - this.lastRefresh < 160) return;
     this.lastRefresh = nowMs;
 
-    this.chipCoins.textContent = String(Math.floor(state.coins));
-    this.chipEgg.textContent = String(state.eggs);
-    this.chipIng.textContent = String(totalIngredients(state));
-    this.chipDes.textContent = String(totalDesserts(state));
+    this.chipCoins.textContent = chipNumber(state.coins);
+    this.chipEgg.textContent = chipNumber(state.eggs);
+    this.chipIng.textContent = chipNumber(totalIngredients(state));
+    this.chipDes.textContent = chipNumber(totalDesserts(state));
 
     this.syncZones(state);
     this.syncPourButtons(state);
