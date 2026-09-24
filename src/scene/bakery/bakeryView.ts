@@ -48,8 +48,16 @@ const MAX_CUSTOMERS = 5;
  * 所以常客最多 +2 draw calls（AC11-11）。
  */
 const MAX_REGULARS_IN = 2;
-/** 方塊動物身高約 2.2（`regularLooks.ts` 的座標）→ 跟散客（約 0.43）同量級 */
-const REGULAR_SCALE = 0.2;
+/**
+ * 方塊動物身高約 2.2（`regularLooks.ts` 的座標）→ 約 0.57，比散客（約 0.43）高一截：一眼分得出是常客。
+ * 0.2（跟散客一樣高）的截圖（2026-09-25）裡常客縮在咖啡座後面只剩一根棍子。
+ */
+const REGULAR_SCALE = 0.26;
+/**
+ * 常客站哪幾格展示櫃（`SHELF_SLOTS` 的索引）：只用右邊三格——左邊三格正前方是咖啡座（`CAFE`），
+ * 從鏡頭看會被桌子整個擋住（2026-09-25 截圖）。兩位同時在店裡就各站一格。
+ */
+const REGULAR_SLOTS = [4, 5, 3];
 /** 帶子的速度（世界單位／秒）：盤子從一站滑到下一站 */
 const BELT_SPEED = 1.5;
 /** 帶面條紋間距 */
@@ -493,8 +501,7 @@ export class BakeryView {
   /** 常客來店（`regularVisit` 事件；main.ts 只在玩家正在看工坊時轉進來，離線的不演） */
   regularCame(id: RegularId, bought: boolean, dessert: SpeciesId | null) {
     if (this.regulars.some((r) => r.id === id)) return;
-    const slot = SHELF_SLOTS[Math.floor(Math.random() * 6)]!;
-    this.regulars.push({ id, bought, dessert, x: DOOR.x, z: DOOR.z, tx: slot.x + (Math.random() - 0.5) * 0.1, phase: 'queue', t: 0, hop: Math.random() * 6 });
+    this.regulars.push({ id, bought, dessert, x: DOOR.x, z: DOOR.z, tx: 0, phase: 'queue', t: 0, hop: Math.random() * 6 });
   }
 
   /** 店裡（不含門外排隊）有幾位常客（測試用） */
@@ -792,12 +799,17 @@ export class BakeryView {
 
   private syncRegulars(dt: number) {
     const speed = 0.8;
-    // 門外排隊的：店裡少於 2 位才放進來
+    // 門外排隊的：店裡少於 2 位、而且前一位已經走進來一段（同時進門會整個疊在一起）才放進來；
+    // 放進來的時候才決定站哪一格（避開另一位已經佔的那格）
     for (const r of this.regulars) {
-      if (r.phase === 'queue' && this.regularCount < MAX_REGULARS_IN) {
-        r.phase = 'in';
-        r.t = 0;
-      }
+      if (r.phase !== 'queue' || this.regularCount >= MAX_REGULARS_IN) continue;
+      const inside = this.regulars.filter((q) => q.phase !== 'queue');
+      if (inside.some((q) => q.phase === 'in' && q.t < 1.1)) break;
+      const taken = new Set(inside.map((q) => q.tx));
+      const slot = REGULAR_SLOTS.map((i) => SHELF_SLOTS[i]!.x).find((x) => !taken.has(x)) ?? SHELF_SLOTS[REGULAR_SLOTS[0]!]!.x;
+      r.tx = slot;
+      r.phase = 'in';
+      r.t = 0;
     }
     let n = 0;
     for (const r of this.regulars) {
@@ -815,8 +827,8 @@ export class BakeryView {
           r.t = 0;
         }
       } else if (r.phase === 'pick') {
-        // 常客會多看一下（比散客久）：買到的開心跳、沒買到的搖頭
-        face = Math.PI;
+        // 常客會多待一下、而且轉過來面向玩家（散客面向展示櫃，玩家只看得到背影）：買到的開心跳、沒買到的搖頭
+        face = 0;
         if (r.t > 1.8) {
           r.phase = 'out';
           r.t = 0;

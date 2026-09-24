@@ -12,6 +12,7 @@ const SAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12"
 export class RegularTags {
   readonly root: HTMLElement;
   private readonly tags: HTMLElement[] = [];
+  private readonly size = new Map<HTMLElement, { w: number; h: number }>();
 
   constructor() {
     this.root = document.createElement('div');
@@ -28,6 +29,7 @@ export class RegularTags {
 
   /** `anchors` 的 ndc 轉成 CSS px；`w`／`h`＝畫布的 CSS 尺寸 */
   place(anchors: readonly RegularAnchor[], w: number, h: number) {
+    const placed: { x: number; y: number; half: number }[] = [];
     this.tags.forEach((t, i) => {
       const a = anchors[i];
       if (!a) {
@@ -37,12 +39,24 @@ export class RegularTags {
       t.hidden = false;
       const name = REGULARS[a.id].name;
       const b = t.querySelector('b') as HTMLElement;
-      if (b.textContent !== name) b.textContent = name;
+      let changed = false;
+      if (b.textContent !== name) { b.textContent = name; changed = true; }
       if (t.dataset.mood !== a.mood) {
         t.dataset.mood = a.mood;
         (t.querySelector('.ic') as HTMLElement).innerHTML = a.mood === 'happy' ? HEART : a.mood === 'sad' ? SAD : '';
+        changed = true;
       }
-      t.style.transform = `translate(${Math.round(((a.ndc.x + 1) / 2) * w)}px, ${Math.round(((1 - a.ndc.y) / 2) * h)}px) translate(-50%, -100%)`;
+      // 尺寸只在內容變的那一幀量（每幀讀 offsetWidth 會逼瀏覽器每幀重排版）
+      if (changed || !this.size.has(t)) this.size.set(t, { w: t.offsetWidth, h: t.offsetHeight || 20 });
+      const x = Math.round(((a.ndc.x + 1) / 2) * w);
+      let y = Math.round(((1 - a.ndc.y) / 2) * h);
+      // 兩位靠太近（走路時一前一後、或站相鄰兩格）：後面那顆往上疊一層，不然名字被整個蓋掉
+      const sz = this.size.get(t)!;
+      const half = sz.w / 2;
+      const th = sz.h;
+      for (const p of placed) if (Math.abs(p.x - x) < p.half + half && Math.abs(p.y - y) < th) y = p.y - th - 2;
+      placed.push({ x, y, half });
+      t.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
     });
   }
 
