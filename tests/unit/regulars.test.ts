@@ -249,33 +249,33 @@ describe('AC11-8 好感獎勵', () => {
 });
 
 describe('AC11-9 離線結算', () => {
-  it('離線 8 小時：常客照樣到店結算，好感增加量＝實際買到的次數；事件只有四種新型別（沒有逐次 toast）', () => {
+  it('離線 8 小時：常客照樣到店結算，好感增加量＝實際買到的次數；每次到店一個 regularVisit、沒有 toast 型事件', () => {
     const w = makeWorld({ seed: 7, puddings: 1 });
     const s = w.state;
     s.regulars.bear.unlocked = true;
     s.regulars.bear.nextVisitAt = 100;
     const startedAt = s.time;
 
-    const regularEvents: SimEvent[] = [];
+    // 走真正的離線路徑（sim 的 `advance` 每一步都會跑 tickRegulars），攔下整個 world 的事件流
+    const all: SimEvent[] = [];
+    w.emit = (e) => all.push(e);
     const totalSec = 8 * 3600; // AC11-9：8 小時＝24 個營業日（dayLengthSec=1200）
     const step = 20;
-    let left = totalSec;
-    while (left > 0) {
+    for (let left = totalSec; left > 0; left -= step) {
       addStock(s, 'shelf', 'caramel', 1, 5); // 保持有貨，避免因為好感升高、缺高星貨而斷買
       advance(w, step);
-      tickRegulars(s, w.rng, (e) => regularEvents.push(e));
-      left -= step;
     }
 
-    const allowed = new Set(['regularUnlocked', 'regularVisit', 'regularOrder', 'hearts']);
-    expect(regularEvents.length).toBeGreaterThan(0);
-    expect(regularEvents.every((e) => allowed.has(e.type))).toBe(true);
-    expect(regularEvents.some((e) => e.type === 'orderNew' || e.type === 'error' || e.type === 'buy')).toBe(false);
-
-    const boughtCount = regularEvents.filter((e) => e.type === 'regularVisit' && e.bought).length;
+    const visits = all.filter((e) => e.type === 'regularVisit');
+    expect(visits.length).toBeGreaterThan(0);
+    // 每次到店恰好一個 regularVisit（UI 不拿它做 toast，只在看著工坊時演出）
+    expect(visits.length).toBe(s.regulars.bear.visits);
+    const boughtCount = visits.filter((e) => e.type === 'regularVisit' && e.bought).length;
     expect(boughtCount).toBeGreaterThan(0);
     expect(s.regulars.bear.hearts).toBe(boughtCount);
-    expect(s.regulars.bear.visits).toBeGreaterThan(0);
+    // 常客的特別訂單不走散客的 orderNew（那個會被 UI 做成 toast）
+    const regularOrderIds = new Set(all.flatMap((e) => (e.type === 'regularOrder' ? [e.orderId] : [])));
+    expect(all.some((e) => e.type === 'orderNew' && regularOrderIds.has(e.orderId))).toBe(false);
 
     const summary = awaySummary(s, startedAt);
     const bearSummary = summary.find((x) => x.id === 'bear');

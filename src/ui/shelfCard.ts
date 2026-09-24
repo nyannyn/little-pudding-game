@@ -1,6 +1,7 @@
 import { shelfCount, spareDesserts, walkInPrice } from '../game/bakery';
 import { BALANCE } from '../game/balance';
 import { dessertPrice, type DessertId } from '../game/recipes';
+import { REGULAR_BALANCE } from '../game/regulars';
 import { SPECIES, SPECIES_IDS } from '../game/species';
 import type { GameState } from '../game/state';
 import { STARS, stockOf, type Star } from '../game/stock';
@@ -56,7 +57,7 @@ export class ShelfCard {
         ? rows
             .map(({ id, star }) => `<div class="srow" data-id="${id}" data-star="${star}">
               ${artHtml(INGREDIENT_ART[id])}
-              <div class="txt"><b>${SPECIES[id].dessert}</b>${starsHtml(star, 0, 'sm')}<small>散客付 ${walkInPrice(id, star)}・常客付 ${Math.round(dessertPrice(id, star) * 1.2)}</small></div>
+              <div class="txt"><b>${SPECIES[id].dessert}</b>${starsHtml(star, star, 'sm')}<small>散客付 ${walkInPrice(id, star)}・常客付 ${Math.round(dessertPrice(id, star) * REGULAR_BALANCE.tip)}</small></div>
               <span class="cnt">櫃 <b class="back">0</b>・架 <b class="front">0</b></span>
               <button class="one" data-a="shelfOne" data-arg="${id}:${star}">上架 1</button>
             </div>`)

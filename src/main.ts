@@ -18,6 +18,7 @@ import {
   unlockZone,
 } from './game/actions';
 import { useStarTonic } from './game/stars';
+import { deliverOrder } from './game/regulars';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
 import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, shelfOne, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
 import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
@@ -411,7 +412,8 @@ const hudActions: HudActions = {
     }
     report(sellPudding(state, p.id, world.emit));
   },
-  fulfill: (id) => report(fulfillOrder(state, id, world.emit)),
+  // 常客的特別訂單交了要 +2 心（D67），所以一律走 `deliverOrder`（它包著 fulfillOrder）
+  fulfill: (id) => report(deliverOrder(state, id, world.emit)),
   sellIngredients: (s, star) => report(sellIngredient(state, s, stockOf(state, 'ingredients', s, star), world.emit, star)),
   sellEggs: () => report(sellEggs(state, state.eggs, world.emit)),
   buyStock: (liquid, qty) => report(buyStock(state, liquid, qty, world.emit)),

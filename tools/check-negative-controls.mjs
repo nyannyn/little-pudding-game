@@ -394,6 +394,39 @@ const CASES = [
     to: '        };',
     test: '掉落物 ★1',
   },
+  // WP11-3 常客規則（sonnet 工人在自己的 worktree 逐條紅過，主對話合流後再跑一次）
+  {
+    ac: 'AC11-7a',
+    why: '口味判斷只看物種 id（焦糖系不收卡士達）',
+    file: 'src/game/regulars.ts',
+    from: '  return SPECIES[species].alleles.includes(taste.allele);',
+    to: '  return species === taste.allele;',
+    test: '焦糖系（等位基因口味）收混種',
+  },
+  {
+    ac: 'AC11-7b',
+    why: '最低星級不隨好感上升，越熟不會越挑、養成沒有被逼著往上走',
+    file: 'src/game/regulars.ts',
+    from: '  return clampStar(REGULARS[id].startStar + Math.floor(Math.max(0, hearts) / 4));',
+    to: '  return clampStar(REGULARS[id].startStar);',
+    test: '最低星級隨好感上升',
+  },
+  {
+    ac: 'AC11-8',
+    why: '♥8 不解鎖朋友，第二代常客永遠不會來',
+    file: 'src/game/regulars.ts',
+    from: '  if (before < 8 && after >= 8) {',
+    to: '  if (false) {',
+    test: '♥8 解鎖下一位',
+  },
+  {
+    ac: 'AC11-9',
+    why: '到店改發 orderNew 型事件（UI 會做成 toast，離線一次跑出一串）',
+    file: 'src/game/regulars.ts',
+    from: "  emit({ type: 'regularVisit', id, bought, dessert, star, coins, hearts: reg.hearts, gift });",
+    to: "  emit({ type: 'orderNew', orderId: 'x', species: dessert ?? 'caramel', qty: 1, price: coins });",
+    test: '每次到店一個 regularVisit',
+  },
 ];
 
 function runTest(filter) {

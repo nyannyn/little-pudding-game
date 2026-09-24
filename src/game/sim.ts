@@ -1,9 +1,10 @@
 import { BALANCE } from './balance';
-import { tickBakery } from './bakery';
+import { hasStaff, tickBakery } from './bakery';
 import { runAutomation } from './equipment';
 import type { EventSink, SimEvent } from './events';
 import { tickOrders } from './orders';
 import { tickPudding, type FloorRect, type SimContext } from './pudding';
+import { regularWants, tickRegulars } from './regulars';
 import { createRng, type Rng } from './rng';
 import type { GameState } from './state';
 
@@ -57,7 +58,10 @@ function step(w: World, dt: number, ctx: SimContext): void {
   for (const p of s.puddings) tickPudding(s, p, dt, ctx);
   runAutomation(s, w.emit);
   tickOrders(s, w.rng, w.emit);
-  tickBakery(s, w.rng, w.emit);
+  // 店員上架時先替今天要來的常客擺一份（D70）；沒有店員就不必算
+  tickBakery(s, w.rng, w.emit, hasStaff(s) ? regularWants(s) : []);
+  // 常客（D66）：解鎖、到店結算、排下一次。離線照樣跑，回來時「你不在的時候」卡從 state 推導
+  tickRegulars(s, w.rng, w.emit);
   noteSpecies(s);
 }
 
