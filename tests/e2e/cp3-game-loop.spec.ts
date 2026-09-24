@@ -50,7 +50,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   await page.waitForFunction(() => (window.__lpg.state as GameState).drops.length > 0, null, { timeout: 60_000 });
   const dropped = await state(page);
   expect(dropped.drops.length).toBeGreaterThan(0);
-  expect(dropped.ingredients.caramel).toBe(0); // 還沒撿，庫存不該增加
+  expect(dropped.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(0); // 還沒撿，庫存不該增加
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-drop.png' });
 
   // ⑤ 邊撿邊等，直到拿到一份「焦糖塊」。
@@ -69,7 +69,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   //    沒有人去倒澡盆，農場已經停產就一路等到逾時。改成短輪詢：每一圈都倒、都撿、都檢查。
   for (let i = 0; i < 300; i++) {
     const s = await state(page);
-    if (s.ingredients.caramel >= 1) break;
+    if (s.ingredients.caramel.reduce((a, b) => a + b, 0) >= 1) break;
     if (s.basins[0]!.units === 0 && s.stock.caramel > 0) {
       await page.getByRole('button', { name: '倒焦糖' }).click();
     }
@@ -80,7 +80,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   if ((await state(page)).drops.length > 0) await page.getByRole('button', { name: '撿原料' }).click();
   const picked = await state(page);
   expect(picked.drops.length).toBe(0);
-  expect(picked.ingredients.caramel).toBeGreaterThanOrEqual(1);
+  expect(picked.ingredients.caramel.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(1);
   expect(picked.eggs).toBeGreaterThanOrEqual(0);
 
   // ⑥ 賣掉，金幣增加
@@ -91,7 +91,7 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   await page.locator('[data-a="sellIng"]').first().click();
   const sold = await state(page);
   expect(sold.coins).toBeGreaterThan(beforeSell);
-  expect(sold.ingredients.caramel).toBe(0);
+  expect(sold.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(0);
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-shop.png' });
 
   // ⑦ 買「原料收集手」，之後原料直接入庫、地上恆空
@@ -103,9 +103,9 @@ test('AC3-1 完整迴圈：倒澡盆→泡澡→掉原料→撿→賣→買設�
   const bought = await state(page);
   expect(bought.equipment[bought.activeZone]!.collector).toBe(true);
 
-  const ingBefore = (await state(page)).ingredients.caramel;
+  const ingBefore = (await state(page)).ingredients.caramel.reduce((a, b) => a + b, 0);
   await page.waitForFunction(
-    (n) => (window.__lpg.state as GameState).ingredients.caramel > n,
+    (n) => (window.__lpg.state as GameState).ingredients.caramel.reduce((a, b) => a + b, 0) > n,
     ingBefore,
     { timeout: 90_000 },
   );
@@ -168,7 +168,7 @@ test('AC3-2 效能不退步：整場（含設備與掉落物）draw calls 仍在
       zone: s.activeZone, kind: 'ingredient' as const,
       species: (['caramel', 'panna', 'matcha', 'strawberry'] as const)[i % 4]!,
       pos: { x: -0.3 + i * 0.15, z: 0.2 },
-      bornAt: s.time,
+      bornAt: s.time, star: 1 as const,
     }));
   });
   await page.waitForTimeout(1500);

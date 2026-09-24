@@ -45,7 +45,7 @@ function stockFor(s: GameState, species: SpeciesId, n: number) {
     if (k === 'egg') s.eggs = per * n;
     else if (k === 'milk') s.stock.milk = per * n;
     else if (k === 'flour' || k === 'rice') s.pantry[k] = per * n;
-    else s.ingredients[k] = per * n;
+    else s.ingredients[k] = [per * n, 0, 0, 0, 0];
   }
 }
 
@@ -65,7 +65,7 @@ describe('AC10-1 一盤份數由玩家疊，不可超過上限（D60）', () => 
       stockFor(s, 'hojicha', 8);
       expect(maxBatch(s, 'hojicha')).toBe(5);
       expect(startBatch(s, 'hojicha', qty, sink).ok).toBe(true);
-      expect(s.bakery.stations.crack.batch).toEqual({ species: 'hojicha', qty });
+      expect(s.bakery.stations.crack.batch).toEqual({ species: 'hojicha', qty, star: 1 });
       for (const [k, per] of recipeMaterials('hojicha')) expect(materialHave(s, k)).toBe(per * (8 - qty));
     }
   });
@@ -203,9 +203,9 @@ describe('AC10-4 舊存檔 v9 → v10：每一項都不比舊的差（D61）', (
   });
 
   it('站上那一盤照原本的 doneAt 做完；進度條用舊的固定秒數算', () => {
-    const s = migrate(v9({ stove: 3, mold: 3, chill: 3 }, { mold: { batch: { species: 'panna', qty: 4 }, doneAt: 102 } }), { seed: 1, now: 0 });
+    const s = migrate(v9({ stove: 3, mold: 3, chill: 3 }, { mold: { batch: { species: 'panna', qty: 4, star: 1 }, doneAt: 102 } }), { seed: 1, now: 0 });
     const st = s.bakery.stations.mold;
-    expect(st.batch).toEqual({ species: 'panna', qty: 4 });
+    expect(st.batch).toEqual({ species: 'panna', qty: 4, star: 1 });
     expect(st.doneAt).toBe(102);
     expect(st.startedAt).toBe(102 - STATIONS.mold.sec);
     expect(stationProgress(s, 'mold')).toBeCloseTo((100 - (102 - STATIONS.mold.sec)) / STATIONS.mold.sec);
@@ -230,14 +230,14 @@ describe('AC10-5 店面人氣：客人更勤、多買、店員自動上架（D61
     const s = w.state;
     ownLine(s, 'caramel', 1);
     s.bakery.fame = fame;
-    s.desserts.caramel = 5000;
-    s.bakery.shelf.caramel = 12;
+    s.desserts.caramel = [5000, 0, 0, 0, 0];
+    s.bakery.shelf.caramel = [12, 0, 0, 0, 0];
     const events: SimEvent[] = [];
     const emit = w.emit;
     w.emit = (e) => { events.push(e); emit(e); };
     const sold0 = 5012;
     advance(w, hours * 3600);
-    const left = s.desserts.caramel + s.bakery.shelf.caramel;
+    const left = s.desserts.caramel.reduce((a, b) => a + b, 0) + s.bakery.shelf.caramel.reduce((a, b) => a + b, 0);
     return { sold: sold0 - left, events };
   }
 

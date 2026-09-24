@@ -1,10 +1,11 @@
 import { BALANCE } from '../game/balance';
 import { levelProgress } from '../game/level';
 import { shopCatalog, type ShopEntry, type ShopTab } from '../game/shop';
-import { puddingSaleBlock } from '../game/actions';
+import { ingredientSellPrice, puddingSaleBlock } from '../game/actions';
 import { dessertPrice } from '../game/recipes';
 import { SPECIES, SPECIES_IDS, puddingPrice, type SpeciesId } from '../game/species';
 import type { GameState } from '../game/state';
+import { STARS, stockOf, type Star } from '../game/stock';
 import { findZone } from '../game/zones';
 import { icon } from './icons';
 import { ART, EGG_ART, INGREDIENT_ART, artFor, type ArtSpec } from './shopArt';
@@ -69,15 +70,26 @@ function cardHtml(e: ShopEntry): string {
   </div>`;
 }
 
-function sellCardHtml(s: SpeciesId): string {
+/** 賣出頁的一格：一種原料的一個星級（D64：高星要不要留給常客是玩家的決定，所以分星賣） */
+export interface SellLot { species: SpeciesId; star: Star }
+
+function sellCardHtml({ species: s, star }: SellLot): string {
   const info = SPECIES[s];
-  return `<div class="card" data-id="sell:${s}" data-status="available">
+  const stars = star > 1 ? ` <span class="stars">★${star}</span>` : '';
+  return `<div class="card" data-id="sell:${s}:${star}" data-status="available">
     ${artHtml(INGREDIENT_ART[s])}
-    <div class="name">${info.ingredient}</div>
-    <div class="desc">直接賣 ${info.ingredientPrice}／份。做成${info.dessert}一份賣 ${dessertPrice(s)}</div>
+    <div class="name">${info.ingredient}${stars}</div>
+    <div class="desc">直接賣 ${ingredientSellPrice(s, star)}／份。做成${info.dessert}一份賣 ${dessertPrice(s, star)}</div>
     <div class="stock">持有 <b>0</b></div>
-    <div class="foot"><button class="buy sell" data-a="sellIng" data-arg="${s}">0</button></div>
+    <div class="foot"><button class="buy sell" data-a="sellIng" data-arg="${s}:${star}">0</button></div>
   </div>`;
+}
+
+/** 手上有貨的原料，一個星級一格（物種照 `SPECIES_IDS` 的順序、同物種由低星到高星） */
+export function sellLots(state: GameState): SellLot[] {
+  const out: SellLot[] = [];
+  for (const species of SPECIES_IDS) for (const star of STARS) if (stockOf(state, 'ingredients', species, star) > 0) out.push({ species, star });
+  return out;
 }
 
 /** 蛋是通用原料，不屬於任何物種，所以自己一張卡（D33） */
@@ -185,7 +197,7 @@ export class ShopView {
     this.lvlHint.textContent = lp.span > 0 ? `${lp.into}／${lp.span}` : '滿級';
 
     const catalog = shopCatalog(state);
-    const sellable = SPECIES_IDS.filter((s) => state.ingredients[s] > 0);
+    const sellable = sellLots(state);
     const hasEggs = state.eggs > 0;
     const pudSpecies = SPECIES_IDS.filter((s) => state.puddings.some((p) => p.species === s));
 
@@ -219,7 +231,7 @@ export class ShopView {
           : '';
     const key =
       this.page === 'sell'
-        ? `sell:${sellable.join(',')}:egg${hasEggs ? 1 : 0}:pud${pudSpecies.join(',')}`
+        ? `sell:${sellable.map((l) => `${l.species}${l.star}`).join(',')}:egg${hasEggs ? 1 : 0}:pud${pudSpecies.join(',')}`
         : `${this.page}:${zoneName}:${entries.map((e) => `${e.id}=${e.status}${e.machineLevel ?? ''}`).join(',')}:lv${lp.level}`;
     if (key !== this.structureKey) {
       this.structureKey = key;
@@ -261,12 +273,12 @@ export class ShopView {
         (eggCard.querySelector('.stock b') as HTMLElement).textContent = String(state.eggs);
         (eggCard.querySelector('button') as HTMLButtonElement).textContent = String(BALANCE.eggPrice * state.eggs);
       }
-      for (const s of sellable) {
-        const card = this.body.querySelector(`[data-id="sell:${s}"]`);
+      for (const { species: s, star } of sellable) {
+        const card = this.body.querySelector(`[data-id="sell:${s}:${star}"]`);
         if (!card) continue;
-        const n = state.ingredients[s];
+        const n = stockOf(state, 'ingredients', s, star);
         (card.querySelector('.stock b') as HTMLElement).textContent = String(n);
-        (card.querySelector('button') as HTMLButtonElement).textContent = String(SPECIES[s].ingredientPrice * n);
+        (card.querySelector('button') as HTMLButtonElement).textContent = String(ingredientSellPrice(s, star) * n);
       }
       for (const s of pudSpecies) {
         const card = this.body.querySelector(`[data-id="sellpud:${s}"]`);

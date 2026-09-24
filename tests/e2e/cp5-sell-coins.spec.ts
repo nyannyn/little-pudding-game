@@ -33,7 +33,7 @@ test('在商店賣原料：金幣撒在地上、消失，然後整個 mesh 不�
   expect(idle.visible).toBe(false);
   expect(idle.count).toBe(0);
 
-  await page.evaluate(() => { (window.__lpg.state as GameState).ingredients.caramel = 6; });
+  await page.evaluate(() => { (window.__lpg.state as GameState).ingredients.caramel = [6, 0, 0, 0, 0]; });
   await page.evaluate(() => window.__lpg.step!(0.05));
   await page.getByRole('button', { name: '商店' }).click();
   await page.locator('[data-a="shopTab"][data-arg="sell"]').click();

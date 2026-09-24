@@ -17,6 +17,7 @@ import {
 } from './game/actions';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
 import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
+import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
 import { MACHINE_TIER_NAMES } from './game/recipes';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
@@ -395,7 +396,7 @@ const hudActions: HudActions = {
     report(sellPudding(state, p.id, world.emit));
   },
   fulfill: (id) => report(fulfillOrder(state, id, world.emit)),
-  sellIngredients: (s) => report(sellIngredient(state, s, state.ingredients[s], world.emit)),
+  sellIngredients: (s, star) => report(sellIngredient(state, s, stockOf(state, 'ingredients', s, star), world.emit, star)),
   sellEggs: () => report(sellEggs(state, state.eggs, world.emit)),
   buyStock: (liquid, qty) => report(buyStock(state, liquid, qty, world.emit)),
   buyEquipment: (id) => report(buyEquipment(state, id, world.emit)),
@@ -612,9 +613,9 @@ function tapStation(id: StationId) {
 
 /** 按了上架卻一份都沒擺上去的原因 */
 function shelfNothingReason(): string {
-  const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+  const total = totalStock(state, 'desserts');
   if (total === 0) return '成品櫃是空的：做完一盤甜點（裝飾台做完點一下）才有東西上架。';
-  const onShelf = SPECIES_IDS.reduce((n, id) => n + state.bakery.shelf[id], 0);
+  const onShelf = totalStock(state, 'shelf');
   if (onShelf >= BALANCE.bakery.shelfCap) return `展示架滿了（${BALANCE.bakery.shelfCap} 份），等客人買走再補。`;
   return '成品櫃裡的甜點都留給預訂單了，交完訂單再上架。';
 }
@@ -1042,6 +1043,17 @@ window.__lpg.bakery = bakery;
 window.__lpg.setView = (v: GameView) => setView(v);
 window.__lpg.sfx = sfx;
 window.__lpg.grantXp = (n) => grantXp(state, n, world.emit);
+window.__lpg.stock = {
+  of: (kind, id, star) => stockOf(state, kind, id as SpeciesId, star),
+  add: (kind, id, star, n) => addStock(state, kind, id as SpeciesId, star, n),
+  set: (kind, id, counts) => {
+    for (const star of STARS) {
+      const now = stockOf(state, kind, id as SpeciesId, star);
+      takeStock(state, kind, id as SpeciesId, star, now);
+      addStock(state, kind, id as SpeciesId, star, Math.max(0, Math.floor(counts[star - 1] ?? 0)));
+    }
+  },
+};
 window.__lpg.toScreen = (x, y, z) => {
   const { ox, oy } = activeOrigin();
   const v = new THREE.Vector3(ox + x, oy + y, z).project(camera);

@@ -65,13 +65,13 @@ describe('D25 xp 來源', () => {
 
   it('撿、工坊出爐、客人買走各給對應的 xp（D51 起加工在工坊）', () => {
     const s = createNewSave({ seed: 1, now: 0 });
-    s.drops.push({ id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
-    s.drops.push({ id: 'd2', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
+    s.drops.push({ id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0, star: 1 as const });
+    s.drops.push({ id: 'd2', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0, star: 1 as const });
     pickAllDrops(s, sink);
     expect(s.xp).toBe(BALANCE.xp.pick * 2);
     // 鮮奶酪杯三站、失敗率 3%：換一顆不會失敗的種子逐秒推完（D57 起線上自己走）
     for (const id of RECIPES.panna.route) s.bakery.machines[id] = 2;
-    s.ingredients.panna = 2;
+    s.ingredients.panna = [2, 0, 0, 0, 0];
     s.stock.milk = 4;
     expect(startBatch(s, 'panna', 2, sink).ok).toBe(true);
     const rng = createRng(4);
@@ -79,7 +79,7 @@ describe('D25 xp 來源', () => {
       s.time += 1;
       tickBakery(s, rng, sink);
     }
-    expect(s.desserts.panna).toBe(2);
+    expect(s.desserts.panna.reduce((a, b) => a + b, 0)).toBe(2);
     expect(s.xp).toBe(BALANCE.xp.pick * 2 + BALANCE.xp.craft * 2);
   });
 

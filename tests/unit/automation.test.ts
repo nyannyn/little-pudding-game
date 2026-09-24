@@ -22,13 +22,13 @@ describe('AC2-8 手動 vs 自動化', () => {
   it('沒有收集手：原料堆在地上、庫存不增加', () => {
     const s = run(false, 120);
     expect(s.drops.length).toBeGreaterThan(0);
-    expect(s.ingredients.caramel).toBe(0);
+    expect(s.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(0);
   });
 
   it('裝了收集手：地上恆空、庫存增加', () => {
     const s = run(true, 120);
     expect(s.drops.length).toBe(0);
-    expect(s.ingredients.caramel).toBeGreaterThan(0);
+    expect(s.ingredients.caramel.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
   });
 
   it('兩組的泡澡次數一樣——差別只在原料去了哪裡', () => {
@@ -97,7 +97,7 @@ describe('全自動生產線：不碰一下也會出貨到成品櫃', () => {
     w.state.coins = 200;
     w.state.stock.caramel = 10;
     Object.assign(w.state, { eggs: 2 });
-    w.state.ingredients.caramel = 1;
+    w.state.ingredients.caramel = [1, 0, 0, 0, 0];
     w.state.stock.milk = 1;
     fillBasinDirect(w.state, 'caramel');
     const events: SimEvent[] = [];

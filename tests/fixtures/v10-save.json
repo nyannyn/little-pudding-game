@@ -1,0 +1,1305 @@
+{
+ "schemaVersion": 10,
+ "time": 2270,
+ "lastSeenAt": 0,
+ "seed": 4242,
+ "rngState": 4264817919,
+ "coins": 46860,
+ "xp": 4160,
+ "stock": {
+  "caramel": 200,
+  "milk": 21,
+  "matcha": 0,
+  "strawberry": 0
+ },
+ "ownedBasins": [],
+ "eggs": 495,
+ "pantry": {
+  "flour": 25,
+  "rice": 0
+ },
+ "ingredients": {
+  "caramel": 90,
+  "panna": 37,
+  "matcha": 3,
+  "strawberry": 0,
+  "custard": 108,
+  "hojicha": 0,
+  "brulee": 0,
+  "matchalatte": 0,
+  "berrymilk": 0,
+  "sakura": 0
+ },
+ "desserts": {
+  "caramel": 0,
+  "panna": 0,
+  "matcha": 0,
+  "strawberry": 0,
+  "custard": 0,
+  "hojicha": 0,
+  "brulee": 0,
+  "matchalatte": 0,
+  "berrymilk": 0,
+  "sakura": 0
+ },
+ "puddings": [
+  {
+   "id": "p1",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": -60,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.16901149856857955,
+    "z": 0.18643520176410677
+   },
+   "from": {
+    "x": 0.6598822066443972,
+    "z": 0.11804269403219225
+   },
+   "to": {
+    "x": 0.16901149856857955,
+    "z": 0.18643520176410677
+   },
+   "hopT": 1,
+   "restT": 0.5290684971958397,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p2",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": -60,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": -0.6780802407301962,
+    "z": -0.22321015261113644
+   },
+   "from": {
+    "x": -0.6780802407301962,
+    "z": -0.22321015261113644
+   },
+   "to": {
+    "x": -0.8322434723377228,
+    "z": -0.3257236981764436
+   },
+   "hopT": 0,
+   "restT": -0.36432192772626903,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p3",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": -60,
+   "caramel": 4.000000000000041,
+   "nextDropAt": 2282.2420878345147,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": -0.7993501411983743,
+    "z": 0.32332869302481415
+   },
+   "from": {
+    "x": 0.01661902415798977,
+    "z": -0.39746615551412107
+   },
+   "to": {
+    "x": -0.7993501411983743,
+    "z": 0.32332869302481415
+   },
+   "hopT": 1,
+   "restT": 2.5891690962016582,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p4",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 14,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": -0.5496314225601964,
+    "z": 0.38390678651630883
+   },
+   "from": {
+    "x": 0.15441548492526636,
+    "z": 0.24771349243819718
+   },
+   "to": {
+    "x": -0.5496314225601964,
+    "z": 0.38390678651630883
+   },
+   "hopT": 1,
+   "restT": 1.9470111731439828,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p7",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 25,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": 0.5694629390491173,
+    "z": 0.2337944738566876
+   },
+   "from": {
+    "x": 0.5694629390491173,
+    "z": 0.2337944738566876
+   },
+   "to": {
+    "x": 0.4850241706590168,
+    "z": -0.3613257791846991
+   },
+   "hopT": 0,
+   "restT": -0.8838689960539341,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p9",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 35,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.4203271302394569,
+    "z": -0.1419694360345602
+   },
+   "from": {
+    "x": 0.08169893774902448,
+    "z": 0.06364811472594739
+   },
+   "to": {
+    "x": 0.4203271302394569,
+    "z": -0.1419694360345602
+   },
+   "hopT": 1,
+   "restT": 2.088757073506713,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p12",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 49,
+   "caramel": 0,
+   "nextDropAt": 2270.087699958589,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": 0.33014787768479437,
+    "z": -0.3914051139727235
+   },
+   "from": {
+    "x": 0.33014787768479437,
+    "z": -0.3914051139727235
+   },
+   "to": {
+    "x": 0.1539950119331479,
+    "z": -0.3768164670094848
+   },
+   "hopT": 0,
+   "restT": -0.7276176858693362,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p15",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 60,
+   "caramel": 22.20000000000004,
+   "nextDropAt": 2277.4548012716696,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": 0.5757340374402702,
+    "z": 0.37404654268175364
+   },
+   "from": {
+    "x": 0.5757340374402702,
+    "z": 0.37404654268175364
+   },
+   "to": {
+    "x": -0.31028105167206377,
+    "z": -0.010765086486935638
+   },
+   "hopT": 0,
+   "restT": -0.723286768049002,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p17",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 62,
+   "caramel": 0,
+   "nextDropAt": 2282.435440897476,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": -0.7880147731630132,
+    "z": 0.21320058144629006
+   },
+   "from": {
+    "x": -0.7880147731630132,
+    "z": 0.21320058144629006
+   },
+   "to": {
+    "x": -0.6900322413421236,
+    "z": 0.16359266284853224
+   },
+   "hopT": 0,
+   "restT": -0.3115038510411978,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p20",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 74,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": 0.007029719592537731,
+    "z": -0.04029703196138146
+   },
+   "from": {
+    "x": 0.007029719592537731,
+    "z": -0.04029703196138146
+   },
+   "to": {
+    "x": 0.16785641969181597,
+    "z": 0.1311299432069063
+   },
+   "hopT": 0,
+   "restT": -0.7918910633772613,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p21",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 77,
+   "caramel": 9.600000000000042,
+   "nextDropAt": 2294.1066353530623,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.38355839968426153,
+    "z": 0.32850290425121786
+   },
+   "from": {
+    "x": -0.42123212304431945,
+    "z": -0.11338085792958735
+   },
+   "to": {
+    "x": 0.38355839968426153,
+    "z": 0.32850290425121786
+   },
+   "hopT": 1,
+   "restT": 1.6809203550219536,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p28",
+   "zone": "c0t1",
+   "genes": [
+    "panna",
+    "panna"
+   ],
+   "species": "panna",
+   "bornAt": 90,
+   "caramel": 0,
+   "nextDropAt": 2262,
+   "flavorExposure": {},
+   "mode": "bathing",
+   "pos": {
+    "x": 0.62,
+    "z": 0.28
+   },
+   "from": {
+    "x": -0.43117414717562497,
+    "z": 0.18767906762659547
+   },
+   "to": {
+    "x": 0.62,
+    "z": 0.28
+   },
+   "hopT": 1,
+   "restT": -0.5920571532100443,
+   "bathT": 4,
+   "basinIndex": 0,
+   "bathLiquid": "milk",
+   "pendingMutation": null
+  },
+  {
+   "id": "p31",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 95,
+   "caramel": 40.40000000000002,
+   "nextDropAt": 2285.7364082117565,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.31652131804730743,
+    "z": -0.0660940669476986
+   },
+   "from": {
+    "x": -0.8675025354605168,
+    "z": -0.06578305792063477
+   },
+   "to": {
+    "x": 0.31652131804730743,
+    "z": -0.0660940669476986
+   },
+   "hopT": 1,
+   "restT": 0.6290310036391018,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p34",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 103,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": 0.7938053655670956,
+    "z": 0.3525188613682986
+   },
+   "from": {
+    "x": 0.7938053655670956,
+    "z": 0.3525188613682986
+   },
+   "to": {
+    "x": -0.4434489394770935,
+    "z": 0.058234584517776966
+   },
+   "hopT": 0,
+   "restT": -0.6694775581359864,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p37",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 109,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": -0.8562311551650055,
+    "z": -0.31075667031109333
+   },
+   "from": {
+    "x": -0.27964173443615437,
+    "z": -0.16988513246178627
+   },
+   "to": {
+    "x": -0.8562311551650055,
+    "z": -0.31075667031109333
+   },
+   "hopT": 1,
+   "restT": 2.426245827972889,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p41",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 117,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.43868129240581766,
+    "z": -0.045659768395125866
+   },
+   "from": {
+    "x": -0.549414184584748,
+    "z": -0.12423280440270901
+   },
+   "to": {
+    "x": 0.43868129240581766,
+    "z": -0.045659768395125866
+   },
+   "hopT": 1,
+   "restT": 0.7368415456265209,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p45",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 123,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": -0.7468246801872738,
+    "z": -0.29099081009626393
+   },
+   "from": {
+    "x": -0.4056406297022477,
+    "z": -0.2406303707510233
+   },
+   "to": {
+    "x": -0.7468246801872738,
+    "z": -0.29099081009626393
+   },
+   "hopT": 1,
+   "restT": 1.9497495256364346,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p47",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 130,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.1846470429445617,
+    "z": -0.1520225465297699
+   },
+   "from": {
+    "x": 0.45673749392153695,
+    "z": 0.3303083224222064
+   },
+   "to": {
+    "x": 0.1846470429445617,
+    "z": -0.1520225465297699
+   },
+   "hopT": 1,
+   "restT": 0.05910564512014371,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p53",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 138,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.5870321055408567,
+    "z": -0.0690462043508887
+   },
+   "from": {
+    "x": -0.32076447329018265,
+    "z": -0.38895546402782205
+   },
+   "to": {
+    "x": 0.5870321055408567,
+    "z": -0.0690462043508887
+   },
+   "hopT": 1,
+   "restT": 0.2718330379575491,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p55",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 144,
+   "caramel": 27.800000000000033,
+   "nextDropAt": 2275.6474160086364,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": 0.8605770575813949,
+    "z": -0.027125863544642914
+   },
+   "from": {
+    "x": 0.8605770575813949,
+    "z": -0.027125863544642914
+   },
+   "to": {
+    "x": 0.008609165088273585,
+    "z": -0.3129471782594919
+   },
+   "hopT": 0,
+   "restT": -0.8530371107161048,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p62",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 152,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": -0.8253424962749705,
+    "z": 0.02746423762291672
+   },
+   "from": {
+    "x": 0.8000812230166048,
+    "z": -0.18998120445758104
+   },
+   "to": {
+    "x": -0.8253424962749705,
+    "z": 0.02746423762291672
+   },
+   "hopT": 1,
+   "restT": 1.3165926489979025,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p65",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 157,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": -0.3288696642848663,
+    "z": 0.33262150473892693
+   },
+   "from": {
+    "x": -0.5474718005862087,
+    "z": -0.1974126670509577
+   },
+   "to": {
+    "x": -0.3288696642848663,
+    "z": 0.33262150473892693
+   },
+   "hopT": 1,
+   "restT": 2.446736526489258,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p70",
+   "zone": "c0t2",
+   "genes": [
+    "panna",
+    "panna"
+   ],
+   "species": "panna",
+   "bornAt": 165,
+   "caramel": 58.6,
+   "nextDropAt": 2294.3353797122836,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": -0.5,
+    "z": 0.2
+   },
+   "from": {
+    "x": -0.5,
+    "z": 0.2
+   },
+   "to": {
+    "x": -0.2342707989155315,
+    "z": 0.10346388686448338
+   },
+   "hopT": 0,
+   "restT": -0.037555426452308915,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p73",
+   "zone": "c0t1",
+   "genes": [
+    "panna",
+    "panna"
+   ],
+   "species": "panna",
+   "bornAt": 170,
+   "caramel": 46.000000000000014,
+   "nextDropAt": 2292.3998572439887,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.6109742533881217,
+    "z": -0.1608615515753627
+   },
+   "from": {
+    "x": -0.37386753608006984,
+    "z": -0.22287090066820384
+   },
+   "to": {
+    "x": 0.6109742533881217,
+    "z": -0.1608615515753627
+   },
+   "hopT": 1,
+   "restT": 1.0781143378466367,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p77",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "caramel"
+   ],
+   "species": "caramel",
+   "bornAt": 178,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "bathing",
+   "pos": {
+    "x": -0.5,
+    "z": 0.2
+   },
+   "from": {
+    "x": 0.467514397460036,
+    "z": 0.13534283451735973
+   },
+   "to": {
+    "x": -0.5,
+    "z": 0.2
+   },
+   "hopT": 1,
+   "restT": -0.6153865821659565,
+   "bathT": 12,
+   "basinIndex": 1,
+   "bathLiquid": "milk",
+   "pendingMutation": null
+  },
+  {
+   "id": "p79",
+   "zone": "c0t1",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 183,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": -0.21109361347043887,
+    "z": 0.10166628286242485
+   },
+   "from": {
+    "x": -0.21109361347043887,
+    "z": 0.10166628286242485
+   },
+   "to": {
+    "x": -0.2441173855913803,
+    "z": -0.3432140622287989
+   },
+   "hopT": 0,
+   "restT": -0.6529699709266426,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p85",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 191,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.8449479045229964,
+    "z": 0.08835269939154389
+   },
+   "from": {
+    "x": -0.20055120845790952,
+    "z": -0.3420524286106229
+   },
+   "to": {
+    "x": 0.8449479045229964,
+    "z": 0.08835269939154389
+   },
+   "hopT": 1,
+   "restT": 2.7941579051315784,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p89",
+   "zone": "c0t2",
+   "genes": [
+    "panna",
+    "panna"
+   ],
+   "species": "panna",
+   "bornAt": 196,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.8375090240733698,
+    "z": 0.12041905578225853
+   },
+   "from": {
+    "x": 0.44818515272345394,
+    "z": 0.28173048291355374
+   },
+   "to": {
+    "x": 0.8375090240733698,
+    "z": 0.12041905578225853
+   },
+   "hopT": 1,
+   "restT": 1.8334702026098966,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p92",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 206,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "resting",
+   "pos": {
+    "x": 0.20324774674372748,
+    "z": 0.3686301864683629
+   },
+   "from": {
+    "x": -0.4393009393243119,
+    "z": -0.14613328110426665
+   },
+   "to": {
+    "x": 0.20324774674372748,
+    "z": 0.3686301864683629
+   },
+   "hopT": 1,
+   "restT": 2.4343706671148535,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  },
+  {
+   "id": "p96",
+   "zone": "c0t2",
+   "genes": [
+    "caramel",
+    "panna"
+   ],
+   "species": "custard",
+   "bornAt": 209,
+   "caramel": 0,
+   "nextDropAt": 2270,
+   "flavorExposure": {},
+   "mode": "hopping",
+   "pos": {
+    "x": -0.05768730805721134,
+    "z": -0.16851993165910245
+   },
+   "from": {
+    "x": -0.05768730805721134,
+    "z": -0.16851993165910245
+   },
+   "to": {
+    "x": -0.28827922366326675,
+    "z": -0.09020096622407436
+   },
+   "hopT": 0,
+   "restT": -0.22309927046299016,
+   "bathT": 0,
+   "basinIndex": null,
+   "bathLiquid": null,
+   "pendingMutation": null
+  }
+ ],
+ "basins": [
+  {
+   "zone": "c0t1",
+   "liquid": "milk",
+   "units": 3,
+   "preferredLiquid": "milk",
+   "pos": {
+    "x": 0.62,
+    "z": 0.28
+   },
+   "occupantId": "p28"
+  },
+  {
+   "zone": "c0t2",
+   "liquid": "milk",
+   "units": 2,
+   "preferredLiquid": "milk",
+   "pos": {
+    "x": -0.5,
+    "z": 0.2
+   },
+   "occupantId": "p77"
+  }
+ ],
+ "zones": [
+  {
+   "id": "c0t1",
+   "cabinet": 0,
+   "tier": 1,
+   "name": "一號櫥窗・中層",
+   "shortName": "中層",
+   "unlocked": true,
+   "price": 0,
+   "level": 1
+  },
+  {
+   "id": "c0t2",
+   "cabinet": 0,
+   "tier": 2,
+   "name": "一號櫥窗・上層",
+   "shortName": "上層",
+   "unlocked": true,
+   "price": 500,
+   "level": 4
+  },
+  {
+   "id": "c0t0",
+   "cabinet": 0,
+   "tier": 0,
+   "name": "一號櫥窗・下層",
+   "shortName": "下層",
+   "unlocked": false,
+   "price": 2000,
+   "level": 6
+  },
+  {
+   "id": "c1t1",
+   "cabinet": 1,
+   "tier": 1,
+   "name": "二號櫥窗・中層",
+   "shortName": "二號・中層",
+   "unlocked": false,
+   "price": 5000,
+   "level": 7
+  }
+ ],
+ "activeZone": "c0t2",
+ "drops": [
+  {
+   "id": "d703",
+   "zone": "c0t2",
+   "kind": "egg",
+   "species": "caramel",
+   "pos": {
+    "x": -0.7775918959954145,
+    "z": -0.4
+   },
+   "bornAt": 2210
+  },
+  {
+   "id": "d705",
+   "zone": "c0t2",
+   "kind": "ingredient",
+   "species": "caramel",
+   "pos": {
+    "x": 0.6278872482574823,
+    "z": -0.4
+   },
+   "bornAt": 2214
+  },
+  {
+   "id": "d707",
+   "zone": "c0t2",
+   "kind": "egg",
+   "species": "caramel",
+   "pos": {
+    "x": 0.12482494004638195,
+    "z": -0.341286940633621
+   },
+   "bornAt": 2228
+  },
+  {
+   "id": "d708",
+   "zone": "c0t2",
+   "kind": "egg",
+   "species": "caramel",
+   "pos": {
+    "x": -0.3657598808692487,
+    "z": 0.4
+   },
+   "bornAt": 2231
+  },
+  {
+   "id": "d712",
+   "zone": "c0t2",
+   "kind": "ingredient",
+   "species": "custard",
+   "pos": {
+    "x": 0.05851648131649173,
+    "z": -0.23266835350092427
+   },
+   "bornAt": 2239
+  },
+  {
+   "id": "d713",
+   "zone": "c0t2",
+   "kind": "egg",
+   "species": "custard",
+   "pos": {
+    "x": -0.20746559318491148,
+    "z": 0.10920586909728856
+   },
+   "bornAt": 2244
+  },
+  {
+   "id": "d716",
+   "zone": "c0t2",
+   "kind": "egg",
+   "species": "caramel",
+   "pos": {
+    "x": -0.817531533946022,
+    "z": 0.22776914160438316
+   },
+   "bornAt": 2257
+  },
+  {
+   "id": "d717",
+   "zone": "c0t2",
+   "kind": "ingredient",
+   "species": "caramel",
+   "pos": {
+    "x": 0.1969198018795163,
+    "z": -0.26551184218144464
+   },
+   "bornAt": 2260
+  }
+ ],
+ "orders": [
+  {
+   "id": "o692",
+   "species": "matcha",
+   "qty": 1,
+   "price": 197,
+   "createdAt": 2175,
+   "expiresAt": 2475
+  }
+ ],
+ "equipment": {
+  "c0t1": {
+   "autoFill": true,
+   "collector": true,
+   "restock": true
+  },
+  "c0t2": {
+   "autoFill": true,
+   "collector": false,
+   "restock": false
+  },
+  "c0t0": {
+   "autoFill": false,
+   "collector": false,
+   "restock": false
+  },
+  "c1t1": {
+   "autoFill": false,
+   "collector": false,
+   "restock": false
+  }
+ },
+ "storedEquipment": {
+  "autoFill": 0,
+  "collector": 0,
+  "restock": 0
+ },
+ "equipmentPos": {},
+ "nextOrderAt": 2414.492375298869,
+ "nextId": 720,
+ "stats": {
+  "baths": 338,
+  "sold": 0,
+  "mutations": 0,
+  "picked": 671,
+  "crafted": 0,
+  "births": 27,
+  "baked": 1,
+  "served": 0,
+  "missed": 118,
+  "daysClosed": 2,
+  "ingredientsSold": 0,
+  "puddingsSold": 0,
+  "ordersDone": 0,
+  "bestDayRevenue": 0
+ },
+ "bakery": {
+  "epoch": 0,
+  "stations": {
+   "stove": {
+    "batch": {
+     "species": "caramel",
+     "qty": 1
+    },
+    "startedAt": 2267,
+    "doneAt": 2277
+   },
+   "crack": {
+    "batch": null,
+    "startedAt": 0,
+    "doneAt": 0
+   },
+   "mix": {
+    "batch": null,
+    "startedAt": 0,
+    "doneAt": 0
+   },
+   "mold": {
+    "batch": null,
+    "startedAt": 2210,
+    "doneAt": 2215
+   },
+   "bake": {
+    "batch": null,
+    "startedAt": 0,
+    "doneAt": 0
+   },
+   "chill": {
+    "batch": null,
+    "startedAt": 2215,
+    "doneAt": 2255
+   },
+   "decorate": {
+    "batch": null,
+    "startedAt": 0,
+    "doneAt": 0
+   }
+  },
+  "shelf": {
+   "caramel": 5,
+   "panna": 1,
+   "matcha": 0,
+   "strawberry": 0,
+   "custard": 0,
+   "hojicha": 0,
+   "brulee": 0,
+   "matchalatte": 0,
+   "berrymilk": 0,
+   "sakura": 0
+  },
+  "nextCustomerAt": 2270,
+  "today": {
+   "day": 3,
+   "revenue": 0,
+   "served": 0,
+   "missed": 0
+  },
+  "lastDay": {
+   "day": 2,
+   "revenue": 0,
+   "served": 0,
+   "missed": 59
+  },
+  "closedDay": 2,
+  "machines": {
+   "stove": 1,
+   "crack": 1,
+   "mix": 1,
+   "mold": 1,
+   "bake": 2,
+   "chill": 1,
+   "decorate": 1
+  },
+  "fame": 2
+ },
+ "claimedAchievements": [],
+ "speciesSeen": [
+  "caramel",
+  "custard",
+  "panna"
+ ]
+}

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { batchesOnLine, dayClock, stationProgress, stationStatus, type Batch } from '../../game/bakery';
+import { stockOf, totalStock } from '../../game/stock';
 import { MAX_MACHINE_LEVEL, RECIPES, STATIONS, STATION_IDS, type StationId } from '../../game/recipes';
 import { SPECIES, SPECIES_IDS, type SpeciesId } from '../../game/species';
 import type { GameState } from '../../game/state';
@@ -522,7 +523,7 @@ export class BakeryView {
       this.putBatch(p.x, p.z, p.dir, r.batch, r.after, 1);
       if (r.t >= 1 && r.to === null) {
         // D60：一整盤一杯接一杯跳進成品櫃（每杯落到自己的格子，最後一杯落在最新的那格）
-        const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+        const total = totalStock(state, 'desserts');
         const n = Math.min(MAX_HOPS, r.batch.qty);
         for (let i = 0; i < n; i++) {
           const slot = RACK_SLOTS[Math.max(0, Math.min(total - n + i, RACK_SLOTS.length - 1))]!;
@@ -544,14 +545,14 @@ export class BakeryView {
     // ── 成品櫃與展示架 ──
     let k = 0;
     for (const id of SPECIES_IDS) {
-      for (let i = 0; i < state.desserts[id] && k < RACK_SLOTS.length; i++, k++) {
+      for (let i = 0, n = stockOf(state, 'desserts', id); i < n && k < RACK_SLOTS.length; i++, k++) {
         const s = RACK_SLOTS[k]!;
         this.putItem(s.x, s.y, s.z, id, k, 1, 1.35, 1, 0);
       }
     }
     k = 0;
     for (const id of SPECIES_IDS) {
-      for (let i = 0; i < state.bakery.shelf[id] && k < SHELF_SLOTS.length; i++, k++) {
+      for (let i = 0, n = stockOf(state, 'shelf', id); i < n && k < SHELF_SLOTS.length; i++, k++) {
         const s = SHELF_SLOTS[k]!;
         this.putItem(s.x, s.y, s.z, id, k, 1, 1.35, 1, Math.sin(t * 1.3 + k) * 0.15);
       }
@@ -618,7 +619,7 @@ export class BakeryView {
       }
       this.prev[id] = key;
     }
-    const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+    const total = totalStock(state, 'desserts');
     if (!first && total > this.prevDesserts) {
       // 哪一站剛做完最後一步：上一幀有盤、這一幀空了、而且那是它路線的最後一站
       const done = STATION_IDS.find((id) => {

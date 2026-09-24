@@ -1,6 +1,8 @@
 import { BALANCE } from './balance';
 import { LIQUIDS, SPECIES, SPECIES_IDS, type SpeciesId } from './species';
+import { starMult } from './stars';
 import type { GameState } from './state';
+import { STARS, stockOf, takeStock, type Star } from './stock';
 
 /**
  * 食譜制流水線（D56／D57／D58，2026-09-24 使用者要求「不是每個甜點都需要五個步驟，參考真實甜點食譜，
@@ -9,6 +11,11 @@ import type { GameState } from './state';
  * 一條 7 站的線，順序固定；每道甜點只走自己要的站，所以**每條路線都是 `STATION_IDS` 的子序列**
  * （單元測試守這條，路線順序錯了輸送帶就得倒著走）。
  */
+
+/**
+ * 甜點的鍵（D68）。物種甜點沿用物種 id（舊存檔不必轉換）；招牌甜點另有自己的 id（WP11-7）。
+ */
+export type DessertId = SpeciesId;
 
 export type StationId = 'stove' | 'crack' | 'mix' | 'mold' | 'bake' | 'chill' | 'decorate';
 export const STATION_IDS: StationId[] = ['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'];
@@ -150,18 +157,27 @@ export function materialPrice(key: MaterialKey): number {
   return SPECIES[key].ingredientPrice;
 }
 
-export function materialHave(state: GameState, key: MaterialKey): number {
+/**
+ * 手上有幾份。物種原料只算 `star` 那一星（D64：一盤用同一個星級，不從別的星級湊）；
+ * 蛋、牛乳、基礎材料沒有星級。
+ */
+export function materialHave(state: GameState, key: MaterialKey, star: Star = 1): number {
   if (key === 'egg') return state.eggs;
   if (key === 'milk') return state.stock.milk;
   if (key === 'flour' || key === 'rice') return state.pantry[key];
-  return state.ingredients[key];
+  return stockOf(state, 'ingredients', key, star);
 }
 
-function materialTake(state: GameState, key: MaterialKey, n: number): void {
+/** 物種原料有沒有星級（蛋、牛乳、麵粉、糯米粉沒有） */
+export function isStarMaterial(key: MaterialKey): key is SpeciesId {
+  return key !== 'egg' && key !== 'milk' && key !== 'flour' && key !== 'rice';
+}
+
+function materialTake(state: GameState, key: MaterialKey, n: number, star: Star): void {
   if (key === 'egg') state.eggs -= n;
   else if (key === 'milk') state.stock.milk -= n;
   else if (key === 'flour' || key === 'rice') state.pantry[key] -= n;
-  else state.ingredients[key] -= n;
+  else takeStock(state, 'ingredients', key, star, n);
 }
 
 // ── 食譜（D56）──────────────────────────────────
@@ -207,9 +223,9 @@ export function recipeSeconds(state: GameState, species: SpeciesId): number {
  * 甜點售價（D53 → D56）：這一份的材料直接賣／買的價錢 × `dessertMarkup`。
  * 從材料推，不另開價目表：調材料價時甜點跟著走，永遠不會「做成甜點反而虧」。
  */
-export function dessertPrice(species: SpeciesId): number {
+export function dessertPrice(species: SpeciesId, star: Star = 1): number {
   const materials = recipeMaterials(species).reduce((n, [k, q]) => n + materialPrice(k) * q, 0);
-  return Math.round(materials * BALANCE.dessertMarkup);
+  return Math.round(materials * BALANCE.dessertMarkup * starMult(star));
 }
 
 // ── 機器 ─────────────────────────────────────────
@@ -228,17 +244,22 @@ export function linePortions(state: GameState, species: SpeciesId): number {
   return machinePortions(lineLevel(state, species));
 }
 
-/** 手上的材料夠做幾份（最缺的那一種決定） */
-export function affordablePortions(state: GameState, species: SpeciesId): number {
-  return Math.min(...recipeMaterials(species).map(([k, per]) => Math.floor(materialHave(state, k) / per)));
+/** 手上 `star` 那一星的材料夠做幾份（最缺的那一種決定） */
+export function affordablePortions(state: GameState, species: SpeciesId, star: Star = 1): number {
+  return Math.min(...recipeMaterials(species).map(([k, per]) => Math.floor(materialHave(state, k, star) / per)));
+}
+
+/** 這道甜點哪幾個星級的材料夠做至少 1 份（菜單的星級分頁只亮這些，D70） */
+export function starsAffordable(state: GameState, species: SpeciesId): Star[] {
+  return STARS.filter((s) => affordablePortions(state, species, s) >= 1);
 }
 
 /**
  * 這一盤**最多**能做幾份＝min(機器上限, 材料夠做的份數)；實際做幾份由玩家在菜單上疊（D60）。
  * **份數是上限不是門檻**：線升得再高，材料只夠 1 份也開得了工——不然升級等於花錢買降級。
  */
-export function maxBatch(state: GameState, species: SpeciesId): number {
-  return Math.min(linePortions(state, species), affordablePortions(state, species));
+export function maxBatch(state: GameState, species: SpeciesId, star: Star = 1): number {
+  return Math.min(linePortions(state, species), affordablePortions(state, species, star));
 }
 
 /** 目前機器下每份的失敗率 */
@@ -268,19 +289,19 @@ export interface RecipeBlockers {
   busy: StationId | null;
 }
 
-export function recipeBlockers(state: GameState, species: SpeciesId): RecipeBlockers {
+export function recipeBlockers(state: GameState, species: SpeciesId, star: Star = 1): RecipeBlockers {
   const r = RECIPES[species];
   const machines = r.route.filter((id) => machineLevel(state, id) === 0);
   const materials = recipeMaterials(species)
-    .map(([key, per]) => ({ key, need: per, have: materialHave(state, key) }))
+    .map(([key, per]) => ({ key, need: per, have: materialHave(state, key, star) }))
     .filter((m) => m.have < m.need);
   const first = r.route[0]!;
   const busy = state.bakery.stations[first].batch ? first : null;
   return { machines, materials, busy };
 }
 
-export function canStartRecipe(state: GameState, species: SpeciesId): boolean {
-  const b = recipeBlockers(state, species);
+export function canStartRecipe(state: GameState, species: SpeciesId, star: Star = 1): boolean {
+  const b = recipeBlockers(state, species, star);
   return b.machines.length === 0 && b.materials.length === 0 && b.busy === null;
 }
 
@@ -297,7 +318,7 @@ export function blockerLines(b: RecipeBlockers, withCounts = true): string[] {
   return out;
 }
 
-/** 開工時一次扣齊整盤的材料（D56：不會做到一半缺料卡住） */
-export function takeRecipeMaterials(state: GameState, species: SpeciesId, qty: number): void {
-  for (const [key, per] of recipeMaterials(species)) materialTake(state, key, per * qty);
+/** 開工時一次扣齊整盤的材料（D56：不會做到一半缺料卡住）；物種原料只扣 `star` 那一星（D64） */
+export function takeRecipeMaterials(state: GameState, species: SpeciesId, qty: number, star: Star = 1): void {
+  for (const [key, per] of recipeMaterials(species)) materialTake(state, key, per * qty, star);
 }

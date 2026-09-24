@@ -5,7 +5,9 @@ import { grantXp, levelFor } from './level';
 import { PANTRY, PANTRY_IDS, type PantryId } from './recipes';
 import { basinLevel, pantryCost, stockCost, stockLevel } from './shop';
 import { LIQUIDS, SPECIES, puddingPrice, type LiquidId, type SpeciesId } from './species';
+import { residents, starMult, zoneCap } from './stars';
 import type { GameState, Vec2 } from './state';
+import { addStock, takeStock, type Star } from './stock';
 import { findZone } from './zones';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -40,7 +42,7 @@ export function pickDrop(state: GameState, dropId: string, emit: EventSink): Act
   if (!d) return fail('這份原料已經不在了');
   state.drops.splice(i, 1);
   if (d.kind === 'egg') state.eggs++;
-  else state.ingredients[d.species]++;
+  else addStock(state, 'ingredients', d.species, d.star, 1);
   state.stats.picked++;
   emit({ type: 'pick', kind: d.kind, species: d.species, x: d.pos.x, z: d.pos.z, auto: false });
   grantXp(state, BALANCE.xp.pick, emit);
@@ -55,7 +57,7 @@ export function pickAllDrops(state: GameState, emit: EventSink, auto = false, zo
   const take = zone === undefined ? state.drops : state.drops.filter((d) => d.zone === zone);
   for (const d of take) {
     if (d.kind === 'egg') state.eggs++;
-    else state.ingredients[d.species]++;
+    else addStock(state, 'ingredients', d.species, d.star, 1);
     state.stats.picked++;
     emit({ type: 'pick', kind: d.kind, species: d.species, x: d.pos.x, z: d.pos.z, auto });
   }
@@ -64,12 +66,17 @@ export function pickAllDrops(state: GameState, emit: EventSink, auto = false, zo
   return take.length;
 }
 
-export function sellIngredient(state: GameState, species: SpeciesId, qty: number, emit: EventSink): ActionResult {
+/** 一份原料直接賣多少：原料價 × 星級倍率（D65） */
+export function ingredientSellPrice(species: SpeciesId, star: Star): number {
+  return Math.round(SPECIES[species].ingredientPrice * starMult(star));
+}
+
+/** 直接賣某一星的原料（D64：一次只賣一個星級，高星要不要留給常客是玩家的決定） */
+export function sellIngredient(state: GameState, species: SpeciesId, qty: number, emit: EventSink, star: Star = 1): ActionResult {
   const n = Math.floor(qty);
   if (n <= 0) return fail('數量要大於 0');
-  if (state.ingredients[species] < n) return fail('原料不足');
-  const coins = SPECIES[species].ingredientPrice * n;
-  state.ingredients[species] -= n;
+  if (!takeStock(state, 'ingredients', species, star, n)) return fail('原料不足');
+  const coins = ingredientSellPrice(species, star) * n;
   state.coins += coins;
   state.stats.sold += n;
   state.stats.ingredientsSold += n;
@@ -205,6 +212,9 @@ export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, e
     basinIndex: null,
     bathLiquid: null,
     pendingMutation: null,
+    star: 1,
+    care: 0,
+    potential: BALANCE.startPotential,
   });
   state.basins.push({
     zone: zoneId,
@@ -222,9 +232,8 @@ export function unlockZone(state: GameState, zoneId: string, spawn: ZoneSpawn, e
 /**
  * 把一隻布丁搬到另一個已解鎖的分區（D29）。
  *
- * 這是玩家對「配種」唯一的直接操作：誰跟誰住同一區，決定了下一代的基因來源。
- * 沒有它的話，玩家只能靠澡盆（D30）間接影響基因，養出來的混種也拆不開重配。
- * **UI 尚未接線**（2026-09-22），規則層先備好。
+ * D62 起它是「把好布丁搬進精養區」的那顆按鈕（布丁卡的「搬到…」，D70）。
+ * 精養區上限 `eliteCapacity`；搬不進去要講為什麼。
  */
 export function movePudding(state: GameState, puddingId: string, zoneId: string, emit: EventSink): ActionResult {
   const p = state.puddings.find((x) => x.id === puddingId);
@@ -234,8 +243,8 @@ export function movePudding(state: GameState, puddingId: string, zoneId: string,
   if (!z.unlocked) return fail('這一區還沒解鎖');
   if (p.zone === zoneId) return fail('牠已經住在這一區了');
   if (p.mode === 'bathing') return fail('泡澡中，泡完再搬');
-  if (state.puddings.filter((x) => x.zone === zoneId).length >= BALANCE.zoneCapacity) {
-    return fail('那一區住滿了');
+  if (residents(state, zoneId) >= zoneCap(state, zoneId)) {
+    return fail(z.mode === 'elite' ? `精養區最多住 ${BALANCE.eliteCapacity} 隻` : '那一區住滿了');
   }
 
   // 正要跳進某個盆的話要先讓出佔位，否則那個盆會被一隻已經不在這一區的布丁永久佔住

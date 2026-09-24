@@ -3,7 +3,9 @@ import { cloneGenes, phenotype, type Genes } from './genetics';
 import { grantXp } from './level';
 import type { SimContext } from './pudding';
 import { range } from './rng';
+import { childPotential, isEliteZone, residents, zoneCap } from './stars';
 import type { GameState, Pudding, Vec2 } from './state';
+import { findZone } from './zones';
 
 /**
  * 繁殖（D34，2026-09-22 改版：**牛奶澡就是繁殖**）。
@@ -17,9 +19,9 @@ import type { GameState, Pudding, Vec2 } from './state';
  * 每個都有機率被環境改寫（牛奶→鮮奶酪，或母體累積的抹茶／草莓曝露）。
  */
 
-/** 這一區還能不能再多一隻 */
+/** 這一區還能不能再多一隻（精養區上限 `eliteCapacity`，D62） */
 export function zoneHasRoom(state: GameState, zone: string): boolean {
-  return state.puddings.filter((p) => p.zone === zone).length < BALANCE.zoneCapacity;
+  return residents(state, zone) < zoneCap(state, zone);
 }
 
 /**
@@ -31,9 +33,12 @@ export function zoneHasRoom(state: GameState, zone: string): boolean {
  * 玩家買下的空櫥窗也因此自己住滿，不必手動搬家。
  *
  * 回傳 null＝全場都滿了，這時整個繁殖暫停（去解鎖下一區就是出口）。
+ *
+ * **精養區不當落點**（D62）：母體住精養區也一樣送到別區。鮮奶酪系的本命液是牛奶、牛奶澡就是繁殖，
+ * 不送走的話精養區會被自己生的寶寶塞爆、永遠長不了星。
  */
 export function placementZone(state: GameState, homeZone: string): string | null {
-  if (zoneHasRoom(state, homeZone)) return homeZone;
+  if (!isEliteZone(state, homeZone) && zoneHasRoom(state, homeZone)) return homeZone;
   const counts = new Map<string, number>();
   for (const z of state.zones) if (z.unlocked) counts.set(z.id, 0);
   for (const p of state.puddings) {
@@ -44,7 +49,7 @@ export function placementZone(state: GameState, homeZone: string): string | null
   // 照 state.zones 的順序掃，同票數一律取先出現的那一區（要能用 `?seed=` 重現）
   for (const z of state.zones) {
     const n = counts.get(z.id);
-    if (n === undefined || n >= BALANCE.zoneCapacity) continue;
+    if (n === undefined || z.mode === 'elite' || n >= BALANCE.zoneCapacity) continue;
     if (n < bestN) { bestN = n; best = z.id; }
   }
   return best;
@@ -61,7 +66,15 @@ function birthPos(parent: Pudding, ctx: SimContext): Vec2 {
   };
 }
 
-function newborn(state: GameState, zone: string, genes: Genes, pos: Vec2, ctx: SimContext): Pudding {
+/** 生不出來的時候給玩家看的原因（AC11-2：全場只剩精養區有空位也要講得出為什麼） */
+export function birthBlockReason(state: GameState, homeZone: string): string {
+  const eliteRoom = state.zones.some((z) => z.unlocked && z.mode === 'elite' && residents(state, z.id) < zoneCap(state, z.id));
+  if (eliteRoom) return '量產的櫥窗都住滿了（精養區不收新生兒），生不出新的小布丁';
+  if (findZone(state, homeZone)?.mode === 'elite') return '精養區的寶寶要送到別區，但其他櫥窗都住滿了';
+  return '櫥窗住滿了，生不出新的小布丁';
+}
+
+function newborn(state: GameState, zone: string, genes: Genes, pos: Vec2, ctx: SimContext, parent: Pudding): Pudding {
   return {
     // 流水號一定要走 state.nextId：撞號會讓 scene 端以 id 為鍵的 view 綁到錯的那一隻
     id: `p${state.nextId++}`,
@@ -83,6 +96,10 @@ function newborn(state: GameState, zone: string, genes: Genes, pos: Vec2, ctx: S
     basinIndex: null,
     bathLiquid: null,
     pendingMutation: null,
+    // D63：出生一律 ★1、點數 0，潛力＝母體當下星級＋1
+    star: 1,
+    care: 0,
+    potential: childPotential(parent),
   };
 }
 
@@ -95,7 +112,7 @@ export function breedFromBath(state: GameState, parent: Pudding, ctx: SimContext
   if (target === null) return null;
 
   const genes = cloneGenes(parent, ctx.rng);
-  const child = newborn(state, target, genes, birthPos(parent, ctx), ctx);
+  const child = newborn(state, target, genes, birthPos(parent, ctx), ctx, parent);
   state.puddings.push(child);
   state.stats.births++;
   ctx.emit({

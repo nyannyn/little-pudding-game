@@ -1,7 +1,8 @@
 import './hud.css';
 import { claimableCount, type AchievementCategory } from '../game/achievements';
 import { AchievementSheet } from './achievements';
-import { batchesOnLine, clockText, dayClock, reservedForOrders, shelfCount, type StationId } from '../game/bakery';
+import { batchesOnLine, clockText, dayClock, orderHave, shelfCount, spareDesserts, type StationId } from '../game/bakery';
+import { clampStar, totalStock, type Star } from '../game/stock';
 import { BALANCE, type EquipmentId } from '../game/balance';
 import { levelFor } from '../game/level';
 import {
@@ -57,7 +58,8 @@ export interface HudActions {
   /** 賣一隻這個物種的成年布丁（D53） */
   sellPudding(species: SpeciesId): void;
   fulfill(orderId: string): void;
-  sellIngredients(species: SpeciesId): void;
+  /** 賣掉某一星的全部原料（D64：分星賣） */
+  sellIngredients(species: SpeciesId, star: Star): void;
   sellEggs(): void;
   buyStock(liquid: LiquidId, qty: number): void;
   buyEquipment(id: EquipmentId): void;
@@ -92,7 +94,7 @@ const el = (html: string): HTMLElement => {
 
 /** 成品櫃裡「可以上架」的份數：扣掉預訂單要留的，再受展示架剩餘空位限制 */
 function shelvable(s: GameState): number {
-  const spare = SPECIES_IDS.reduce((n, id) => n + Math.max(0, s.desserts[id] - reservedForOrders(s, id)), 0);
+  const spare = SPECIES_IDS.reduce((n, id) => n + spareDesserts(s, id).reduce((a, b) => a + b, 0), 0);
   return Math.min(spare, BALANCE.bakery.shelfCap - shelfCount(s));
 }
 /**
@@ -109,10 +111,10 @@ export function chipNumber(n: number): string {
 }
 
 function totalDesserts(s: GameState): number {
-  return SPECIES_IDS.reduce((n, id) => n + s.desserts[id], 0);
+  return totalStock(s, 'desserts');
 }
 function totalIngredients(s: GameState): number {
-  return SPECIES_IDS.reduce((n, id) => n + s.ingredients[id], 0);
+  return totalStock(s, 'ingredients');
 }
 
 /** 點頂列數字時小布丁講的話。用玩家的語言講「這個數字怎麼變多、拿來做什麼」，不是名詞解釋 */
@@ -428,7 +430,11 @@ export class Hud {
         break;
       case 'sellPud': this.act.sellPudding(arg as SpeciesId); break;
       case 'fulfill': this.act.fulfill(arg); break;
-      case 'sellIng': this.act.sellIngredients(arg as SpeciesId); break;
+      case 'sellIng': {
+        const [sp, st] = (arg ?? '').split(':');
+        this.act.sellIngredients(sp as SpeciesId, clampStar(Number(st)));
+        break;
+      }
       case 'sellEggs': this.act.sellEggs(); break;
       case 'buyStock': this.act.buyStock(arg as LiquidId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
       case 'buyEquip': this.act.buyEquipment(arg as EquipmentId); break;
@@ -944,7 +950,7 @@ export class Hud {
 
   private syncOrders(state: GameState) {
     const live = state.orders.filter((o) => o.expiresAt > state.time);
-    const ready = live.filter((o) => state.desserts[o.species] + state.bakery.shelf[o.species] >= o.qty).length;
+    const ready = live.filter((o) => orderHave(state, o) >= o.qty).length;
     // 徽章：有交得出來的就顯示可交的張數（綠），否則顯示張數
     this.ordBadge.hidden = live.length === 0;
     this.ordBadge.textContent = String(ready || live.length);
@@ -968,7 +974,7 @@ export class Hud {
       const card = this.ordersBox.querySelector(`[data-id="${o.id}"]`);
       if (!card) continue;
       const btn = card.querySelector('button') as HTMLButtonElement;
-      btn.disabled = state.desserts[o.species] + state.bakery.shelf[o.species] < o.qty;
+      btn.disabled = orderHave(state, o) < o.qty;
       const left = Math.max(0, (o.expiresAt - state.time) / BALANCE.orderTtlSec);
       (card.querySelector('.clock > i') as HTMLElement).style.width = `${Math.round(left * 100)}%`;
     }

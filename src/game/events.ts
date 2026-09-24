@@ -15,15 +15,18 @@ export type SimEvent =
   | { type: 'mutate'; puddingId: string; from: SpeciesId; to: SpeciesId; x: number; z: number }
   | { type: 'birth'; puddingId: string; zone: string; species: SpeciesId; parents: [string, string]; x: number; z: number }
   | { type: 'move'; puddingId: string; zone: string }
+  /** 升星（D62）：照顧點數滿了，或用了升星藥（D67） */
+  | { type: 'starUp'; puddingId: string; star: number; byTonic: boolean }
   // ── 甜點工坊（D51／D52）──
   | { type: 'bakeStep'; station: StationId; species: SpeciesId; auto: boolean }
-  | { type: 'bakeDone'; species: SpeciesId; qty: number; auto: boolean }
+  | { type: 'bakeDone'; species: SpeciesId; qty: number; auto: boolean; star: number }
   /** 最後一站擲失敗（D56）：這一盤有幾份做壞了 */
   | { type: 'bakeFailed'; species: SpeciesId; qty: number }
   /** 機器跨階（Lv6／11／16，鐵→銅→銀→金，D61）：`tier` 是新的那一階（2–4） */
   | { type: 'tierUp'; what: string; tier: number }
   | { type: 'shelfStocked'; qty: number; auto: boolean }
-  | { type: 'customer'; species: SpeciesId; qty: number; coins: number }
+  /** 散客買到（`star`＝拿走的最低那一份的星級） */
+  | { type: 'customer'; species: SpeciesId; qty: number; coins: number; star: number }
   | { type: 'customerMissed' }
   /** 打烊結算。**不要接成 toast**：離線一次會跑出 24 個（D52），畫面讀 `bakery.lastDay` */
   | { type: 'dayClosed'; day: number; revenue: number; served: number; missed: number }
@@ -33,7 +36,7 @@ export type SimEvent =
   | { type: 'puddingSold'; puddingId: string; species: SpeciesId; coins: number }
   | { type: 'sell'; species: SpeciesId; coins: number; auto: boolean }
   | { type: 'orderNew'; orderId: string; species: SpeciesId; qty: number; price: number }
-  | { type: 'orderDone'; orderId: string; species: SpeciesId; coins: number; auto: boolean }
+  | { type: 'orderDone'; orderId: string; species: SpeciesId; coins: number; auto: boolean; regularId: string | null }
   | { type: 'orderExpired'; orderId: string; species: SpeciesId }
   | { type: 'pour'; basinIndex: number; liquid: LiquidId; units: number; auto: boolean }
   | { type: 'buy'; what: string; cost: number; auto: boolean }

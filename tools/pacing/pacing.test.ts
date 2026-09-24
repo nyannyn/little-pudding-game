@@ -11,7 +11,8 @@ import {
   unlockZone,
 } from '../../src/game/actions';
 import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
-import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, startBatch, stockShelf } from '../../src/game/bakery';
+import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, orderHave, startBatch, stockShelf } from '../../src/game/bakery';
+import { stockOf, totalStock } from '../../src/game/stock';
 import { MACHINE_CURVE, MAX_MACHINE_LEVEL, RECIPES, stationSeconds, STATION_IDS, canStartRecipe, dessertPrice, linePortions, maxBatch, recipeMaterials, type StationId } from '../../src/game/recipes';
 import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
@@ -153,7 +154,7 @@ function run(profile: Profile, seed: number) {
       for (const id of pickable) if (canStartRecipe(state, id)) startBatch(state, id, maxBatch(state, id), noop);
       if (state.stats.baked > 0) mark('first bake');
       for (const o of [...state.orders]) {
-        if (state.desserts[o.species] + state.bakery.shelf[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
+        if (orderHave(state, o) >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
       }
       stockShelf(state, noop);
       if (state.stats.served > 0) mark('first customer');
@@ -172,7 +173,8 @@ function run(profile: Profile, seed: number) {
       // 別的甜點要拿它當配料的（例如奶酪塊、抹茶粉、草莓醬）也留著
       const usedElsewhere = bakery && SPECIES_IDS.some((d) => d !== id && recipeMaterials(d).some(([k]) => k === id));
       const keep = keepIng * (usedElsewhere ? 2 : 1);
-      if (state.ingredients[id] > keep && sellIngredient(state, id, state.ingredients[id] - keep, noop).ok) mark('first sale');
+      const have = stockOf(state, 'ingredients', id, 1);
+      if (have > keep && sellIngredient(state, id, have - keep, noop, 1).ok) mark('first sale');
     }
     // 麵粉與牛乳補到「最大那一盤」的兩倍（D60：一盤最多 20 份，一次只補 10 份的話 bot 自己卡自己，量到的是 bot 不是平衡）
     const bulk = levelFor(state.xp) >= BALANCE.stockBulkLevel ? BALANCE.stockBulkQty : BALANCE.stockBuyQty;
@@ -262,7 +264,7 @@ function run(profile: Profile, seed: number) {
       `\n=== month (seed ${seed}, 3×15 min/day, 30 days) ===\n` +
         `upgrades per 5 days: ${buckets.join(' / ')}  (total ${upgrades.length}, median gap ${med.toFixed(1)} active min)\n` +
         `day 30: ${lv} fame:${state.bakery.fame}  (max ${MAX_MACHINE_LEVEL}/${FAME.max})\n` +
-        `end: coins=${Math.floor(state.coins)} baked=${state.stats.baked} served=${state.stats.served} missed=${state.stats.missed} puddings=${state.puddings.length} eggs=${state.eggs} desserts=${SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0)}\n` +
+        `end: coins=${Math.floor(state.coins)} baked=${state.stats.baked} served=${state.stats.served} missed=${state.stats.missed} puddings=${state.puddings.length} eggs=${state.eggs} desserts=${totalStock(state, 'desserts')}\n` +
         `per day: ${Array.from({ length: 30 }, (_, d) => upgrades.filter((u) => u.day === d + 1).length).join(' ')}\n` +
         `earned per day (k): ${earnedByDay.map((e, i) => Math.round((e - (earnedByDay[i - 1] ?? 0)) / 1000)).join(' ')}\n`,
     );

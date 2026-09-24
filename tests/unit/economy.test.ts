@@ -73,7 +73,7 @@ describe('經濟：撿、賣', () => {
     expect(drop).toBeDefined();
 
     expect(pickDrop(w.state, drop!.id, sink).ok).toBe(true);
-    expect(w.state.ingredients.caramel).toBe(1);
+    expect(w.state.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(1);
 
     const coins = w.state.coins;
     expect(sellIngredient(w.state, 'caramel', 1, sink).ok).toBe(true);
@@ -85,12 +85,12 @@ describe('經濟：撿、賣', () => {
     keepFed(w);
     expect(advanceUntil(w, (x) => x.state.drops.length > 0, BALANCE.dropIntervalSec * 3)).toBeGreaterThanOrEqual(0);
     const d = w.state.drops[0]!;
-    const before = d.kind === 'egg' ? w.state.eggs : w.state.ingredients[d.species];
+    const before = d.kind === 'egg' ? w.state.eggs : w.state.ingredients[d.species].reduce((a, b) => a + b, 0);
 
     expect(pickDrop(w.state, d.id, sink).ok).toBe(true);
     expect(pickDrop(w.state, d.id, sink).ok).toBe(false);
 
-    const after = d.kind === 'egg' ? w.state.eggs : w.state.ingredients[d.species];
+    const after = d.kind === 'egg' ? w.state.eggs : w.state.ingredients[d.species].reduce((a, b) => a + b, 0);
     expect(after).toBe(before + 1);
   });
 
@@ -145,7 +145,7 @@ describe('AC2-10 訂單卡', () => {
     expect(o.price).toBeGreaterThanOrEqual(Math.round(unit * o.qty * BALANCE.orderPriceMultMin) - 1);
     expect(o.price).toBeLessThanOrEqual(Math.round(unit * o.qty * BALANCE.orderPriceMultMax) + 1);
 
-    w.state.desserts[o.species] = o.qty;
+    w.state.desserts[o.species] = [o.qty, 0, 0, 0, 0];
     const coins = w.state.coins;
     expect(fulfillOrder(w.state, o.id, sink).ok).toBe(true);
     expect(w.state.coins).toBe(coins + o.price);
@@ -168,7 +168,7 @@ describe('AC2-10 訂單卡', () => {
     openShop(w.state);
     advanceUntil(w, (x) => x.state.orders.length > 0, BALANCE.orderIntervalMax + 60, 1);
     const o = w.state.orders[0]!;
-    w.state.desserts[o.species] = o.qty;
+    w.state.desserts[o.species] = [o.qty, 0, 0, 0, 0];
     o.expiresAt = w.state.time - 1;
     expect(fulfillOrder(w.state, o.id, sink).ok).toBe(false);
   });

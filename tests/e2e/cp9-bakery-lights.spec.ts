@@ -74,9 +74,9 @@ async function seedLine(page: Page, coins: number) {
     s.coins = c;
     Object.assign(s.bakery.machines, { stove: 1, crack: 2, mix: 20, mold: 2, bake: 2, chill: 0, decorate: 1 });
     for (const id of Object.keys(s.bakery.stations) as (keyof typeof s.bakery.stations)[]) s.bakery.stations[id] = { batch: null, startedAt: 0, doneAt: 0 };
-    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
-    s.bakery.stations.mix = { batch: { species: 'matcha', qty: 2 }, startedAt: s.time, doneAt: s.time + 1000 };
-    s.bakery.stations.bake = { batch: { species: 'custard', qty: 2 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1, star: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.mix = { batch: { species: 'matcha', qty: 2, star: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.bake = { batch: { species: 'custard', qty: 2, star: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
   }, coins);
   await step(page, 0.3);
 }
@@ -142,8 +142,8 @@ test('做完卡在等下一站：進度條滿、變綠', async ({ page }) => {
   // 爐台那盤做完、下一站（打蛋機）被佔著 → 停在爐台等
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.bakery.stations.crack = { batch: { species: 'custard', qty: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
-    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1 }, startedAt: s.time, doneAt: s.time + 0.1 };
+    s.bakery.stations.crack = { batch: { species: 'custard', qty: 1, star: 1 }, startedAt: s.time, doneAt: s.time + 1000 };
+    s.bakery.stations.stove = { batch: { species: 'caramel', qty: 1, star: 1 }, startedAt: s.time, doneAt: s.time + 0.1 };
   });
   await step(page, 1);
   const s = await page.evaluate(() => (window.__lpg.state as GameState).bakery.stations.stove.batch);
@@ -231,7 +231,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
         s.coins = 99999;
         for (const [i, id] of (['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'] as const).entries()) {
           s.bakery.machines[id] = 2;
-          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, startedAt: s.time, doneAt: s.time + 500 + i };
+          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2, star: 1 }, startedAt: s.time, doneAt: s.time + 500 + i };
         }
       });
       await step(page, 0.3);
@@ -289,7 +289,7 @@ for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
         s.coins = 99999;
         for (const [i, id] of (['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'] as const).entries()) {
           s.bakery.machines[id] = 2;
-          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2 }, startedAt: s.time, doneAt: s.time + 500 + i };
+          s.bakery.stations[id] = { batch: { species: 'brulee', qty: 2, star: 1 }, startedAt: s.time, doneAt: s.time + 500 + i };
         }
       });
       await step(page, 0.3);

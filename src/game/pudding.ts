@@ -1,13 +1,15 @@
 import { BALANCE } from './balance';
 import { basinAvailable, consumeBathUnit, findBasinFor } from './basin';
 import type { EventSink } from './events';
-import { breedFromBath } from './breeding';
+import { birthBlockReason, breedFromBath } from './breeding';
 import { blockedByFurniture } from './furniture';
 import { applySpeciesAsPure } from './genetics';
 import { grantXp } from './level';
 import { range, type Rng } from './rng';
 import { LIQUIDS, SPECIES, type SpeciesId } from './species';
+import { careAfterBath } from './stars';
 import type { DropKind, GameState, Pudding, Vec2 } from './state';
+import type { Star } from './stock';
 
 /** 啟用層地板的 2D 邊界。由 scene 層（`cabinet.floorBounds()`）算好傳進來——
  *  `game/` 不可以 import three.js，也不該知道 y 在哪一層。 */
@@ -64,6 +66,7 @@ export function spawnDrop(
   kind: DropKind,
   at: Vec2,
   ctx: SimContext,
+  star: Star = 1,
 ): boolean {
   // 上限是「每一區各自 5 份」：解鎖第二區之後，兩區的地板要各自算
   if (state.drops.filter((d) => d.zone === zone).length >= BALANCE.dropCap) return false;
@@ -72,7 +75,8 @@ export function spawnDrop(
   const r = BALANCE.dropSpawnRadius;
   const x = Math.min(ctx.floor.maxX, Math.max(ctx.floor.minX, at.x + Math.cos(a) * r));
   const z = Math.min(ctx.floor.maxZ, Math.max(ctx.floor.minZ, at.z + Math.sin(a) * r * 0.7));
-  state.drops.push({ id: `d${state.nextId++}`, zone, kind, species, pos: { x, z }, bornAt: state.time });
+  // 蛋沒有星級（D64）：一律 ★1，入庫時也不看
+  state.drops.push({ id: `d${state.nextId++}`, zone, kind, species, pos: { x, z }, bornAt: state.time, star: kind === 'egg' ? 1 : star });
   ctx.emit({ type: 'drop', kind, species, x, z });
   return true;
 }
@@ -141,12 +145,14 @@ function finishBath(state: GameState, p: Pudding, ctx: SimContext): void {
   state.stats.baths++;
   ctx.emit({ type: 'bathDone', puddingId: p.id, liquid });
   grantXp(state, BALANCE.xp.bath, ctx.emit);
+  // 精養區的住客長照顧點數（D62）；先長再生，子代的潛力看的是母體「出生當下」的星級（D63）
+  careAfterBath(state, p, liquid, ctx.emit);
 
   // 牛奶澡就是繁殖。生不出來（全場住滿）要講出來，否則玩家會以為規則壞了
   // （D32 之後泡澡不再產原料；對方那條「泡完入庫／掉在盆邊」已經被自然掉落取代）
   if (liquid === 'milk') {
     const child = breedFromBath(state, p, ctx);
-    if (child === null) ctx.emit({ type: 'error', message: '櫥窗住滿了，生不出新的小布丁' });
+    if (child === null) ctx.emit({ type: 'error', message: birthBlockReason(state, p.zone) });
   }
 
   const bi = p.basinIndex;
@@ -175,7 +181,7 @@ function tickDrops(state: GameState, p: Pudding, ctx: SimContext): void {
   if (state.time < p.nextDropAt) return;
 
   const kind: DropKind = ctx.rng.next() < BALANCE.eggChance ? 'egg' : 'ingredient';
-  spawnDrop(state, p.zone, p.species, kind, p.pos, ctx);
+  spawnDrop(state, p.zone, p.species, kind, p.pos, ctx, p.star);
 
   const jitter = 1 + range(ctx.rng, -BALANCE.dropJitter, BALANCE.dropJitter);
   p.nextDropAt = state.time + BALANCE.dropIntervalSec * jitter;

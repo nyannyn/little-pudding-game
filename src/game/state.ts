@@ -1,10 +1,12 @@
 import { ACHIEVEMENT_IDS } from './achievements';
 import { createBakery, isLegacyBakery, refundLegacyBatches, restoreBakery, type BakeryState } from './bakery';
-import { PANTRY_IDS, type PantryId } from './recipes';
+import { PANTRY_IDS, type DessertId, type PantryId } from './recipes';
+import { createRegulars, restoreRegulars, type RegularId, type RegularState } from './regulars';
 import { BALANCE, EQUIPMENT_IDS, RETIRED_EQUIPMENT_PRICE, type EquipmentId } from './balance';
 import { isAllele, normalizeGenes, phenotype, type Genes } from './genetics';
 import { xpFromStats } from './level';
 import { LIQUID_IDS, SPECIES, SPECIES_IDS, type AlleleId, type LiquidId, type SpeciesId } from './species';
+import { clampStar, restoreTable, zeroTable, type Star, type StarStock } from './stock';
 import { START_ZONE, defaultZones, type Zone } from './zones';
 
 /**
@@ -43,8 +45,14 @@ import { START_ZONE, defaultZones, type Zone } from './zones';
  * ① 機器等級換算成**每一項都不比舊的差**的新等級（1→1、2→3、3→5，`bakery.V9_MACHINE_LEVEL`）；
  * ② 人氣補 Lv1；③ 站上那一盤補 `startedAt`＝`doneAt`－舊的固定秒數，照原本的 `doneAt` 做完。
  * 分辨新舊看 `bakery` 有沒有 `fame` 欄，不看 schemaVersion。
+ * 11（2026-09-25）：星級布丁與常客（D62–D71）。補值方向**不讓舊檔吃虧也不白送**：
+ * ① 布丁全部 ★1、照顧點數 0、潛力 ★2（跟開局的布丁一樣）；
+ * ② `ingredients`／`desserts`／`shelf` 舊的數字全部放進 ★1（最低估：不會一上線就有高星貨，也不少一份）；
+ * ③ 站上那一盤、地上的掉落物補 ★1；④ 區補「量產」；⑤ 名冊補初值，解鎖條件當場判一次
+ * （甜點店已開張的舊檔，熊先生直接解鎖）；⑥ 升星藥 0；⑦ 散客訂單原樣保留。
+ * 分辨新舊看形狀（數字還是陣列），不看 schemaVersion。
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /** 收進倉庫的澡盆的 `zone`。不是任何一個分區，所有「這一區的盆」查詢自然會略過它 */
 export const STORAGE_ZONE = 'storage';
@@ -91,6 +99,12 @@ export interface Pudding {
   bathLiquid: LiquidId | null;
   /** 這一跳落地時要突變成什麼（大彈跳）；null＝不突變 */
   pendingMutation: SpeciesId | null;
+  /** 星級 ★1–★5（D62）：掉的原料帶這個星級 */
+  star: Star;
+  /** 照顧點數：只有住在精養區才會累積，滿 `BALANCE.starCare[star-1]` 升一星並歸零 */
+  care: number;
+  /** 這隻最高能長到幾星（D63：出生時＝母體星級＋1，上限 5） */
+  potential: Star;
 }
 
 export interface Basin {
@@ -124,6 +138,8 @@ export interface Drop {
   pos: Vec2;
   /** 出生時間（遊戲秒），scene 端做彈出動畫用 */
   bornAt: number;
+  /** 掉下來那一刻布丁的星級（D64）；蛋沒有星級，一律 1 */
+  star: Star;
 }
 
 export interface Order {
@@ -134,6 +150,9 @@ export interface Order {
   price: number;
   createdAt: number;
   expiresAt: number;
+  /** 常客的特別訂單（D67）才有：哪一位開的、最低星級 */
+  regularId?: RegularId;
+  star?: Star;
 }
 
 export interface GameState {
@@ -155,8 +174,10 @@ export interface GameState {
   eggs: number;
   /** 基礎材料（麵粉、糯米粉；布丁不會掉，要在補貨頁買，D58） */
   pantry: Record<PantryId, number>;
-  ingredients: Record<SpeciesId, number>;
-  desserts: Record<SpeciesId, number>;
+  /** 物種原料，每一種按星級分格（D64）。**讀寫一律經 `stock.ts`** */
+  ingredients: Record<SpeciesId, StarStock>;
+  /** 成品櫃的甜點，按星級分格（D64）。**讀寫一律經 `stock.ts`** */
+  desserts: Record<DessertId, StarStock>;
   puddings: Pudding[];
   basins: Basin[];
   drops: Drop[];
@@ -186,6 +207,14 @@ export interface GameState {
   claimedAchievements: string[];
   /** 養過的物種（只增不減，成就用；賣掉了也還是「養過」） */
   speciesSeen: SpeciesId[];
+  /** 常客名冊（D66） */
+  regulars: Record<RegularId, RegularState>;
+  /** 道具（D67）：升星藥 */
+  items: Items;
+}
+
+export interface Items {
+  starTonic: number;
 }
 
 /**
@@ -213,22 +242,21 @@ export interface Stats {
   ordersDone: number;
   /** 單日最高營收（取最大值，所以也是單調的） */
   bestDayRevenue: number;
+  /** 常客買到東西的次數（D71） */
+  regularsServed: number;
+  /** 布丁升星的次數（照顧升星＋升星藥） */
+  starUps: number;
 }
 
 export const STAT_KEYS: (keyof Stats)[] = [
   'baths', 'sold', 'mutations', 'picked', 'crafted', 'births',
   'baked', 'served', 'missed', 'daysClosed', 'ingredientsSold', 'puddingsSold', 'ordersDone', 'bestDayRevenue',
+  'regularsServed', 'starUps',
 ];
 
 export function zeroStats(): Stats {
   const out = {} as Stats;
   for (const k of STAT_KEYS) out[k] = 0;
-  return out;
-}
-
-function zeroBySpecies(): Record<SpeciesId, number> {
-  const out = {} as Record<SpeciesId, number>;
-  for (const id of SPECIES_IDS) out[id] = 0;
   return out;
 }
 
@@ -321,6 +349,9 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     basinIndex: null,
     bathLiquid: null,
     pendingMutation: null,
+    star: 1 as Star,
+    care: 0,
+    potential: BALANCE.startPotential,
   }));
 
   const zones = defaultZones();
@@ -336,8 +367,8 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     ownedBasins: [],
     eggs: 0,
     pantry: startPantry(),
-    ingredients: zeroBySpecies(),
-    desserts: zeroBySpecies(),
+    ingredients: zeroTable(SPECIES_IDS),
+    desserts: zeroTable(SPECIES_IDS),
     puddings,
     basins: [{ zone: START_ZONE, liquid: null, units: 0, preferredLiquid: null, pos: { ...basinPos }, occupantId: null }],
     zones,
@@ -356,6 +387,8 @@ export function createNewSave(opts: NewSaveOptions = {}): GameState {
     bakery: createBakery(0),
     claimedAchievements: [],
     speciesSeen: ['caramel'],
+    regulars: createRegulars(),
+    items: { starTonic: 0 },
   };
 }
 
@@ -394,6 +427,16 @@ function restoreGenes(src: Partial<Pudding>): { genes: Genes; species: SpeciesId
 }
 
 /**
+ * D71：星級欄位。舊檔沒有 → ★1／0／★2；有就夾進合法範圍。
+ * 星級比潛力高（壞存檔）時抬高潛力而不是削星：寧可多給也不要讓玩家的布丁掉星。
+ */
+function restoreStar(src: Partial<Pudding>): { star: Star; care: number; potential: Star } {
+  const star = src.star === undefined ? (1 as Star) : clampStar(src.star);
+  const potential = clampStar(Math.max(star, src.potential === undefined ? BALANCE.startPotential : clampStar(src.potential)));
+  return { star, care: Math.max(0, num(src.care, 0)), potential };
+}
+
+/**
  * 把任意來源的存檔補成目前 schema 的合法 state。
  * 原則：寧可補欄位也不要丟整份存檔——玩家的進度比欄位乾淨重要；
  * 但結構真的認不出來（不是物件、沒有 puddings）就回新檔。
@@ -421,12 +464,10 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
   // 基礎材料（D58）：v8 以前沒有這欄 → 補開局那一份（跟新玩家一樣）
   const rawPantry = r.pantry as Record<string, unknown> | undefined;
   for (const id of PANTRY_IDS) out.pantry[id] = rawPantry ? Math.max(0, num(rawPantry[id], 0)) : out.pantry[id];
-  const rawIng = r.ingredients as Record<string, unknown> | undefined;
-  const rawDes = r.desserts as Record<string, unknown> | undefined;
-  for (const id of SPECIES_IDS) {
-    out.ingredients[id] = Math.max(0, num(rawIng?.[id], 0));
-    out.desserts[id] = Math.max(0, num(rawDes?.[id], 0));
-  }
+  // D71：舊的數字全部放進 ★1、新的陣列逐星還原（`stock.restoreTable`）
+  out.ingredients = restoreTable(r.ingredients, SPECIES_IDS);
+  out.desserts = restoreTable(r.desserts, SPECIES_IDS);
+  out.regulars = restoreRegulars(r.regulars);
   out.ownedBasins = Array.isArray(r.ownedBasins)
     ? (r.ownedBasins.filter((x) => LIQUID_IDS.includes(x as LiquidId)) as LiquidId[])
     : [];
@@ -439,6 +480,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
     for (const z of out.zones) {
       const src = (r.zones as Partial<Zone>[]).find((x) => x?.id === z.id);
       if (src?.unlocked === true) z.unlocked = true;
+      // D62：v10 以前沒有模式 → 量產（改版前每一區都是量產的行為）
+      z.mode = src?.mode === 'elite' ? 'elite' : 'mass';
     }
   }
   out.activeZone = zoneOf(r.activeZone);
@@ -513,6 +556,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
       pendingMutation: SPECIES_IDS.includes(src.pendingMutation as SpeciesId)
         ? (src.pendingMutation as SpeciesId)
         : null,
+      // D71：舊布丁全部 ★1、潛力 ★2（跟開局的布丁一樣，不白送也不吃虧）
+      ...restoreStar(src),
     };
   });
 
@@ -543,6 +588,8 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
           species: SPECIES_IDS.includes(src.species as SpeciesId) ? (src.species as SpeciesId) : 'caramel',
           pos: { x: num(src.pos?.x, 0), z: num(src.pos?.z, 0) },
           bornAt: num(src.bornAt, out.time),
+          // 漏補這欄，撿起來的原料會落到 `undefined` 星（AC11-10 的負向對照）
+          star: clampStar(src.star),
         };
       })
     : [];
@@ -558,6 +605,9 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
           price: Math.max(0, Math.round(num(src.price, 0))),
           createdAt: num(src.createdAt, out.time),
           expiresAt: num(src.expiresAt, out.time + BALANCE.orderTtlSec),
+          ...(typeof src.regularId === 'string' && src.regularId in out.regulars
+            ? { regularId: src.regularId, star: clampStar(src.star) }
+            : {}),
         }];
       })
     : [];
@@ -579,6 +629,11 @@ export function migrate(raw: unknown, opts: NewSaveOptions = {}): GameState {
   out.speciesSeen = [...seen];
   // v2 以前沒有 xp：用累計統計回推，不然老玩家開檔會被降回 Lv.1、商店整片鎖住
   out.xp = Math.max(0, num(r.xp, xpFromStats(out.stats)));
+
+  // 常客（D66／D71）：沒有這欄 → 名冊初值（上面還原訂單前就讀了）；解鎖條件由 `sim` 的每個 tick 判
+  // （`regulars.checkUnlocks`），甜點店已開張的舊檔熊先生因此一開檔就解鎖，其他照條件
+  const rawItems = (r.items ?? {}) as Record<string, unknown>;
+  out.items = { starTonic: Math.max(0, Math.floor(num(rawItems.starTonic, 0))) };
 
   // 舊存檔的 nextId 可能落後於實際用掉的號碼（或根本沒有這欄），
   // 不推到最大值之後，接下來生成的 id 會跟既有的撞號

@@ -115,9 +115,9 @@ for (const [w, h] of [[320, 568], [375, 667], [390, 844], [402, 874], [414, 896]
           await page.evaluate(({ c, e, i, d }) => {
             const s = window.__lpg.state!;
             s.coins = c; s.eggs = e;
-            for (const k of Object.keys(s.ingredients) as (keyof typeof s.ingredients)[]) s.ingredients[k] = 0;
-            for (const k of Object.keys(s.desserts) as (keyof typeof s.desserts)[]) s.desserts[k] = 0;
-            s.ingredients.caramel = i; s.desserts.caramel = d;
+            for (const k of Object.keys(s.ingredients) as (keyof typeof s.ingredients)[]) s.ingredients[k] = [0, 0, 0, 0, 0];
+            for (const k of Object.keys(s.desserts) as (keyof typeof s.desserts)[]) s.desserts[k] = [0, 0, 0, 0, 0];
+            s.ingredients.caramel = [i, 0, 0, 0, 0]; s.desserts.caramel = [d, 0, 0, 0, 0];
           }, { c: coins as number, e: eggs as number, i: ing as number, d: des as number });
           await page.waitForTimeout(400);
           const r = await page.evaluate(() => {
