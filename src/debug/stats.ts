@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { storageReport } from '../game/storage';
 import type { GameState } from '../game/state';
+import type { Star, StockKind } from '../game/stock';
+import type { RegularId } from '../game/regulars';
+import type { SpeciesId } from '../game/species';
 
 export interface LpgStats {
   fps: number;
@@ -37,12 +40,30 @@ declare global {
       step?: (dt: number) => void;
       /** 音效播放計數與解鎖狀態：截圖證不了聲音，e2e 靠這個斷言「按下去真的有排進 AudioContext」 */
       sfx?: { played: { splat: number; coin: number; pour: number }; isUnlocked: boolean; muted: boolean };
+      /**
+       * 腳本用的庫存出入口（D64）：`tools/` 在瀏覽器裡改 state 時一律走這裡，
+       * 不直接索引 `ingredients`／`desserts`／`shelf`（AC11-4 的掃描測試守著）。
+       * `set` 給一整列（索引 0＝★1），`add` 加到某一星。
+       */
+      stock?: {
+        of: (kind: StockKind, id: string, star?: Star) => number;
+        add: (kind: StockKind, id: string, star: Star, n: number) => void;
+        set: (kind: StockKind, id: string, counts: number[]) => void;
+      };
       /** 測試用：走遊戲自己的 grantXp（會丟 levelUp 事件），不是直接改欄位 */
       grantXp?: (amount: number) => void;
       /** 測試用：啟用區的區域座標（x, 高度, z）投到螢幕上的 CSS 像素——e2e 拿來長按拖家具（D49） */
       toScreen?: (x: number, y: number, z: number) => { x: number; y: number };
       /** 甜點工坊場景（D51）：e2e 讀客人數、工坊的 scene graph */
-      bakery?: { scene: THREE.Scene; camera: THREE.PerspectiveCamera; customerCount: number; lampLevel: number };
+      bakery?: {
+        scene: THREE.Scene;
+        camera: THREE.PerspectiveCamera;
+        customerCount: number;
+        lampLevel: number;
+        /** 常客（D69）：店裡幾位（不含門外排隊）；`regularCame` 讓 e2e 直接叫一位進店 */
+        regularCount: number;
+        regularCame(id: RegularId, bought: boolean, dessert: SpeciesId | null): void;
+      };
       /** 測試用：切換農場／工坊（等同按 HUD 的「甜點店」「回農場」） */
       setView?: (view: 'farm' | 'bakery') => void;
       three?: {

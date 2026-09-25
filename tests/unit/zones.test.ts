@@ -112,16 +112,16 @@ describe('分區之間互不干擾', () => {
   it('玩家按「撿原料」只撿看得到的那一區，收集手則是全場', () => {
     const w = twoZones();
     w.state.drops = [
-      { id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 },
-      { id: 'd2', zone: SECOND_CABINET, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 },
+      { id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0, star: 1 as const },
+      { id: 'd2', zone: SECOND_CABINET, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0, star: 1 as const },
     ];
     pickAllDrops(w.state, sink, false, START_ZONE);
-    expect(w.state.ingredients.caramel).toBe(1);
+    expect(w.state.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(1);
     expect(dropsIn(w.state, SECOND_CABINET)).toHaveLength(1);
 
     pickAllDrops(w.state, sink, true);
     expect(w.state.drops).toHaveLength(0);
-    expect(w.state.ingredients.caramel).toBe(2);
+    expect(w.state.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(2);
   });
 
   it('二號櫥窗的產出照樣進同一個庫存（經濟是全場共用的）', () => {
@@ -132,6 +132,6 @@ describe('分區之間互不干擾', () => {
     for (const p of puddingsIn(w.state, SECOND_CABINET)) p.caramel = 5;
 
     advance(w, 200);
-    expect(w.state.ingredients.caramel).toBeGreaterThan(0);
+    expect(w.state.ingredients.caramel.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
   });
 });

@@ -51,7 +51,7 @@ function stockFor(s: GameState, species: SpeciesId, n: number) {
     if (k === 'egg') s.eggs = per * n;
     else if (k === 'milk') s.stock.milk = per * n;
     else if (k === 'flour' || k === 'rice') s.pantry[k] = per * n;
-    else s.ingredients[k] = per * n;
+    else s.ingredients[k] = [per * n, 0, 0, 0, 0];
   }
 }
 
@@ -176,7 +176,7 @@ describe('AC9-3 放上線就自動走完', () => {
     for (const id of STATION_IDS) expect(stationStatus(s, id)).toBe('idle');
     const done = events.filter((e) => e.type === 'bakeDone').length + events.filter((e) => e.type === 'bakeFailed').length;
     expect(done).toBe(1);
-    expect(s.desserts.panna + events.filter((e) => e.type === 'bakeFailed').length).toBe(1);
+    expect(s.desserts.panna.reduce((a, b) => a + b, 0) + events.filter((e) => e.type === 'bakeFailed').length).toBe(1);
   });
 
   it('只走自己的站：鮮奶酪杯不經過烤箱', () => {
@@ -232,7 +232,7 @@ describe('AC9-4 份數上限＝路線上最低那台', () => {
     stockFor(s, 'matcha', 1);
     expect(canStartRecipe(s, 'matcha')).toBe(true);
     expect(startMax(s, 'matcha').ok).toBe(true);
-    expect(s.bakery.stations.crack.batch).toEqual({ species: 'matcha', qty: 1 });
+    expect(s.bakery.stations.crack.batch).toEqual({ species: 'matcha', qty: 1, star: 1 });
   });
 
   it('材料夠 3 份、上限 5 份：最多開 3 份，材料剛好扣完', () => {
@@ -249,7 +249,7 @@ describe('AC9-4 份數上限＝路線上最低那台', () => {
     stockFor(s, 'caramel', 5);
     startMax(s, 'caramel');
     expect(s.eggs).toBe(2 * 5 - 2 * 2);
-    expect(s.bakery.stations.stove.batch).toEqual({ species: 'caramel', qty: 2 });
+    expect(s.bakery.stations.stove.batch).toEqual({ species: 'caramel', qty: 2, star: 1 });
   });
 });
 
@@ -262,7 +262,7 @@ describe('AC9-5 失敗率照表、機器等級打折', () => {
       total += maxBatch(s, 'custard');
       startMax(s, 'custard');
       run(s, recipeSeconds(s, 'custard') + 8, seed);
-      made += s.desserts.custard;
+      made += s.desserts.custard.reduce((a, b) => a + b, 0);
     }
     return 1 - made / total;
   }
@@ -288,7 +288,7 @@ describe('AC9-5 失敗率照表、機器等級打折', () => {
       const failed = ev.filter((e) => e.type === 'bakeFailed').reduce((n, e) => n + (e as { qty: number }).qty, 0);
       if (failed > 0) {
         found = true;
-        expect(t.desserts.custard).toBe(qty - failed);
+        expect(t.desserts.custard.reduce((a, b) => a + b, 0)).toBe(qty - failed);
       }
     }
     expect(found).toBe(true);
@@ -305,9 +305,9 @@ describe('AC9-6 沒整條線不來客、不出預訂單', () => {
 
   it('沒機器但展示架上有貨（v8 老玩家升上來）：照樣營業，貨賣得掉；賣空了閘門自己關上', () => {
     const w = makeWorld({ puddings: 1 });
-    w.state.bakery.shelf.caramel = 3;
+    w.state.bakery.shelf.caramel = [3, 0, 0, 0, 0];
     advance(w, 600);
-    expect(w.state.bakery.shelf.caramel).toBe(0);
+    expect(w.state.bakery.shelf.caramel.reduce((a, b) => a + b, 0)).toBe(0);
     expect(w.state.stats.served).toBeGreaterThan(0);
     const missed = w.state.stats.missed;
     advance(w, 600);
@@ -352,8 +352,8 @@ describe('AC9-7 v8 → v9：機器全無、線上那幾盤退回材料', () => {
       bake: { batch: { species: 'matcha', qty: 2 }, doneAt: 5 },
     }), { seed: 1, now: 0 });
     expect(s.eggs).toBe(1 + 2 * 2 + 2 * 2);
-    expect(s.ingredients.caramel).toBe(0);
-    expect(s.ingredients.matcha).toBe(2);
+    expect(s.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(0);
+    expect(s.ingredients.matcha.reduce((a, b) => a + b, 0)).toBe(2);
     for (const id of STATION_IDS) expect(s.bakery.stations[id].batch).toBeNull();
   });
 
@@ -366,8 +366,8 @@ describe('AC9-7 v8 → v9：機器全無、線上那幾盤退回材料', () => {
 
   it('成品櫃、展示架原樣留；pantry 補開局那一份', () => {
     const s = migrate(v8({}), { seed: 1, now: 0 });
-    expect(s.desserts.caramel).toBe(2);
-    expect(s.bakery.shelf.matcha).toBe(3);
+    expect(s.desserts.caramel.reduce((a, b) => a + b, 0)).toBe(2);
+    expect(s.bakery.shelf.matcha.reduce((a, b) => a + b, 0)).toBe(3);
     expect(s.pantry.flour).toBe(BALANCE.startPantry.flour);
   });
 
@@ -375,7 +375,7 @@ describe('AC9-7 v8 → v9：機器全無、線上那幾盤退回材料', () => {
     const once = migrate(v8({ mold: { batch: { species: 'caramel', qty: 2 }, doneAt: 5 } }), { seed: 1, now: 0 });
     const twice = migrate(JSON.parse(JSON.stringify(once)), { seed: 1, now: 0 });
     expect(twice.eggs).toBe(once.eggs);
-    expect(twice.ingredients.caramel).toBe(once.ingredients.caramel);
+    expect(twice.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(once.ingredients.caramel.reduce((a, b) => a + b, 0));
   });
 
   it('機器等級、線上的盤子、pantry 經存檔來回都還在', () => {
@@ -384,7 +384,7 @@ describe('AC9-7 v8 → v9：機器全無、線上那幾盤退回材料', () => {
     s.pantry.rice = 7;
     const back = migrate(JSON.parse(JSON.stringify(s)), { seed: 1, now: 0 });
     expect(back.bakery.machines.bake).toBe(2);
-    expect(back.bakery.stations.stove.batch).toEqual({ species: 'caramel', qty: 2 });
+    expect(back.bakery.stations.stove.batch).toEqual({ species: 'caramel', qty: 2, star: 1 });
     expect(back.pantry.rice).toBe(7);
   });
 });
@@ -426,10 +426,10 @@ describe('AC8-4 客人、打烊結算', () => {
   it('營業中客人從展示架買走、架空就記錯過；打烊不來客', () => {
     const w = makeWorld({ puddings: 1 });
     ownLine(w.state, 'panna');
-    w.state.bakery.shelf.caramel = 3;
+    w.state.bakery.shelf.caramel = [3, 0, 0, 0, 0];
     const coins = w.state.coins;
     advance(w, B.customerIntervalMax * 6);
-    expect(w.state.bakery.shelf.caramel).toBe(0);
+    expect(w.state.bakery.shelf.caramel.reduce((a, b) => a + b, 0)).toBe(0);
     expect(w.state.coins).toBeGreaterThanOrEqual(coins + 3 * dessertPrice('caramel'));
     expect(w.state.stats.served).toBeGreaterThan(0);
     expect(w.state.bakery.today.missed).toBeGreaterThan(0);
@@ -440,7 +440,7 @@ describe('AC8-4 客人、打烊結算', () => {
     ownLine(w.state, 'panna');
     const events: SimEvent[] = [];
     w.emit = (e) => events.push(e);
-    w.state.bakery.shelf.caramel = 5;
+    w.state.bakery.shelf.caramel = [5, 0, 0, 0, 0];
     advance(w, B.dayLengthSec * 3);
     expect(w.state.stats.daysClosed).toBe(3);
     expect(w.state.bakery.lastDay?.day).toBe(3);
@@ -451,29 +451,29 @@ describe('AC8-4 客人、打烊結算', () => {
 
   it('上架不會把預訂單要的份數擺出去', () => {
     const s = createNewSave({ seed: 1, now: 0 });
-    s.desserts.matcha = 3;
+    s.desserts.matcha = [3, 0, 0, 0, 0];
     s.orders.push({ id: 'o1', species: 'matcha', qty: 2, price: 999, createdAt: 0, expiresAt: 9999 });
     expect(stockShelf(s, sink)).toBe(1);
-    expect(s.desserts.matcha).toBe(2);
+    expect(s.desserts.matcha.reduce((a, b) => a + b, 0)).toBe(2);
     expect(fulfillOrder(s, 'o1', sink).ok).toBe(true);
     expect(s.stats.ordersDone).toBe(1);
   });
 
   it('上架不超過架子上限', () => {
     const s = createNewSave({ seed: 1, now: 0 });
-    s.desserts.caramel = B.shelfCap + 5;
+    s.desserts.caramel = [B.shelfCap + 5, 0, 0, 0, 0];
     stockShelf(s, sink);
     expect(shelfCount(s)).toBe(B.shelfCap);
-    expect(s.desserts.caramel).toBe(5);
+    expect(s.desserts.caramel.reduce((a, b) => a + b, 0)).toBe(5);
   });
 
   it('預訂單成品櫃不夠時從展示架補', () => {
     const s = createNewSave({ seed: 1, now: 0 });
-    s.desserts.caramel = 1;
-    s.bakery.shelf.caramel = 2;
+    s.desserts.caramel = [1, 0, 0, 0, 0];
+    s.bakery.shelf.caramel = [2, 0, 0, 0, 0];
     s.orders.push({ id: 'o1', species: 'caramel', qty: 3, price: 100, createdAt: 0, expiresAt: 9999 });
     expect(fulfillOrder(s, 'o1', sink).ok).toBe(true);
-    expect(s.desserts.caramel + s.bakery.shelf.caramel).toBe(0);
+    expect(s.desserts.caramel.reduce((a, b) => a + b, 0) + s.bakery.shelf.caramel.reduce((a, b) => a + b, 0)).toBe(0);
   });
 });
 
@@ -509,7 +509,7 @@ describe('AC8-5 v7 → v8：退役設備退款、成品保留', () => {
 
   it('手上的甜點留著當成品櫃、工坊是空的、養過的物種從住客補', () => {
     const s = migrate(v7(), { seed: 1, now: 0 });
-    expect(s.desserts.caramel).toBe(4);
+    expect(s.desserts.caramel.reduce((a, b) => a + b, 0)).toBe(4);
     expect(shelfCount(s)).toBe(0);
     expect(s.speciesSeen).toEqual(['caramel']);
     expect(s.claimedAchievements).toEqual([]);

@@ -3,16 +3,25 @@ import { BALANCE, EQUIPMENT, EQUIPMENT_IDS, type EquipmentId } from '../../src/g
 import {
   buyEquipment,
   buyPantry,
+  buySpecialBasin,
   buyStock,
   fillBasin,
+  movePudding,
   pickAllDrops,
+  puddingSaleBlock,
   sellEggs,
   sellIngredient,
+  sellPudding,
+  setZoneMode,
   unlockZone,
 } from '../../src/game/actions';
+import { REGULAR_IDS, REGULARS, deliverOrder, minStarFor, regularAccepts, regularWants } from '../../src/game/regulars';
+import { placeFromStorage, storeFurniture } from '../../src/game/furniture';
+import { growsCare, isEliteZone, useStarTonic } from '../../src/game/stars';
 import { ACHIEVEMENTS, achievementStatus, claimAchievement } from '../../src/game/achievements';
-import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, startBatch, stockShelf } from '../../src/game/bakery';
-import { MACHINE_CURVE, MAX_MACHINE_LEVEL, RECIPES, stationSeconds, STATION_IDS, canStartRecipe, dessertPrice, linePortions, maxBatch, recipeMaterials, type StationId } from '../../src/game/recipes';
+import { FAME, buyFame, buyMachine, famePrice, fulfillOrder, machineNextPrice, orderHave, startBatch, stockShelf } from '../../src/game/bakery';
+import { STARS, stockAtLeast, stockOf, totalStock, type Star } from '../../src/game/stock';
+import { DESSERT_IDS, MACHINE_CURVE, MAX_MACHINE_LEVEL, RECIPES, recipeUnlocked, stationSeconds, STATION_IDS, canStartRecipe, dessertPrice, linePortions, maxBatch, recipeMaterials, type StationId } from '../../src/game/recipes';
 import { levelFor } from '../../src/game/level';
 import { advance, createWorld } from '../../src/game/sim';
 import { applyGenes } from '../../src/game/genetics';
@@ -111,13 +120,123 @@ function run(profile: Profile, seed: number) {
     return r;
   };
   const earnedByDay: number[] = [];
+  /** CP11（D62–D68）月玩家的養成紀錄：第一顆 ★N 在第幾天、每位常客哪天解鎖、哪天 ♥10 */
+  const starDay: Record<number, number> = {};
+  const regUnlockDay: Record<string, number> = {};
+  const regMaxDay: Record<string, number> = {};
+  const heartsByDay: string[] = [];
+  const dayNow = () => Math.floor(state.time / 86400) + 1;
+  let lastElite = -1;
+  /**
+   * 月玩家的精養（CP11，D62／D63）：只有 month 情境做——3 小時五情境的 bot 不切精養（AC11-13 守住前期節奏）。
+   * 上層切成精養；那 5 格留給「還在長、潛力最高」的布丁（潛力高＝世代鏈往前走），
+   * 沒在長的名額給「已經長到頂、星級最高」的媽媽：讓牠泡牛奶生下一代（寶寶潛力＝媽媽星級＋1，會被送到別區，
+   * 下一輪再被挑回精養區）。一分鐘整理一次（每 3 秒整理只是浪費量表時間，玩家也不會那樣頻繁搬家）。
+   */
+  const manageElite = () => {
+    if (profile !== 'month' || state.time - lastElite < 60) return;
+    lastElite = state.time;
+    // 液體：月玩家一次買大桶、維持夠用（離線那 8 小時 60 隻布丁泡掉的量很大，補貨合約一次只補到 20）
+    for (const l of ['caramel', 'milk'] as LiquidId[]) {
+      for (let g = 0; state.stock[l] < 200 && g < 10; g++) if (!pay(() => buyStock(state, l, BALANCE.stockBulkQty, noop)).ok) break;
+    }
+    // 風味澡盆（D30）：買得起就買，擺在量產區、一直倒著——抹茶系／草莓系的布丁才養得出來（兔子太太、青蛙小弟要）
+    const spots: Record<string, string> = { matcha: 'c0t0', strawberry: 'c1t1' };
+    for (const l of ['matcha', 'strawberry'] as LiquidId[]) {
+      const zone = spots[l]!;
+      if (!state.ownedBasins.includes(l) && state.zones.find((x) => x.id === zone)?.unlocked && state.coins > BALANCE.specialBasinPrice * 3) {
+        pay(() => buySpecialBasin(state, l, { x: -0.3, z: -0.2 }, zone, noop));
+      }
+      if (state.ownedBasins.includes(l)) {
+        for (let g = 0; state.stock[l] < 30 && g < 5; g++) if (!pay(() => buyStock(state, l, BALANCE.stockBuyQty, noop)).ok) break;
+        state.basins.forEach((b, i) => { if (b.preferredLiquid === l && b.units === 0 && state.stock[l] > 0) fillBasin(state, i, l, noop); });
+      }
+    }
+    type Pud = (typeof state.puddings)[number];
+    const taken = new Set<string>();
+    /** 騰位子：賣掉量產區裡「數量最多的那一種」裡最不值錢的一隻（稀有的系留著，常客要它們） */
+    const sellCheapest = (keep: Set<string>) => {
+      const pool = state.puddings.filter((p) => !isEliteZone(state, p.zone) && !keep.has(p.id) && !taken.has(p.id) && puddingSaleBlock(state, p.id) === null);
+      const count = new Map<string, number>();
+      for (const p of pool) count.set(p.species, (count.get(p.species) ?? 0) + 1);
+      const cheap = pool.sort((a, b) => (count.get(b.species)! - count.get(a.species)!) || a.potential - b.potential || a.star - b.star)[0];
+      return cheap ? sellPudding(state, cheap.id, noop).ok : false;
+    };
+    /**
+     * 一個精養區養一條血統：`inLine` 選誰、`basins` 決定每個盆倒什麼（`breed`＝要生下一代）。
+     * 5 格留給「還在長、潛力最高」的；長到頂的高星媽媽在量產區還沒有更高潛力的下一代時泡牛奶生下一代。
+     */
+    const runElite = (zoneId: string, inLine: (p: Pud) => boolean, liquidFor: (b: (typeof state.basins)[number], breed: boolean) => LiquidId) => {
+      const zz = state.zones.find((x) => x.id === zoneId);
+      if (!zz?.unlocked) return;
+      if (zz.mode !== 'elite' && !setZoneMode(state, zoneId, 'elite', noop).ok) return;
+      const score = (p: Pud) => (inLine(p) ? 1000 : 0) + (p.star < p.potential ? 100 + p.potential * 10 + p.star : p.star * 10);
+      const ranked = [...state.puddings].filter((p) => p.mode !== 'bathing' && !taken.has(p.id) && (p.zone === zoneId || !isEliteZone(state, p.zone))).sort((a, b) => score(b) - score(a));
+      const want = new Set(ranked.slice(0, BALANCE.eliteCapacity).map((p) => p.id));
+      for (const id of want) taken.add(id);
+      for (const p of state.puddings.filter((q) => q.zone === zoneId && !want.has(q.id))) {
+        const roomy = () => unlockedZones(state).find((q) => q.mode === 'mass' && state.puddings.filter((r) => r.zone === q.id).length < BALANCE.zoneCapacity);
+        if (!roomy()) sellCheapest(want);
+        const dest = roomy();
+        if (dest) movePudding(state, p.id, dest.id, noop);
+      }
+      for (const id of want) {
+        const p = state.puddings.find((q) => q.id === id);
+        if (p && p.zone !== zoneId) movePudding(state, p.id, zoneId, noop);
+      }
+      const elite = state.puddings.filter((p) => p.zone === zoneId);
+      const top = Math.max(0, ...elite.filter((p) => p.star >= p.potential).map((p) => p.star));
+      const nextGen = state.puddings.some((p) => !isEliteZone(state, p.zone) && p.potential > top && inLine(p));
+      const breed = top >= 2 && !nextGen;
+      const massFull = unlockedZones(state).filter((q) => q.mode === 'mass').every((q) => state.puddings.filter((p) => p.zone === q.id).length >= BALANCE.zoneCapacity);
+      if (breed && massFull) sellCheapest(want);
+      state.basins.forEach((b, i) => {
+        if (b.zone !== zoneId) return;
+        const liquid = liquidFor(b, breed);
+        if (b.units > 0 && b.liquid === liquid) return;
+        if (b.units > 0) {
+          // 換液體要先倒掉：遊戲裡的做法是「收進倉庫＝倒掉」再擺回原位（D49），bot 走同一條路
+          const ref = { kind: 'basin' as const, index: i };
+          const pos = { ...b.pos };
+          if (!storeFurniture(state, zoneId, ref).ok) return;
+          if (!placeFromStorage(state, zoneId, ref, pos).ok) return;
+        }
+        if (state.stock[liquid] > 0) fillBasin(state, i, liquid, noop);
+      });
+      // 升星藥（D67）：給精養區卡在上限、星級最高的那隻
+      if (state.items.starTonic > 0) {
+        const capped = elite.filter((p) => p.star >= p.potential && p.star < 5).sort((a, b) => b.star - a.star)[0];
+        if (capped) useStarTonic(state, capped.id, noop);
+      }
+    };
+    // 第一條：上層專養焦糖系（熊先生、貓頭鷹、狐狸、小豬的口味都含焦糖），平常倒熱焦糖＝本命液，要生下一代才倒牛奶
+    runElite('c0t2', (p) => p.genes.includes('caramel'), (_b, breed) => (breed ? 'milk' : 'caramel'));
+    // 第二條（買了草莓澡盆之後）：二號櫥窗養沒有焦糖的那幾系（鮮奶酪／抹茶／草莓，綿羊奶奶、兔子太太、青蛙小弟、企鵝郵差）；
+    // 一般的盆倒牛奶（鮮奶酪的本命液，順便生下一代）、草莓盆倒草莓醬
+    if (state.ownedBasins.includes('strawberry')) {
+      runElite('c1t1', (p) => !p.genes.includes('caramel'), (b) => (b.preferredLiquid === 'strawberry' ? 'strawberry' : 'milk'));
+    }
+  };
+  const noteGrowth = () => {
+    if (profile !== 'month') return;
+    for (const p of state.puddings) for (let s = 2; s <= p.star; s++) if (!(s in starDay)) starDay[s] = dayNow();
+    for (const id of REGULAR_IDS) {
+      const r = state.regulars[id];
+      if (r.unlocked && !(id in regUnlockDay)) regUnlockDay[id] = dayNow();
+      if (r.hearts >= 10 && !(id in regMaxDay)) regMaxDay[id] = dayNow();
+    }
+  };
   const step = () => {
     // D34：牛奶澡＝繁殖。還有空位就優先倒牛乳（玩家想把櫥窗養滿），滿了才倒焦糖。
     // 不模擬這一步的話量表只會跑舊路徑，住客永遠是「解鎖送的那幾隻」
     const capacity = state.zones.filter((z) => z.unlocked).length * BALANCE.zoneCapacity;
     const wantMore = state.puddings.length < capacity;
+    manageElite();
     state.basins.forEach((b, i) => {
       if (b.units > 0) return;
+      if (profile === 'month' && isEliteZone(state, b.zone)) return; // 精養區的盆由 manageElite 決定倒什麼
+      // 風味澡盆（抹茶／草莓）只倒它自己那一種（manageElite 管）；在這裡倒牛乳的話之後自動注液閥就一直補牛乳
+      if (b.preferredLiquid === 'matcha' || b.preferredLiquid === 'strawberry') return;
       if (wantMore && state.stock.milk > 0) fillBasin(state, i, 'milk', noop);
       else if (state.stock.caramel > 0) fillBasin(state, i, 'caramel', noop);
     });
@@ -148,14 +267,42 @@ function run(profile: Profile, seed: number) {
           else break;
         }
       }
-      // 菜單：做得起的裡面挑最貴的放上線（起始站忙就等下一輪）；份數疊到最多（D60）
-      const pickable = SPECIES_IDS.filter((id) => canStartRecipe(state, id)).sort((a, b) => dessertPrice(b) - dessertPrice(a));
-      for (const id of pickable) if (canStartRecipe(state, id)) startBatch(state, id, maxBatch(state, id), noop);
+      // 菜單：做得起的裡面挑最貴的放上線（起始站忙就等下一輪）；份數疊到最多（D60）。
+      // CP11：星級由高往低試（高星原料做高價甜點；招牌甜點解鎖了也在候選裡）。3 小時情境沒有高星原料，行為跟改版前一樣
+      // CP11（月玩家）：先看名冊替常客做——每位已解鎖的常客，櫃上＋架上符合他的不到 2 份就先開一盤
+      // （他要的口味、不低於他的最低星級、做得起的最低那一星；自己的招牌甜點優先）
+      if (profile === 'month') {
+        for (const rid of REGULAR_IDS) {
+          const reg = state.regulars[rid];
+          if (!reg.unlocked) continue;
+          const min = minStarFor(rid, reg.hearts);
+          const accepts = regularAccepts(state, rid);
+          const have = accepts.reduce((n, id) => n + stockAtLeast(state, 'desserts', id, min) + stockAtLeast(state, 'shelf', id, min), 0);
+          if (have >= 2) continue;
+          let started = false;
+          for (const id of accepts) {
+            for (const star of STARS) {
+              if (star < min || !canStartRecipe(state, id, star)) continue;
+              started = startBatch(state, id, maxBatch(state, id, star), noop, star).ok;
+              break;
+            }
+            if (started) break;
+          }
+        }
+      }
+      const pickable = DESSERT_IDS.filter((id) => recipeUnlocked(state, id)).sort((a, b) => dessertPrice(b) - dessertPrice(a));
+      for (const id of pickable) {
+        for (const star of [...STARS].reverse() as Star[]) {
+          if (!canStartRecipe(state, id, star)) continue;
+          startBatch(state, id, maxBatch(state, id, star), noop, star);
+          break;
+        }
+      }
       if (state.stats.baked > 0) mark('first bake');
       for (const o of [...state.orders]) {
-        if (state.desserts[o.species] + state.bakery.shelf[o.species] >= o.qty && fulfillOrder(state, o.id, noop).ok) mark('first order');
+        if (orderHave(state, o) >= o.qty && deliverOrder(state, o.id, noop).ok) mark('first order');
       }
-      stockShelf(state, noop);
+      stockShelf(state, noop, false, regularWants(state));
       if (state.stats.served > 0) mark('first customer');
       if (state.stats.daysClosed > 0) mark('first day closed');
     }
@@ -172,7 +319,8 @@ function run(profile: Profile, seed: number) {
       // 別的甜點要拿它當配料的（例如奶酪塊、抹茶粉、草莓醬）也留著
       const usedElsewhere = bakery && SPECIES_IDS.some((d) => d !== id && recipeMaterials(d).some(([k]) => k === id));
       const keep = keepIng * (usedElsewhere ? 2 : 1);
-      if (state.ingredients[id] > keep && sellIngredient(state, id, state.ingredients[id] - keep, noop).ok) mark('first sale');
+      const have = stockOf(state, 'ingredients', id, 1);
+      if (have > keep && sellIngredient(state, id, have - keep, noop, 1).ok) mark('first sale');
     }
     // 麵粉與牛乳補到「最大那一盤」的兩倍（D60：一盤最多 20 份，一次只補 10 份的話 bot 自己卡自己，量到的是 bot 不是平衡）
     const bulk = levelFor(state.xp) >= BALANCE.stockBulkLevel ? BALANCE.stockBulkQty : BALANCE.stockBuyQty;
@@ -221,13 +369,16 @@ function run(profile: Profile, seed: number) {
     if (nz && state.coins >= nz.price + 20 && pay(() => unlockZone(state, nz.id, SPAWN, noop)).ok) mark(`unlock ${nz.name}`);
     for (const c of [100, 500, 1000, 3000]) if (state.coins >= c) mark(`coins ${c}`);
     mark(`Lv.${levelFor(state.xp)}`);
+    noteGrowth();
   };
 
   if (profile === 'month') {
     // 月玩家（D61）：每天三次、每次實玩 15 分鐘（08:00／13:00／21:00），中間離線照 offlineCapSec 上限結算，跑 30 天
     const SESSIONS = [8, 13, 21];
     const PLAY = 15 * 60;
-    for (let day = 0; day < 30; day++) {
+    // PACING_DAYS：只跑前幾天（除錯用）；PACING_DEBUG=1 每場結束印精養區的狀態
+    const DAYS = Number(process.env.PACING_DAYS ?? 30);
+    for (let day = 0; day < DAYS; day++) {
       for (let i = 0; i < SESSIONS.length; i++) {
         for (let t = 0; t < PLAY; t += REACT_SEC) {
           advance(w, REACT_SEC);
@@ -239,8 +390,13 @@ function run(profile: Profile, seed: number) {
         advance(w, Math.min(gap, BALANCE.offlineCapSec));
         // 離線上限之外的時間不算數，但時鐘要走到下一次開遊戲那一刻（天數才對得上）
         if (gap > BALANCE.offlineCapSec) state.time += gap - BALANCE.offlineCapSec;
+        if (process.env.PACING_DEBUG === '1') {
+          const el = state.puddings.filter((p) => isEliteZone(state, p.zone));
+          console.log(`d${day + 1}s${i} t=${(state.time / 3600).toFixed(1)}h zones=${unlockedZones(state).map((z) => `${z.id}:${z.mode}:${state.puddings.filter((p) => p.zone === z.id).length}`).join(',')} elite=${el.map((p) => `${p.species}★${p.star}/${p.potential}c${Math.floor(p.care)}`).join(' ')} basins=${state.basins.map((b) => `${b.zone}:${b.liquid ?? b.preferredLiquid}:${b.units}`).join(',')} stock=${state.stock.caramel}/${state.stock.milk} baths=${state.stats.baths}`);
+        }
       }
       earnedByDay.push(state.coins + spent);
+      heartsByDay.push(REGULAR_IDS.map((id) => (state.regulars[id].unlocked ? state.regulars[id].hearts : '-')).join(','));
     }
   } else {
     const total = HOURS * 3600;
@@ -262,10 +418,23 @@ function run(profile: Profile, seed: number) {
       `\n=== month (seed ${seed}, 3×15 min/day, 30 days) ===\n` +
         `upgrades per 5 days: ${buckets.join(' / ')}  (total ${upgrades.length}, median gap ${med.toFixed(1)} active min)\n` +
         `day 30: ${lv} fame:${state.bakery.fame}  (max ${MAX_MACHINE_LEVEL}/${FAME.max})\n` +
-        `end: coins=${Math.floor(state.coins)} baked=${state.stats.baked} served=${state.stats.served} missed=${state.stats.missed} puddings=${state.puddings.length} eggs=${state.eggs} desserts=${SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0)}\n` +
+        `end: coins=${Math.floor(state.coins)} baked=${state.stats.baked} served=${state.stats.served} missed=${state.stats.missed} puddings=${state.puddings.length} eggs=${state.eggs} desserts=${totalStock(state, 'desserts')}\n` +
         `per day: ${Array.from({ length: 30 }, (_, d) => upgrades.filter((u) => u.day === d + 1).length).join(' ')}\n` +
-        `earned per day (k): ${earnedByDay.map((e, i) => Math.round((e - (earnedByDay[i - 1] ?? 0)) / 1000)).join(' ')}\n`,
+        `earned per day (k): ${earnedByDay.map((e, i) => Math.round((e - (earnedByDay[i - 1] ?? 0)) / 1000)).join(' ')}\n` +
+        // CP11（AC11-12）：養成與常客的節奏
+        `first star day: ★2 ${starDay[2] ?? '-'} / ★3 ${starDay[3] ?? '-'} / ★4 ${starDay[4] ?? '-'} / ★5 ${starDay[5] ?? '-'}\n` +
+        `regular unlock day: ${REGULAR_IDS.map((id) => `${REGULARS[id].name}${regUnlockDay[id] ?? '-'}`).join(' ')}\n` +
+        `regular ♥10 day: ${REGULAR_IDS.map((id) => `${REGULARS[id].name}${regMaxDay[id] ?? '-'}`).join(' ')}\n` +
+        `hearts by day (${REGULAR_IDS.join(',')}):\n${heartsByDay.map((h, i) => `  d${i + 1}: ${h}`).join('\n')}\n` +
+        `stars at end: ${[1, 2, 3, 4, 5].map((s) => state.puddings.filter((p) => p.star === s).length).join('/')}  regularsServed=${state.stats.regularsServed} starUps=${state.stats.starUps} tonic=${state.items.starTonic}\n`,
     );
+    // 給 AC11-12 的判定腳本讀（`tools/pacing/ac11-12.mjs`）
+    if (process.env.PACING_JSON) {
+      const fs = require('node:fs') as typeof import('node:fs');
+      const prev = fs.existsSync(process.env.PACING_JSON) ? JSON.parse(fs.readFileSync(process.env.PACING_JSON, 'utf8')) : {};
+      prev[`month-${seed}`] = { starDay, regUnlockDay, regMaxDay, buckets, upgrades: upgrades.length };
+      fs.writeFileSync(process.env.PACING_JSON, JSON.stringify(prev, null, 1));
+    }
     return;
   }
   const lines = Object.entries(milestones)

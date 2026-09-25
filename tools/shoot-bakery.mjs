@@ -49,10 +49,11 @@ await page.evaluate(() => {
   Object.assign(s.bakery.machines, { stove: 2, crack: 1, mix: 3, mold: 2, bake: 2, chill: 1, decorate: 1 });
   const plan = [['stove', 'caramel'], ['crack', 'custard'], ['mix', 'matcha'], ['mold', 'strawberry'], ['bake', 'hojicha'], ['chill', 'panna'], ['decorate', 'brulee']];
   plan.forEach(([id, sp], i) => {
-    s.bakery.stations[id] = { batch: { species: sp, qty: i % 2 ? 2 : 4 }, startedAt: s.time, doneAt: s.time + 20 + i };
+    s.bakery.stations[id] = { batch: { species: sp, qty: i % 2 ? 2 : 4, star: 1 }, startedAt: s.time, doneAt: s.time + 20 + i };
   });
-  Object.assign(s.bakery.shelf, { caramel: 3, matcha: 2, strawberry: 2, custard: 1, sakura: 2 });
-  Object.assign(s.desserts, { caramel: 2, panna: 2, hojicha: 1 });
+  const put = (kind, counts) => { for (const [id, n] of Object.entries(counts)) window.__lpg.stock.set(kind, id, [n, 0, 0, 0, 0]); };
+  put('shelf', { caramel: 3, matcha: 2, strawberry: 2, custard: 1, sakura: 2 });
+  put('desserts', { caramel: 2, panna: 2, hojicha: 1 });
 });
 await step(30);
 await shot('bakery-working');
@@ -68,7 +69,9 @@ await shot('bakery-customers');
 await page.evaluate(() => {
   const s = window.__lpg.state;
   for (const id of Object.keys(s.bakery.stations)) s.bakery.stations[id] = { batch: null, startedAt: 0, doneAt: 0 };
-  s.eggs = 6; s.stock.milk = 3; s.pantry.flour = 2; s.ingredients.caramel = 2; s.ingredients.panna = 1;
+  s.eggs = 6; s.stock.milk = 3; s.pantry.flour = 2;
+  window.__lpg.stock.set('ingredients', 'caramel', [2, 0, 0, 0, 0]);
+  window.__lpg.stock.set('ingredients', 'panna', [1, 0, 0, 0, 0]);
 });
 await step(2);
 await page.locator('[data-a="openMenu"]').click();

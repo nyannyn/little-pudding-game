@@ -6,18 +6,23 @@ import {
   buySpecialBasin,
   buyStock,
   fillBasin,
+  movePudding,
   pickAllDrops,
   pickDrop,
   puddingSaleBlock,
   sellEggs,
   sellIngredient,
   sellPudding,
+  setZoneMode,
   switchZone,
   unlockZone,
 } from './game/actions';
+import { useStarTonic } from './game/stars';
+import { REGULARS, awaySummary, deliverOrder, markStorySeen, regularWants } from './game/regulars';
 import { claimAchievement, claimAllAchievements } from './game/achievements';
-import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
-import { MACHINE_TIER_NAMES } from './game/recipes';
+import { STATIONS, STATION_IDS, buyFame, buyMachine, fulfillOrder, machineNextPrice, shelfOne, startBatch, stationStatus, stockShelf, type StationId } from './game/bakery';
+import { STARS, addStock, stockOf, takeStock, totalStock } from './game/stock';
+import { MACHINE_TIER_NAMES, SIGNATURE_IDS, dessertLook, dessertName } from './game/recipes';
 import type { SimEvent } from './game/events';
 import { BALANCE } from './game/balance';
 import { grantXp } from './game/level';
@@ -222,7 +227,8 @@ function statusesFor(cabinet: number): TankStatus[] {
     const n = puddingsIn(state, z.id).length;
     out.push({
       title: z.name.split('・')[1] ?? z.name,
-      sub: z.unlocked ? `住客 ${n} 隻` : `${z.price} 焦糖幣`,
+      // 精養區（D62）在名牌上講清楚：上限 5 隻、只有這裡會長星
+      sub: !z.unlocked ? `${z.price} 焦糖幣` : z.mode === 'elite' ? `精養 ${n}/${BALANCE.eliteCapacity} 隻` : `住客 ${n} 隻`,
       locked: !z.unlocked,
     });
   }
@@ -287,7 +293,7 @@ focusActiveZone(true);
 
 // 離線結算：上限 8 小時，回來時告訴玩家發生了什麼
 if (loaded.restored) {
-  const before = { coins: state.coins, baths: state.stats.baths, days: state.stats.daysClosed, served: state.stats.served };
+  const before = { coins: state.coins, baths: state.stats.baths, days: state.stats.daysClosed, served: state.stats.served, time: state.time };
   const offlineSeconds = settleOffline(world, Date.now());
   drainEvents(world); // 離線那幾千個事件不需要逐一播音效
   if (offlineSeconds > 60) {
@@ -301,6 +307,7 @@ if (loaded.restored) {
             (state.stats.daysClosed > before.days || state.stats.served > before.served
               ? `甜點店營業了 ${state.stats.daysClosed - before.days} 天，客人買走 ${state.stats.served - before.served} 次。`
               : '') +
+            awayText(before.time) +
             (state.drops.length > 0 ? `地板上還有 ${state.drops.length} 份原料沒收。` : '') +
             // 離線期間液體用完＝生產線停了，回來第一眼就要知道，不然「泡了 0 次澡」讀起來像壞掉
             (nextHint(state)?.warning ? nextHint(state)!.text : ''),
@@ -310,6 +317,20 @@ if (loaded.restored) {
   }
 } else {
   state.lastSeenAt = Date.now();
+}
+
+/**
+ * 「你不在的時候」常客的摘要（D66／AC11-9）：從 `regulars[*].lastResult` 推導，不是逐條 toast——
+ * 離線一次可能跑 24 個營業日，每位常客來兩三次，逐條講會把畫面塞爆。
+ */
+function awayText(since: number): string {
+  const rows = awaySummary(state, since);
+  if (!rows.length) return '';
+  return rows
+    .map(({ id, result: r }) => (r.bought && r.dessert
+      ? `${REGULARS[id].name}來過，買了 ★${r.star} ${dessertName(r.dessert)}。`
+      : `${REGULARS[id].name}來過，但架上沒有想買的。`))
+    .join('');
 }
 
 // 加到主畫面：Safari 分頁裡的存檔七天沒互動就會被清掉，加到主畫面的 web app 不吃那條規則。
@@ -364,7 +385,23 @@ const hudActions: HudActions = {
     hud.update(state, performance.now(), true);
   },
   setView: (v) => setView(v),
-  startBatch: (species, qty) => report(startBatch(state, species, qty, world.emit)),
+  startBatch: (species, qty, star) => report(startBatch(state, species, qty, world.emit, star)),
+  shelfOne: (id, star) => report(shelfOne(state, id, star, world.emit)),
+  movePudding: (pid, zone) => {
+    if (!report(movePudding(state, pid, zone, world.emit))) return;
+    refreshShells(); // 名牌上的住客數
+    hud.toast(`搬到${findZone(state, zone)?.shortName ?? ''}了`);
+  },
+  useTonic: (pid) => report(useStarTonic(state, pid, world.emit)),
+  readStory: (id, ch) => {
+    markStorySeen(state, id, ch);
+    hud.update(state, performance.now(), true);
+  },
+  sellPuddingById: (pid) => report(sellPudding(state, pid, world.emit)),
+  setZoneMode: (zone, mode) => {
+    if (!report(setZoneMode(state, zone, mode, world.emit))) return;
+    refreshShells();
+  },
   buyMachine: (id) => report(buyMachine(state, id, world.emit)),
   buyFame: () => report(buyFame(state, world.emit)),
   // 機器頭上的標籤：還能升級＝開商店工坊頁、捲到這台並標亮；滿級了就跟點 3D 機器一樣講它在做什麼
@@ -375,7 +412,8 @@ const hudActions: HudActions = {
   buyPantry: (id, qty) => report(buyPantry(state, id, qty, world.emit)),
   stockShelf: () => {
     // 什麼都沒擺上去一定要講為什麼（D39 的教訓：按了沒反應＝玩家以為壞了）
-    if (stockShelf(state, world.emit) === 0) hud.toast(shelfNothingReason(), true);
+    // 「全部上架」跟店員同一套（D70）：先替今天要來的常客擺一份，其餘先上低星
+    if (stockShelf(state, world.emit, false, regularWants(state)) === 0) hud.toast(shelfNothingReason(), true);
     hud.update(state, performance.now(), true);
   },
   claimAchievement: (id) => report(claimAchievement(state, id, world.emit)),
@@ -394,8 +432,9 @@ const hudActions: HudActions = {
     }
     report(sellPudding(state, p.id, world.emit));
   },
-  fulfill: (id) => report(fulfillOrder(state, id, world.emit)),
-  sellIngredients: (s) => report(sellIngredient(state, s, state.ingredients[s], world.emit)),
+  // 常客的特別訂單交了要 +2 心（D67），所以一律走 `deliverOrder`（它包著 fulfillOrder）
+  fulfill: (id) => report(deliverOrder(state, id, world.emit)),
+  sellIngredients: (s, star) => report(sellIngredient(state, s, stockOf(state, 'ingredients', s, star), world.emit, star)),
   sellEggs: () => report(sellEggs(state, state.eggs, world.emit)),
   buyStock: (liquid, qty) => report(buyStock(state, liquid, qty, world.emit)),
   buyEquipment: (id) => report(buyEquipment(state, id, world.emit)),
@@ -480,6 +519,23 @@ function handle(e: SimEvent) {
       sfx.coin(0.3);
       break;
     }
+    case 'starUp': {
+      // 升星（D62）：頭上冒一圈金色星星。不在看的那一區只給 toast（畫面上看不到牠）
+      const p = state.puddings.find((x) => x.id === e.puddingId);
+      if (!p) break;
+      if (p.zone === state.activeZone) {
+        views.get(p.id)?.pulse();
+        particles.burst(ox + p.pos.x, oy + 0.22, p.pos.z, 0xf7c95a, 26);
+      }
+      sfx.coin(0.45);
+      hud.toast(`${e.byTonic ? '喝了升星藥，' : ''}${SPECIES[p.species].name}升到 ★${e.star}！`);
+      break;
+    }
+    case 'zoneMode':
+      hud.toast(e.mode === 'elite'
+        ? `${findZone(state, e.zone)?.shortName ?? ''}改成精養區：泡本命液的布丁會慢慢升星`
+        : `${findZone(state, e.zone)?.shortName ?? ''}改回量產`);
+      break;
     case 'sell':
       sfx.coin(0.26);
       hud.toast(`賣給商店，+${e.coins}`);
@@ -503,15 +559,15 @@ function handle(e: SimEvent) {
       // D57 起線上自己走，出爐一律是 auto；離線那幾百盤在 drainEvents 就丟了，這裡一盤最多一則
       sfx.coin(0.32);
       // D60：看著工坊時是一張大字卡（同一幀好幾盤出爐合併成一張）；在農場就只給一則 toast
-      if (view === 'bakery') hud.bakeBanner(SPECIES[e.species].dessert, e.qty);
-      else hud.toast(`出爐！${SPECIES[e.species].dessert} ×${e.qty} 放進成品櫃`);
+      if (view === 'bakery') hud.bakeBanner(dessertName(e.species), e.qty);
+      else hud.toast(`出爐！${dessertName(e.species)} ×${e.qty} 放進成品櫃`);
       break;
     case 'tierUp':
       sfx.coin(0.4);
       hud.toast(`${e.what}升上${MACHINE_TIER_NAMES[e.tier - 1]}級！機器前的星星換成${MACHINE_TIER_NAMES[e.tier - 1]}色`);
       break;
     case 'bakeFailed':
-      hud.toast(`${SPECIES[e.species].dessert}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);
+      hud.toast(`${dessertName(e.species)}失敗了 ${e.qty} 份（升級機器可以少失敗）`, true);
       break;
     case 'customer':
       // 客人演出只在看著工坊時播；離線結算的那幾百位早在 drainEvents 丟掉了
@@ -522,6 +578,30 @@ function handle(e: SimEvent) {
       break;
     case 'customerMissed':
       if (view === 'bakery') bakery.customerCame(null);
+      break;
+    // ── 常客（D66／D67）。離線那幾天的在 drainEvents 就丟了，回來看「歡迎回來」卡的摘要 ──
+    case 'regularVisit': {
+      const name = REGULARS[e.id].name;
+      if (view === 'bakery') {
+        bakery.regularCame(e.id, e.bought, e.dessert && dessertLook(e.dessert));
+        if (e.bought) sfx.coin(0.3);
+      } else {
+        hud.toast(e.bought && e.dessert ? `${name}來店裡買了 ★${e.star} ${dessertName(e.dessert)}，+${e.coins}` : `${name}來了，架上沒有想買的甜點`, !e.bought);
+      }
+      if (e.gift) hud.toast(e.gift === 'tonic' ? `${name}送你一瓶升星藥！（布丁卡裡用）` : `${name}送你幾份原料`);
+      break;
+    }
+    case 'regularUnlocked':
+      hud.toast(`新常客：${REGULARS[e.id].name}會來店裡（甜點店右邊的愛心鈕看口味）`);
+      break;
+    case 'regularOrder':
+      hud.toast(`${REGULARS[e.id].name}下了一張特別訂單（預訂單裡看）`);
+      break;
+    case 'hearts':
+      if (e.reached === 10) hud.toast(`${REGULARS[e.id].name} ♥10：故事完結章，招牌甜點上了菜單！`);
+      else if (e.reached === 2 || e.reached === 8) hud.toast(`${REGULARS[e.id].name} ♥${e.reached}：解鎖新的故事章節`);
+      else if (e.reached === 4) hud.toast(`${REGULARS[e.id].name} ♥4：之後來店會下特別訂單`);
+      else if (e.reached === 6) hud.toast(`${REGULARS[e.id].name} ♥6：之後買到有時會送禮`);
       break;
     case 'dayClosed':
       // 只會在「開著遊戲時剛好打烊」走到這裡（離線那 24 天的事件在 drainEvents 就丟了），
@@ -543,10 +623,10 @@ function handle(e: SimEvent) {
       hud.toast(`訂單成交，+${e.coins}`);
       break;
     case 'orderNew':
-      hud.toast(`新訂單：${SPECIES[e.species].dessert} × ${e.qty}`);
+      hud.toast(`新訂單：${dessertName(e.species)} × ${e.qty}`);
       break;
     case 'orderExpired':
-      hud.toast(`訂單過期了：${SPECIES[e.species].dessert}`, true);
+      hud.toast(`訂單過期了：${dessertName(e.species)}`, true);
       break;
     case 'buy':
       if (!e.auto) hud.toast(`購入${e.what}，−${e.cost}`);
@@ -601,7 +681,7 @@ function tapStation(id: StationId) {
   const b = state.bakery.stations[id].batch;
   if (b) {
     const left = Math.max(0, Math.ceil(state.bakery.stations[id].doneAt - state.time));
-    const what = SPECIES[b.species].dessert;
+    const what = dessertName(b.species);
     hud.toast(stationStatus(state, id) === 'working'
       ? `${STATIONS[id].name}正在${STATIONS[id].verb}${what}，再 ${left} 秒`
       : `${what}在${STATIONS[id].name}等下一台空出來`);
@@ -612,10 +692,13 @@ function tapStation(id: StationId) {
 
 /** 按了上架卻一份都沒擺上去的原因 */
 function shelfNothingReason(): string {
-  const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+  const total = totalStock(state, 'desserts');
   if (total === 0) return '成品櫃是空的：做完一盤甜點（裝飾台做完點一下）才有東西上架。';
-  const onShelf = SPECIES_IDS.reduce((n, id) => n + state.bakery.shelf[id], 0);
+  const onShelf = totalStock(state, 'shelf');
   if (onShelf >= BALANCE.bakery.shelfCap) return `展示架滿了（${BALANCE.bakery.shelfCap} 份），等客人買走再補。`;
+  // 招牌甜點（D68）不會自動上架：散客買不起，只替今天要來的主人留。成品櫃裡只剩它就講這個，不要說成「留給預訂單」
+  const onlySignatures = SIGNATURE_IDS.reduce((n, id) => n + stockOf(state, 'desserts', id), 0) === total;
+  if (onlySignatures) return '招牌甜點散客買不起，不會自動上架：主人今天要來會替他留一份，想現在擺就按那一列的「上架 1」。';
   return '成品櫃裡的甜點都留給預訂單了，交完訂單再上架。';
 }
 
@@ -651,7 +734,7 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
     // 點機器＝點 HUD 上那一站；點展示櫃／成品櫃＝上架
     raycaster.setFromCamera(pointer, bakery.camera);
     const hit = bakery.pick(raycaster);
-    if (hit === 'shelf' || hit === 'rack') hudActions.stockShelf();
+    if (hit === 'shelf' || hit === 'rack') hud.openShelf();
     else if (hit) tapStation(hit as StationId);
     return;
   }
@@ -662,6 +745,19 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
     const id = drops.idAt(hitDrop.instanceId);
     if (id) {
       report(pickDrop(state, id, world.emit));
+      return;
+    }
+  }
+
+  // 點布丁＝布丁卡（D70）：星級、照顧進度、搬家。instance 的順序跟這一幀 pool.add 的順序一樣（`poolIds`）
+  // InstancedMesh 的 raycast 先用包圍球篩，而包圍球只在第一次算、之後不會跟著 instance 矩陣更新——
+  // 布丁一直在跳，不重算的話點得到點不到看運氣。最多 16 個 instance，重算很便宜
+  if (pool?.body.visible) pool.body.computeBoundingSphere();
+  const hitPud = pool && pool.body.visible ? raycaster.intersectObject(pool.body, false)[0] : undefined;
+  if (hitPud && hitPud.instanceId !== undefined) {
+    const id = poolIds[hitPud.instanceId];
+    if (id) {
+      hud.openPudding(id);
       return;
     }
   }
@@ -1008,6 +1104,8 @@ const noPudding = params.get('noPudding') === '1';
 let creating = false;
 /** 所有布丁共用的 InstancedMesh（D41）；GLB 載好才有 */
 let pool: PuddingPool | null = null;
+/** 這一幀 pool 裡第 i 個 instance 是哪一隻布丁（點布丁開布丁卡用，D70） */
+const poolIds: string[] = [];
 /** 頭頂小圖示（D48）：想泡澡／幼布丁，取代原本左側的狀態卡 */
 const moodIcons = new MoodIcons();
 scene.add(moodIcons.mesh);
@@ -1042,6 +1140,17 @@ window.__lpg.bakery = bakery;
 window.__lpg.setView = (v: GameView) => setView(v);
 window.__lpg.sfx = sfx;
 window.__lpg.grantXp = (n) => grantXp(state, n, world.emit);
+window.__lpg.stock = {
+  of: (kind, id, star) => stockOf(state, kind, id as SpeciesId, star),
+  add: (kind, id, star, n) => addStock(state, kind, id as SpeciesId, star, n),
+  set: (kind, id, counts) => {
+    for (const star of STARS) {
+      const now = stockOf(state, kind, id as SpeciesId, star);
+      takeStock(state, kind, id as SpeciesId, star, now);
+      addStock(state, kind, id as SpeciesId, star, Math.max(0, Math.floor(counts[star - 1] ?? 0)));
+    }
+  },
+};
 window.__lpg.toScreen = (x, y, z) => {
   const { ox, oy } = activeOrigin();
   const v = new THREE.Vector3(ox + x, oy + y, z).project(camera);
@@ -1149,6 +1258,7 @@ function frame(dt: number, now: number) {
 
   pool?.begin();
   moodIcons.begin(dt);
+  poolIds.length = 0;
   for (const p of state.puddings) {
     const view = views.get(p.id);
     if (!view) continue;
@@ -1158,7 +1268,8 @@ function frame(dt: number, now: number) {
     const mood = puddingMood(p, state.time);
     view.update(p, dt, ox, oy, BASIN_SINK, mood);
     pool?.add(view);
-    moodIcons.add(view.root, mood, camera);
+    poolIds.push(p.id);
+    moodIcons.add(view.root, mood, camera, p.star);
   }
   pool?.commit();
   moodIcons.commit();
@@ -1182,6 +1293,8 @@ function frame(dt: number, now: number) {
   if (view === 'bakery') {
     hud.tags.update(state);
     bakery.sync(state, dt);
+    const rect = renderer.domElement.getBoundingClientRect();
+    hud.rtags.place(bakery.regularAnchors(), rect.width, rect.height);
     renderer.render(bakery.scene, bakery.camera);
   } else {
     controls.update();

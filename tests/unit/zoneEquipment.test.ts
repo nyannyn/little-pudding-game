@@ -80,7 +80,7 @@ describe('分區設備只作用在自己那一區', () => {
     const w = bothProducing((x) => { x.state.equipment[START_ZONE]!.collector = true; });
     expect(dropsIn(w.state, START_ZONE)).toHaveLength(0);
     expect(dropsIn(w.state, SECOND_CABINET).length).toBeGreaterThan(0);
-    expect(w.state.ingredients.caramel).toBeGreaterThan(0);
+    expect(w.state.ingredients.caramel.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
   });
 
   it('收集手：反過來裝在二號櫥窗，起始區的掉落物留在地上', () => {

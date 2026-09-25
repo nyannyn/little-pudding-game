@@ -31,14 +31,26 @@
 - **`window.__lpg.state` 已曝露真正的 `GameState`**（型別在 `src/debug/stats.ts` 宣告），e2e 全部靠讀它做斷言。`?fresh=1` 開新檔、`?seed=` 固定亂數、`?fastTime=N` 加速遊戲時間。
 - **啪嘰音效用 WebAudio 現場合成**（`src/scene/audio.ts`），沒有 mp3 資產；iOS 要在第一次 pointerdown/touchend 解鎖 AudioContext。
 
-## 破圖修正＋大改版需求（2026-09-25，分支 `fix/bakery-broken-art`，worktree `../lpg-wt-bakery-fix`，PR #32 待使用者同意 merge）
+## CP11 星級布丁與常客（2026-09-25，使用者「計劃開工 請一次完成一整個計劃」，分支 `feat/regulars`，worktree `../lpg-wt-regulars`，基底 `origin/docs/regulars-plan` 3b6555d＝PR #34 未 merge）
+
+- **狀態**：WP11-0～11-8 全部做完，**PR #35 已開、等使用者同意 merge**（PR 內含 #34 的計畫 commit）；詳細結果與校準紀錄在計畫檔 CP11「實作紀錄」表。8 小時離線結算桌機 511–545 ms → 547–602 ms（約 +10%）。
+- **待使用者**：①手機 v10 存檔碼（AC11-10 目前用 v10 程式自己玩出來的暫代夾具 `tests/fixtures/v10-save.*`）；②故事改稿（`docs/plans/regulars-stories.md` → `src/game/regularStories.ts`）；③AC11-16 手機簽核（只能在 merge 上線後看）；④AC11-12 剩兩條貼邊界沒過（seed 7 ★3 第 3 天、seed 99 企鵝郵差沒解鎖），要不要再調由使用者決定。
+- **校準後的數字（計畫原值不適用的原因：計畫估月玩家一天 8.75 遊戲小時，實測約 21）**：`starCare` [200, 480, 2880, 16000]、常客每 13 個營業日來一次（±2）、升星藥佔禮物 1/3、特別訂單 8 個營業日。
+- **新規則（量表逼出來的）**：今天要來的常客，架上符合他條件的那一份散客不拿（`heldForRegulars`）；生不出寶寶的提示講「到商店賣掉幾隻空出位子」。
+- **踩到的**：①`tools/check-negative-controls.mjs` 被 `import()` 就會真的跑，探結構別 import；②它的 AC2-9 早就空轉（`-t` 篩到 0 條＝exit 0 被當綠），已讓工具把「篩不到」當錯；③機械轉換測試時把 `star` 塞進了**舊格式存檔** literal，測舊檔的 literal 要保持舊形狀；④InstancedMesh 的 raycast 用第一次算的包圍球，點會動的東西前要 `computeBoundingSphere()`；⑤月玩家 bot 的策略會直接決定量到的節奏（精養區倒錯液體、住滿不賣、只做最貴的甜點都讓常客整個月沒進展）——量表不過先查 bot 再動數字。
+- **拋棄式 worktree**（收尾可刪）：`../lpg-wt-regulars-base`（基準樹，含未提交的量測腳本）、`../lpg-wt-cp11-nc`、`../lpg-wt-cp11-e2e`、`../lpg-wt-cp11-rules`（工人分支 `feat/regulars-rules`，已 merge 進 `feat/regulars`）。
+
+## 破圖修正＋大改版需求（2026-09-25，分支 `fix/bakery-broken-art`，worktree `../lpg-wt-bakery-fix`，PR #32 已上線）
 
 **使用者原話**：「破圖了，修好」（附菜單與甜點店截圖，手機 402px 寬）＋「希望可以由內部視角看外面甜點店而不是俯視視角，請參考我傳給你的圖片來製作開放式地圖」（附 Fae Farm 類戶外斜俯瞰小鎮圖）＋「參考 3D 商業模擬經營遊戲，從選址、裝潢店面到設計獨家咖啡配方一手包辦」＋「甜點店跟小布丁櫥窗全部改成程式化生成，有必要時請使用 Unreal／Unity／Godot」。
 
 - **破圖兩處（已修，PR #32）**：①頂列膠囊五位數時工坊第四顆整顆跑到齒輪與商店鈕底下（375px 農場也會，舊測試只測 320px＋小數字）；②菜單卡片圖示被商店卡 `.card .art .main { inset:10px }` 推出圓框 10px。修法：`chipNumber` 一萬以上寫「1.3萬」（無條件捨去）、兩畫面頂列都固定三顆（工坊不放原料總數）、440px 以下膠囊收窄但鈕維持 42px、`.rcard .art .main { inset:0 }`。證據：`cp3-hud-band` 六種寬度×兩畫面×兩組數字＋菜單圖示，負向對照三組紅過；整套 e2e 第一版 94 過 1 紅（cp5-tips 點第四顆，已改測試），受影響 4 支 41 條綠；vitest 265、build 綠。
+- **已上線（2026-09-25）**：使用者回「好 合併」，PR #32 squash merge，master＝`14055a3`（`ls-remote` 相符）；Pages workflow 綠；線上 bundle `index-DYmFS3h8.js` 含「萬」短寫、CSS 含 `max-width:439px`；`npm run smoke:live` 對線上全過。**待使用者**用手機看一次。
 - **大改版使用者已選（AskUserQuestion）**：視角＝**操控角色走動**；程式化生成＝**地圖與店面／櫥窗兩個都要**（種子決定、每個存檔不同）；第一批＝**選址（配地圖一起）**。
+- **方向改了（同日）**：使用者「改掉選址 跟我討論哪些是讓遊戲變得更有趣的機制」→「我希望更有養成、策略跟商業經營」→ 選定**星級布丁與常客**，要求「寫的龐大一點」。計畫寫進 `docs/plans/game-plan-v1.md`：設計節「星級布丁與常客」、決策 **D62–D72**、**CP11**（現況盤點、WP11-0～11-8、AC11-1～11-16）、派工表 27–35、風險 6 條；故事草稿 `docs/plans/regulars-stories.md`（8 位 × 3 章，待使用者改稿）。常客外觀用原創方塊動物（使用者給的《Crossy Road》角色圖只取風格，角色不能用），原型 `tools/proto-regulars/`（4 位＋地板 9 draw calls；截圖不進版控，用 `tools/proto-regulars/shot.mjs` 重拍）。未答三題採預設並已告知：★5 上限、沒買到不扣心、Claude 先寫故事。**CP11 待使用者核准才動 code**。
+- **盤點抓到的兩個交互作用（已寫進 D62／D66）**：①鮮奶酪系本命液＝牛奶＝繁殖，精養區不送走寶寶就會塞爆 → 精養區出生的一律送到別區；②一個營業日 20 分鐘、離線 8 小時＝24 天，常客若每 2 天來一次一晚就刷滿 → 改 8 天。
 - **引擎決定：留在 three.js**（理由：現有 TS 規則層、存檔 `migrate()`、存檔碼、e2e 全部要重寫；目標平台是 iPhone Safari＋GitHub Pages＋Expo WebView，換引擎風險大且程式化生成與角色走動 three.js 都做得到）。
-- **下一步**：寫計畫（改 `game-plan-v1.md` 設計表→派工拆解→現況盤點→驗收條件）給使用者核准才動 code。盤點要列：依賴現在鏡頭的 e2e（cp3-hud-band 投影、cp9 `stationNdc` 標籤、點擊射線）、draw calls ≤ 35、甜點店面數已超 50k。決策編號先查 origin/master 最大號（目前見到 D61）。
+- **下一步**：CP11 核准後從 WP11-0 基準線開始（開新分支，不要疊在 docs 分支上）。角色走動／程式化小鎮／程式化店面排到 CP12／CP13。盤點要列：依賴現在鏡頭的 e2e（cp3-hud-band 投影、cp9 `stationNdc` 標籤、點擊射線）、draw calls ≤ 35、甜點店面數已超 50k。決策編號先查 origin/master 最大號（目前見到 D61）。
 
 ## 一批一批做＋長線升級 D60–D61（2026-09-24，分支 `feat/machine-batch`，worktree `../lpg-wt-machine-batch`，計畫檔 CP10）
 

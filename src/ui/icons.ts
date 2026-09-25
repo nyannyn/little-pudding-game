@@ -182,3 +182,28 @@ export function cuteIcon(name: CuteIconName, cls = ''): string {
 export function icon(name: IconName, cls = ''): string {
   return `<span class="ic ${cls}">${ICONS[name]}</span>`;
 }
+
+const STAR_PATH = 'M12 2.8l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.6l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8Z';
+
+/**
+ * 一排星星（D62）：`n` 顆實心、`of - n` 顆空心（`of` 省略＝只畫實心的那幾顆）。
+ * 用 SVG 畫而不是「★」字元：空心／實心與描邊顏色要能控制，字元只能整顆換色。
+ */
+export function starsHtml(n: number, of = n, cls = ''): string {
+  const one = (on: boolean) =>
+    `<svg viewBox="0 0 24 24" aria-hidden="true" class="${on ? 'on' : 'off'}"><path d="${STAR_PATH}" fill="${on ? '#f7c95a' : 'none'}" stroke="${on ? '#d9a02f' : '#c2ad8f'}" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  let s = '';
+  for (let i = 0; i < of; i++) s += one(i < n);
+  return `<span class="stars ${cls}" role="img" aria-label="${n} 星">${s}</span>`;
+}
+
+/** 愛心（常客好感，D67）：實心 `n` 顆、空心 `of - n` 顆 */
+export function heartsHtml(n: number, of: number): string {
+  const path = 'M12 20.2c-4.8-3-8.2-6.2-8.2-9.8a4.2 4.2 0 0 1 8.2-1.3 4.2 4.2 0 0 1 8.2 1.3c0 3.6-3.4 6.8-8.2 9.8Z';
+  let s = '';
+  for (let i = 0; i < of; i++) {
+    const on = i < n;
+    s += `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}" fill="${on ? '#ec5a63' : 'none'}" stroke="${on ? '#c2394a' : '#dcc3a0'}" stroke-width="1.8"/></svg>`;
+  }
+  return `<span class="hearts" role="img" aria-label="好感 ${n}／${of}">${s}</span>`;
+}

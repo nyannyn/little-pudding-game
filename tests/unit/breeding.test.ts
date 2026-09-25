@@ -470,10 +470,10 @@ describe('繁殖後的布丁仍照既有規則生活', () => {
     w.state.puddings = [child];
     w.state.drops = [];
     w.state.equipment[w.state.activeZone]!.collector = true;
-    const before = w.state.ingredients[child.species];
+    const before = w.state.ingredients[child.species].reduce((a, b) => a + b, 0);
     const t = advanceUntil(
       w,
-      (x) => x.state.ingredients[child.species] > before,
+      (x) => x.state.ingredients[child.species].reduce((a, b) => a + b, 0) > before,
       BALANCE.dropIntervalSec * 20,
     );
     expect(t).toBeGreaterThanOrEqual(0);

@@ -20,7 +20,8 @@ await summary(page, 'A 全自動 5 分鐘後');
 await shot(page, 'mid-A2-automated');
 
 // B. 三區全開，鏡頭跟著走；拉遠到上限
-await page.evaluate(() => { const s = window.__lpg.state; s.coins = 5000; s.equipment[s.activeZone].restock = true; });
+// 三區共 500＋2000＋5000＝7500（區價調過之後這裡一直只給 5000，第三區解不開）
+await page.evaluate(() => { const s = window.__lpg.state; s.coins = 9000; s.equipment[s.activeZone].restock = true; });
 for (const [i, zone] of ['c0t2', 'c0t0', 'c1t1'].entries()) {
   await tap(page, '商店'); await shopTab(page, 'zone'); await page.locator(`[data-a="unlockZone"][data-arg="${zone}"]`).click(); await tap(page, '關閉');
   await page.waitForTimeout(1800);

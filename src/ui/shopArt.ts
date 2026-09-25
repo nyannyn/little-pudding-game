@@ -41,7 +41,7 @@ import store from '../assets/shop/store.webp';
 import strawberry from '../assets/shop/strawberry.webp';
 import window from '../assets/shop/window.webp';
 import type { EquipmentId } from '../game/balance';
-import type { PantryId, StationId } from '../game/recipes';
+import { RECIPES, isSignature, type DessertId, type PantryId, type StationId } from '../game/recipes';
 import type { ShopEntry } from '../game/shop';
 import type { LiquidId, SpeciesId } from '../game/species';
 
@@ -111,3 +111,9 @@ export function furnitureArt(kind: 'basin' | 'equipment', id: EquipmentId | Liqu
 
 /** 給 service worker 暖快取用：離線第一次開商店也要有圖 */
 export const SHOP_ART_URLS: string[] = Object.values(ART);
+
+/** 甜點的圖（D68）：物種甜點＝它的原料圖；招牌甜點＝主料的圖＋角落一顆星 */
+export function dessertArt(id: DessertId): ArtSpec {
+  const base = INGREDIENT_ART[RECIPES[id].species];
+  return isSignature(id) ? { main: base.main, corner: 'star' } : base;
+}

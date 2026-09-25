@@ -25,7 +25,7 @@ test('每一頁的商品卡都有載入成功的圖；鎖住的卡只有 Lv 牌�
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     s.coins = 500;
-    s.ingredients.caramel = 2;
+    s.ingredients.caramel = [2, 0, 0, 0, 0];
   });
   await page.getByRole('button', { name: '商店' }).click();
   await expect(page.locator('.sheet')).toBeVisible();

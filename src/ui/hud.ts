@@ -1,7 +1,8 @@
 import './hud.css';
 import { claimableCount, type AchievementCategory } from '../game/achievements';
 import { AchievementSheet } from './achievements';
-import { batchesOnLine, clockText, dayClock, reservedForOrders, shelfCount, type StationId } from '../game/bakery';
+import { batchesOnLine, clockText, dayClock, orderHave, shelfCount, spareDesserts, type StationId } from '../game/bakery';
+import { STARS, clampStar, totalStock, type Star } from '../game/stock';
 import { BALANCE, type EquipmentId } from '../game/balance';
 import { levelFor } from '../game/level';
 import {
@@ -20,6 +21,12 @@ import {
   recipeBlockers,
   recipeMaterials,
   recipeSeconds,
+  starsAffordable,
+  DESSERT_IDS,
+  dessertName,
+  recipeMinStar,
+  recipeUnlocked,
+  type DessertId,
   type PantryId,
 } from '../game/recipes';
 import { SPECIES, SPECIES_IDS, type LiquidId, type SpeciesId } from '../game/species';
@@ -30,8 +37,13 @@ import { dismissHomeScreenTip } from './homeScreen';
 import { cuteIcon, icon, type CuteIconName } from './icons';
 import { ShopView, type ShopPage } from './shop';
 import { StationTags } from './stationTags';
+import { PuddingCard } from './puddingCard';
+import { ShelfCard } from './shelfCard';
+import { RegularsCard } from './regularsCard';
+import { RegularTags } from './regularTags';
+import { REGULARS, unreadStories, type RegularId } from '../game/regulars';
 import { artHtml } from './shop';
-import { INGREDIENT_ART } from './shopArt';
+import { INGREDIENT_ART, dessertArt } from './shopArt';
 import { storageZoneLabel, storedRows, type StorageRow } from './storage';
 
 export type GameView = 'farm' | 'bakery';
@@ -41,8 +53,18 @@ export interface HudActions {
   pickAll(): void;
   /** 切換農場／甜點工坊（D51：兩個獨立場景） */
   setView(view: GameView): void;
-  /** 從菜單把一盤放上流水線（D56；之後自己一站一站走完）；份數由玩家在菜單上疊（D60） */
-  startBatch(species: SpeciesId, qty: number): void;
+  /** 從菜單把一盤放上流水線（D56；之後自己一站一站走完）；份數由玩家在菜單上疊（D60）、星級在分頁選（D64） */
+  startBatch(species: DessertId, qty: number, star: Star): void;
+  /** 上架卡的「上架 1」（D70） */
+  shelfOne(id: SpeciesId, star: Star): void;
+  /** 布丁卡（D70）：搬家、升星藥、賣掉這一隻 */
+  movePudding(puddingId: string, zoneId: string): void;
+  useTonic(puddingId: string): void;
+  sellPuddingById(puddingId: string): void;
+  /** 櫥窗切量產／精養（D62） */
+  setZoneMode(zoneId: string, mode: 'mass' | 'elite'): void;
+  /** 名冊裡點開一章故事（記成看過，D67） */
+  readStory(id: RegularId, chapter: number): void;
   /** 升店面人氣一級（D61） */
   buyFame(): void;
   /** 買工坊機器或升一級（D57） */
@@ -57,7 +79,8 @@ export interface HudActions {
   /** 賣一隻這個物種的成年布丁（D53） */
   sellPudding(species: SpeciesId): void;
   fulfill(orderId: string): void;
-  sellIngredients(species: SpeciesId): void;
+  /** 賣掉某一星的全部原料（D64：分星賣） */
+  sellIngredients(species: SpeciesId, star: Star): void;
   sellEggs(): void;
   buyStock(liquid: LiquidId, qty: number): void;
   buyEquipment(id: EquipmentId): void;
@@ -92,7 +115,7 @@ const el = (html: string): HTMLElement => {
 
 /** 成品櫃裡「可以上架」的份數：扣掉預訂單要留的，再受展示架剩餘空位限制 */
 function shelvable(s: GameState): number {
-  const spare = SPECIES_IDS.reduce((n, id) => n + Math.max(0, s.desserts[id] - reservedForOrders(s, id)), 0);
+  const spare = DESSERT_IDS.reduce((n, id) => n + spareDesserts(s, id).reduce((a, b) => a + b, 0), 0);
   return Math.min(spare, BALANCE.bakery.shelfCap - shelfCount(s));
 }
 /**
@@ -109,10 +132,10 @@ export function chipNumber(n: number): string {
 }
 
 function totalDesserts(s: GameState): number {
-  return SPECIES_IDS.reduce((n, id) => n + s.desserts[id], 0);
+  return totalStock(s, 'desserts');
 }
 function totalIngredients(s: GameState): number {
-  return SPECIES_IDS.reduce((n, id) => n + s.ingredients[id], 0);
+  return totalStock(s, 'ingredients');
 }
 
 /** 點頂列數字時小布丁講的話。用玩家的語言講「這個數字怎麼變多、拿來做什麼」，不是名詞解釋 */
@@ -150,13 +173,22 @@ export class Hud {
    * 菜單上正在疊的那一盤（D60）：點卡片 ＋1 份，按「開始製作」才扣材料。
    * 只存在 HUD、不進 `GameState`——關掉菜單就清掉，所以不用 migrate、也不會有「半盤」卡在存檔裡。
    */
-  private draft: { id: SpeciesId; qty: number } | null = null;
+  private draft: { id: DessertId; qty: number; star: Star } | null = null;
+  /** 菜單每道甜點目前選的星級分頁（D70；只存在 HUD，關菜單不清——下次打開還停在同一頁） */
+  private menuStar = new Map<DessertId, Star>();
+  /** 布丁卡與上架卡（D70） */
+  private readonly pudCard = new PuddingCard();
+  private readonly shelfCard = new ShelfCard();
+  private readonly regCard = new RegularsCard();
+  /** 常客頭上的名字泡泡（D70）；main.ts 每幀給位置 */
+  readonly rtags = new RegularTags();
+  private readonly regBadge: HTMLElement;
   /** 出爐字卡（D60）：同一幀的幾盤先累加在這裡 */
   private readonly bakePending = new Map<string, number>();
   private readonly bakeCard: HTMLElement;
   private bakeTimer = 0;
   /** 每道甜點這一盤最多幾份（syncMenu 算好，點擊時用；點擊處理拿不到 state） */
-  private menuMax = new Map<SpeciesId, number>();
+  private menuMax = new Map<DessertId, number>();
   private view: GameView = 'farm';
   private readonly shop = new ShopView();
   /** 工坊機器頭上的標籤；main.ts 給位置、每幀更新 */
@@ -211,6 +243,7 @@ export class Hud {
         <div class="zones" hidden>
           <button data-a="zoneStep" data-arg="-1" aria-label="上一個櫥窗">&#8249;</button>
           <span class="name"></span>
+          <button class="mode" data-a="zoneMode" aria-label="切換量產／精養">量產</button>
           <button data-a="zoneStep" data-arg="1" aria-label="下一個櫥窗">&#8250;</button>
         </div>
         <div class="daybar bakery-only">
@@ -222,6 +255,7 @@ export class Hud {
         <div class="rightcol">
           <button class="iconbtn achbtn" data-a="achievements" aria-label="成就">${icon('trophy')}<i class="badge" hidden></i></button>
           <button class="iconbtn ordbtn bakery-only" data-a="openOrders" aria-label="預訂單">${icon('order')}<i class="badge" hidden></i></button>
+          <button class="iconbtn regbtn bakery-only" data-a="openRegulars" aria-label="常客">${cuteIcon('heart')}<i class="badge" hidden></i></button>
         </div>
         <div class="dock">
           <div class="line farm-only" data-k="pour"></div>
@@ -334,6 +368,11 @@ export class Hud {
     // 商店抽屜疊在歡迎卡下面、其他 HUD 上面
     this.root.insertBefore(this.shop.root, this.root.querySelector('.welcome'));
     this.root.insertBefore(this.ach.root, this.root.querySelector('.welcome'));
+    this.root.appendChild(this.pudCard.root);
+    this.root.appendChild(this.shelfCard.root);
+    this.root.appendChild(this.regCard.root);
+    // 名字泡泡跟底座牌一樣墊在最底下
+    this.root.insertBefore(this.rtags.root, this.root.firstChild);
     parent.appendChild(this.root);
 
     const q = <T extends HTMLElement>(sel: string): T => this.root.querySelector(sel) as T;
@@ -356,6 +395,7 @@ export class Hud {
     this.welcome = q('.welcome:not(.a2hs):not(.glcard):not(.savecard):not(.storecard):not(.confirmcard):not(.menucard):not(.ordercard)');
     this.orderCard = q('.ordercard');
     this.ordBadge = q('.ordbtn .badge');
+    this.regBadge = q('.regbtn .badge');
     this.storeCard = q('.storecard');
     this.editBar = q('.editbar');
     this.confirmCard = q('.confirmcard');
@@ -389,23 +429,85 @@ export class Hud {
       case 'goBakery': this.act.setView('bakery'); break;
       case 'goFarm': this.act.setView('farm'); break;
       case 'openMenu': this.openMenu(); break;
-      case 'addPortion': this.addPortion(arg as SpeciesId, +1); break;
-      case 'portionMinus': this.addPortion(arg as SpeciesId, -1); break;
-      case 'portionMax': this.addPortion(arg as SpeciesId, Infinity); break;
+      case 'addPortion': this.addPortion(arg as DessertId, +1); break;
+      case 'portionMinus': this.addPortion(arg as DessertId, -1); break;
+      case 'portionMax': this.addPortion(arg as DessertId, Infinity); break;
       case 'startBatch': {
         const d = this.draft;
         if (!d || d.id !== arg || d.qty < 1) break;
         this.menuCard.hidden = true;
         this.draft = null;
-        this.act.startBatch(d.id, d.qty);
+        this.act.startBatch(d.id, d.qty, d.star);
         break;
       }
+      case 'menuStar': {
+        // 換星級分頁：那一道的草稿歸零（份數上限看的是那一星的原料，沿用舊份數會超過上限）
+        const [sp, st] = arg.split(':');
+        const id = sp as DessertId;
+        this.menuStar.set(id, clampStar(Number(st)));
+        if (this.draft?.id === id) this.draft = null;
+        this.menuSig = '';
+        this.lastRefresh = -1;
+        e.stopPropagation();
+        break;
+      }
+      case 'closePud': this.pudCard.close(); break;
+      case 'movePud': {
+        const id = this.pudCard.openId;
+        if (id) this.act.movePudding(id, arg);
+        this.lastRefresh = -1;
+        break;
+      }
+      case 'useTonic': {
+        const id = this.pudCard.openId;
+        if (id) this.act.useTonic(id);
+        this.lastRefresh = -1;
+        break;
+      }
+      case 'sellThisPud': {
+        const id = this.pudCard.openId;
+        if (id) this.act.sellPuddingById(id);
+        this.lastRefresh = -1;
+        break;
+      }
+      case 'zoneMode': {
+        const z = this.last?.zones.find((x) => x.id === this.activeZone);
+        if (!z) break;
+        if (z.mode === 'elite') {
+          this.act.setZoneMode(z.id, 'mass');
+          break;
+        }
+        this.confirm(
+          '切成精養區',
+          `${z.shortName}最多住 ${BALANCE.eliteCapacity} 隻，只有精養區的布丁會長星；這區泡牛奶澡生的寶寶會送到別的櫥窗。`,
+          '切成精養',
+          () => this.act.setZoneMode(z.id, 'elite'),
+        );
+        break;
+      }
+      case 'shelfAll': this.act.stockShelf(); this.lastRefresh = -1; break;
+      case 'shelfOne': {
+        const [sp, st] = arg.split(':');
+        this.act.shelfOne(sp as SpeciesId, clampStar(Number(st)));
+        this.lastRefresh = -1;
+        break;
+      }
+      case 'closeShelf': this.shelfCard.close(); break;
+      case 'openRegulars': this.regCard.open(); this.lastRefresh = -1; break;
+      case 'closeRegulars': this.regCard.close(); break;
+      case 'readStory': {
+        const [id, ch] = arg.split(':');
+        this.act.readStory(id as RegularId, Number(ch));
+        this.regCard.showStory(id as RegularId, Number(ch));
+        break;
+      }
+      case 'storyBack': this.regCard.backToList(); this.lastRefresh = -1; break;
       case 'closeMenu': this.menuCard.hidden = true; this.draft = null; break;
       case 'buyMachine': this.act.buyMachine(arg as StationId); break;
       case 'buyFame': this.act.buyFame(); break;
       case 'stationTag': this.act.stationTag(arg as StationId); break;
       case 'buyPantry': this.act.buyPantry(arg as PantryId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
-      case 'stockShelf': this.act.stockShelf(); break;
+      case 'stockShelf': this.openShelf(); break;
       case 'achievements':
         // 兩張底部抽屜疊在一起會只看得到上面那張：開成就就把商店收起來
         if (this.shop.open) this.toggleShop(false);
@@ -428,7 +530,11 @@ export class Hud {
         break;
       case 'sellPud': this.act.sellPudding(arg as SpeciesId); break;
       case 'fulfill': this.act.fulfill(arg); break;
-      case 'sellIng': this.act.sellIngredients(arg as SpeciesId); break;
+      case 'sellIng': {
+        const [sp, st] = (arg ?? '').split(':');
+        this.act.sellIngredients(sp as SpeciesId, clampStar(Number(st)));
+        break;
+      }
       case 'sellEggs': this.act.sellEggs(); break;
       case 'buyStock': this.act.buyStock(arg as LiquidId, Number(target.dataset.qty) || BALANCE.stockBuyQty); break;
       case 'buyEquip': this.act.buyEquipment(arg as EquipmentId); break;
@@ -507,6 +613,29 @@ export class Hud {
         break;
       }
     }
+  }
+
+  /** 布丁卡（main.ts 點到布丁時呼叫） */
+  openPudding(id: string) {
+    this.pudCard.open(id);
+    this.lastRefresh = -1;
+  }
+
+  /** 上架卡（工坊的「上架」鈕、點展示櫃／成品櫃都走這裡） */
+  openShelf() {
+    this.shelfCard.open();
+    this.lastRefresh = -1;
+  }
+
+  /** 通用確認卡（倉庫「倒掉並收起」那張的同一個殼） */
+  confirm(title: string, text: string, yes: string, onYes: () => void) {
+    (this.confirmCard.querySelector('h2') as HTMLElement).textContent = title;
+    (this.confirmCard.querySelector('p') as HTMLElement).textContent = text;
+    const btn = this.confirmCard.querySelector('[data-a="confirmYes"]') as HTMLElement;
+    btn.textContent = yes;
+    btn.classList.toggle('danger', false);
+    this.onConfirm = onYes;
+    this.confirmCard.hidden = false;
   }
 
   /** 在已解鎖的分區之間循環切換（只有一區時整條列會藏起來） */
@@ -667,6 +796,13 @@ export class Hud {
     this.achBadge.textContent = String(claimable);
     if (this.ach.open) this.ach.render(state);
     if (!this.menuCard.hidden) this.syncMenu(state);
+    this.pudCard.sync(state);
+    this.shelfCard.sync(state);
+    this.regCard.sync(state);
+    // 名冊鈕的徽章：還沒看的故事章數
+    const unread = unreadStories(state);
+    this.regBadge.hidden = unread === 0;
+    this.regBadge.textContent = String(unread);
 
     this.shopLvl.textContent = `Lv.${levelFor(state.xp)}`;
     this.syncHint(state, nowMs);
@@ -680,6 +816,10 @@ export class Hud {
     this.root.dataset.view = view;
     this.menuCard.hidden = true;
     this.orderCard.hidden = true;
+    this.shelfCard.close();
+    this.pudCard.close();
+    this.regCard.close();
+    if (view !== 'bakery') this.rtags.hide();
     this.lastRefresh = -1;
   }
 
@@ -706,7 +846,7 @@ export class Hud {
     (this.dayBar.querySelector('.onl') as HTMLElement).textContent = onLine ? `流水線上 ${onLine} 盤` : '';
 
     // 菜單鈕的徽章：現在就能開工的甜點有幾道
-    const startable = SPECIES_IDS.filter((id) => canStartRecipe(state, id)).length;
+    const startable = DESSERT_IDS.filter((id) => starsAffordable(state, id).some((st) => canStartRecipe(state, id, st))).length;
     (this.root.querySelector('[data-a="openMenu"] .n') as HTMLElement).textContent = startable ? String(startable) : '';
     const shelf = shelvable(state);
     this.btnShelf.disabled = shelf <= 0;
@@ -717,12 +857,12 @@ export class Hud {
    * 疊份數（D60）：`delta` ＋1／－1，Infinity＝直接疊到最多。換點別道＝那一道從 1 份起（草稿一次只有一盤）。
    * 上限＝`maxBatch`（這條線最低那台的上限、材料夠做幾份取小），疊到頂就停在頂、不跳錯誤。
    */
-  private addPortion(id: SpeciesId, delta: number) {
+  private addPortion(id: DessertId, delta: number) {
     const max = this.menuMax.get(id) ?? 0;
     if (max <= 0) return;
     const cur = this.draft?.id === id ? this.draft.qty : 0;
     const next = delta === Infinity ? max : Math.max(0, Math.min(max, cur + delta));
-    this.draft = next > 0 ? { id, qty: next } : null;
+    this.draft = next > 0 ? { id, qty: next, star: this.menuStar.get(id) ?? recipeMinStar(id) } : null;
     if (delta > 0 && cur === max) {
       // 已經疊到頂：卡片上的數字抖一下，講清楚為什麼沒有再多
       const q = this.menuCard.querySelector<HTMLElement>(`.rcard[data-id="${id}"] .qty`);
@@ -736,10 +876,10 @@ export class Hud {
   /** 草稿的數字就地改（不重建卡片：連點的時候手指底下的節點不能被換掉，D55 的教訓） */
   private paintDraft() {
     for (const card of this.menuCard.querySelectorAll<HTMLElement>('.rcard')) {
-      const id = card.dataset.id as SpeciesId;
+      const id = card.dataset.id as DessertId;
       const max = this.menuMax.get(id) ?? 0;
       const qty = this.draft?.id === id ? Math.min(this.draft.qty, max) : 0;
-      if (this.draft?.id === id && qty !== this.draft.qty) this.draft = qty > 0 ? { id, qty } : null;
+      if (this.draft?.id === id && qty !== this.draft.qty) this.draft = qty > 0 ? { id, qty, star: this.draft.star } : null;
       card.classList.toggle('picked', qty > 0);
       const q = card.querySelector<HTMLElement>('.qty b');
       if (!q) continue;
@@ -763,11 +903,17 @@ export class Hud {
    * 手指底下的按鈕會被換掉（D55 的教訓）。所以缺料那行只寫材料名，數字在晶片上。
    */
   private syncMenu(state: GameState) {
-    const rows = SPECIES_IDS.map((id) => {
-      const b = recipeBlockers(state, id);
-      return { id, ok: canStartRecipe(state, id), lines: blockerLines(b, false), qty: linePortions(state, id), fail: lineFailRate(state, id), secs: Math.round(recipeSeconds(state, id)) };
+    // 招牌甜點（D68）：那位常客 ♥10 才出現在菜單上
+    const rows = DESSERT_IDS.filter((id) => recipeUnlocked(state, id)).map((id) => {
+      // 星級分頁（D70）：只亮有原料的星級；選的那一星用完了就退回最低的那一星
+      const avail = starsAffordable(state, id);
+      let star = this.menuStar.get(id) ?? avail[0] ?? recipeMinStar(id);
+      if (!avail.includes(star) && avail.length) star = avail[0]!;
+      this.menuStar.set(id, star);
+      const b = recipeBlockers(state, id, star);
+      return { id, star, ok: canStartRecipe(state, id, star), lines: blockerLines(b, false), qty: linePortions(state, id), fail: lineFailRate(state, id), secs: Math.round(recipeSeconds(state, id)) };
     });
-    for (const r of rows) this.menuMax.set(r.id, r.ok ? maxBatch(state, r.id) : 0);
+    for (const r of rows) this.menuMax.set(r.id, r.ok ? maxBatch(state, r.id, r.star) : 0);
     const sig = JSON.stringify(rows);
     if (sig !== this.menuSig) {
       this.menuSig = sig;
@@ -775,7 +921,6 @@ export class Hud {
       const scroll = list.scrollTop;
       list.innerHTML = rows
         .map(({ id, ok, lines, qty, fail, secs }) => {
-          const info = SPECIES[id];
           const r = RECIPES[id];
           const time = secs >= 60 ? `${Math.floor(secs / 60)} 分 ${secs % 60} 秒` : `${secs} 秒`;
           // 晶片寫「一份要幾個」：份數由玩家疊（D60），夠 1 份就開得了工
@@ -790,12 +935,14 @@ export class Hud {
                 <button class="buy" data-a="startBatch" data-arg="${id}" disabled>點卡片加份數</button>
               </div>`
             : '';
+          const tabs = STARS.map((s) => `<button class="st" data-a="menuStar" data-arg="${id}:${s}" aria-label="用 ${s} 星原料">★${s}</button>`).join('');
           return `<div class="rcard" data-id="${id}" data-ok="${ok}"${ok ? ` data-a="addPortion" data-arg="${id}"` : ''}>
             <div class="rhead">
-              ${artHtml(INGREDIENT_ART[id])}
-              <div class="txt"><b>${info.dessert}</b><small>${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
+              ${artHtml(dessertArt(id))}
+              <div class="txt"><b>${dessertName(id)}</b><small>${r.owner ? `${REGULARS[r.owner].name}的招牌・散客不買・` : ''}${r.route.map((st) => STATIONS[st].name).join(' → ')}</small></div>
               <span class="price">${dessertPrice(id)}</span>
             </div>
+            <div class="stabs">${tabs}<small>${r.owner ? '散客不買' : `散客只付到 ★${BALANCE.walkInStarCap}`}</small></div>
             <div class="meta"><span>總時長 ${time}</span><span>失敗率 ${Math.round(fail * 1000) / 10}%</span><span>${qty > 0 ? `機器一盤最多 ${qty} 份` : '還沒有機器'}</span></div>
             <div class="mats">${mats}</div>
             ${lines.map((t) => `<p class="miss">${t}</p>`).join('')}
@@ -805,10 +952,21 @@ export class Hud {
         .join('');
       list.scrollTop = scroll;
     }
-    for (const m of this.menuCard.querySelectorAll<HTMLElement>('.mat')) {
-      const have = materialHave(state, m.dataset.k as never);
-      (m.querySelector('b') as HTMLElement).textContent = String(have);
-      m.classList.toggle('short', have < Number(m.dataset.need));
+    for (const card of this.menuCard.querySelectorAll<HTMLElement>('.rcard')) {
+      const id = card.dataset.id as DessertId;
+      const star = this.menuStar.get(id) ?? recipeMinStar(id);
+      const avail = starsAffordable(state, id);
+      for (const t of card.querySelectorAll<HTMLButtonElement>('.stabs .st')) {
+        const s = clampStar(Number(t.dataset.arg?.split(':')[1]));
+        t.disabled = !avail.includes(s);
+        t.setAttribute('aria-selected', String(s === star));
+      }
+      (card.querySelector('.price') as HTMLElement).textContent = String(dessertPrice(id, star));
+      for (const m of card.querySelectorAll<HTMLElement>('.mat')) {
+        const have = materialHave(state, m.dataset.k as never, star);
+        (m.querySelector('b') as HTMLElement).textContent = String(have);
+        m.classList.toggle('short', have < Number(m.dataset.need));
+      }
     }
     this.paintDraft();
   }
@@ -915,7 +1073,11 @@ export class Hud {
     if (list.length < 2) return;
     const z = list.find((q) => q.id === state.activeZone);
     const n = z ? puddingsIn(state, z.id).length : 0;
-    (this.zonesBar.querySelector('.name') as HTMLElement).textContent = z ? `${z.shortName}・${n} 隻` : '';
+    const elite = z?.mode === 'elite';
+    (this.zonesBar.querySelector('.name') as HTMLElement).textContent = z ? (elite ? `${z.shortName}・${n}／${BALANCE.eliteCapacity} 隻` : `${z.shortName}・${n} 隻`) : '';
+    const mode = this.zonesBar.querySelector('.mode') as HTMLElement;
+    mode.textContent = elite ? '精養' : '量產';
+    mode.classList.toggle('elite', elite);
   }
 
   private syncPourButtons(state: GameState) {
@@ -944,7 +1106,7 @@ export class Hud {
 
   private syncOrders(state: GameState) {
     const live = state.orders.filter((o) => o.expiresAt > state.time);
-    const ready = live.filter((o) => state.desserts[o.species] + state.bakery.shelf[o.species] >= o.qty).length;
+    const ready = live.filter((o) => orderHave(state, o) >= o.qty).length;
     // 徽章：有交得出來的就顯示可交的張數（綠），否則顯示張數
     this.ordBadge.hidden = live.length === 0;
     this.ordBadge.textContent = String(ready || live.length);
@@ -956,8 +1118,10 @@ export class Hud {
       this.ordersBox.innerHTML = state.orders
         .map((o) => {
           const info = SPECIES[o.species];
-          return `<div class="order" data-id="${o.id}">
-            <div class="t" data-a="tip" data-arg="order"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
+          // 常客的特別訂單（D67）：寫是誰訂的、最低幾星
+          const who = o.regularId ? `<span class="who">${REGULARS[o.regularId].name}・★${o.star ?? 1} 以上</span>` : '';
+          return `<div class="order${o.regularId ? ' special' : ''}" data-id="${o.id}">
+            ${who}<div class="t" data-a="tip" data-arg="order"><span>${info.dessert} ×${o.qty}</span><span class="sub">${o.price}</span></div>
             <button class="buy" data-a="fulfill" data-arg="${o.id}">交貨</button>
             <div class="clock"><i></i></div>
           </div>`;
@@ -968,8 +1132,8 @@ export class Hud {
       const card = this.ordersBox.querySelector(`[data-id="${o.id}"]`);
       if (!card) continue;
       const btn = card.querySelector('button') as HTMLButtonElement;
-      btn.disabled = state.desserts[o.species] + state.bakery.shelf[o.species] < o.qty;
-      const left = Math.max(0, (o.expiresAt - state.time) / BALANCE.orderTtlSec);
+      btn.disabled = orderHave(state, o) < o.qty;
+      const left = Math.max(0, (o.expiresAt - state.time) / Math.max(1, o.expiresAt - o.createdAt));
       (card.querySelector('.clock > i') as HTMLElement).style.width = `${Math.round(left * 100)}%`;
     }
   }

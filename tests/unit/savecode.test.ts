@@ -9,8 +9,8 @@ function played(): GameState {
   s.xp = 560;
   s.eggs = 7;
   s.stock.caramel = 42;
-  s.ingredients.matcha = 3;
-  s.desserts.strawberry = 2;
+  s.ingredients.matcha = [3, 0, 0, 0, 0];
+  s.desserts.strawberry = [2, 0, 0, 0, 0];
   s.stats = { ...zeroStats(), baths: 11, sold: 9, mutations: 1, picked: 30, crafted: 6, births: 2, baked: 4, served: 3 };
   s.time = 3600;
   return s;
@@ -26,8 +26,8 @@ describe('D37 存檔碼', () => {
     expect(after!.xp).toBe(560);
     expect(after!.eggs).toBe(7);
     expect(after!.stock.caramel).toBe(42);
-    expect(after!.ingredients.matcha).toBe(3);
-    expect(after!.desserts.strawberry).toBe(2);
+    expect(after!.ingredients.matcha.reduce((a, b) => a + b, 0)).toBe(3);
+    expect(after!.desserts.strawberry.reduce((a, b) => a + b, 0)).toBe(2);
     expect(after!.stats).toEqual(before.stats);
     expect(after!.puddings.length).toBe(before.puddings.length);
     expect(after!.puddings.map((p) => p.species)).toEqual(before.puddings.map((p) => p.species));

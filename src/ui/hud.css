@@ -1235,3 +1235,117 @@
 .stag[data-tier="2"] { box-shadow: inset 3px 0 0 #c98a55; }
 .stag[data-tier="3"] { box-shadow: inset 3px 0 0 #aab4c2; }
 .stag[data-tier="4"] { box-shadow: inset 3px 0 0 #f1c24b; }
+
+/* ── CP11 星級布丁與常客（D62–D70，2026-09-25）────────────── */
+.stars { display: inline-flex; gap: 1px; vertical-align: middle; }
+.stars svg { width: 16px; height: 16px; }
+.stars.sm svg { width: 12px; height: 12px; }
+.hearts { display: inline-flex; gap: 0; flex-wrap: nowrap; }
+.hearts svg { width: 12px; height: 12px; }
+
+/* 櫥窗名牌旁的量產／精養切換 */
+.hud .zones button.mode {
+  font-size: 11px; font-weight: 700; min-height: 26px; padding: 0 7px; margin: 0 2px;
+  border-radius: 999px; background: rgba(255, 255, 255, 0.18); border: 1.5px solid rgba(255, 246, 227, 0.6);
+}
+.hud .zones button.mode.elite { background: #f7c95a; color: #6b3f14; border-color: #fff3c4; text-shadow: none; }
+
+/* 布丁卡 */
+.pudcard .card { box-sizing: border-box; width: 100%; max-width: 340px; text-align: left; }
+.pudcard .phead { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.pudcard .phead .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pudcard .phead h2 { margin: 0; }
+.pudcard .art { position: relative; width: 48px; height: 48px; flex: none; margin: 0; border-radius: 14px; }
+.pudcard .art .main { inset: 0; width: 48px; height: 48px; object-fit: contain; }
+.pudcard .art .corner { position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; }
+.pudcard .pline { margin: 0 0 6px; font-size: 12.5px; }
+.pudcard .care { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pudcard .care .bar { flex: 1; height: 9px; border-radius: 5px; background: var(--paper-3); overflow: hidden; }
+.pudcard .care .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(#ffe08a, var(--yellow)); }
+.pudcard .care .bar.full > i { background: linear-gradient(#bfe3a8, var(--green)); }
+.pudcard .ctext { font-size: 12px; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pudcard .why { margin: 0 0 6px; font-size: 12px; color: #b0603a; line-height: 1.45; }
+.pudcard .why[hidden] { display: none; }
+.pudcard .native { margin: 0 0 8px; font-size: 11.5px; line-height: 1.4; }
+.pudcard .moves { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 8px; }
+.pudcard .moves .lbl { font-size: 12px; color: var(--ink-soft); margin-right: 2px; }
+.pudcard .moves .none { font-size: 12px; color: var(--ink-faint); }
+.hud .pudcard .moves button.mv { width: auto; min-height: 32px; padding: 2px 10px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+.pudcard .moves .tag { font-style: normal; font-size: 10px; background: #f7c95a; color: #6b3f14; border-radius: 999px; padding: 0 5px; }
+.pudcard .moves small { font-size: 10px; color: var(--ink-faint); }
+.pudcard .prow { display: flex; gap: 6px; margin-bottom: 6px; }
+.hud .pudcard .prow button { flex: 1; min-height: 36px; font-size: 13px; }
+.hud .pudcard button.ghost, .hud .shelfcard button.ghost { background: none; box-shadow: none; border: none; color: var(--ink-soft); font-size: 12px; min-height: 30px; }
+
+/* 菜單的星級分頁 */
+.rcard .stabs { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.hud .rcard .stabs button.st { width: auto; min-height: 26px; padding: 0 7px; font-size: 12px; border-radius: 999px; border-width: 1.5px; box-shadow: none; }
+.hud .rcard .stabs button.st[aria-selected="true"] { background: #f7c95a; border-color: #d9a02f; color: #6b3f14; font-weight: 700; }
+.hud .rcard .stabs button.st:disabled { opacity: 0.35; }
+.rcard .stabs small { margin-left: auto; font-size: 10.5px; color: var(--ink-faint); }
+
+/* 上架卡 */
+.shelfcard .card { box-sizing: border-box; width: 100%; max-width: 360px; max-height: 84vh; display: flex; flex-direction: column; }
+.shelfcard .lead { margin-bottom: 8px; }
+.hud .shelfcard button.all { margin-bottom: 4px; }
+.shelfcard .room { margin: 0 0 6px; font-size: 12px; }
+.shelfcard .slist { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; min-height: 0; text-align: left; }
+.shelfcard .srow { display: flex; align-items: center; gap: 8px; background: #fff; border: 1.5px solid var(--paper-3); border-radius: 12px; padding: 5px 8px; }
+.shelfcard .srow .art { position: relative; width: 34px; height: 34px; flex: none; margin: 0; border-radius: 10px; }
+.shelfcard .srow .art .main { inset: 0; width: 34px; height: 34px; object-fit: contain; }
+.shelfcard .srow .art .corner { position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; }
+.shelfcard .srow .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; }
+.shelfcard .srow .txt small { font-size: 10.5px; color: var(--ink-soft); }
+.shelfcard .srow .cnt { font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; }
+.shelfcard .srow .cnt b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.hud .shelfcard .srow button.one { width: auto; min-height: 32px; padding: 2px 10px; font-size: 12.5px; white-space: nowrap; }
+.shelfcard .empty { font-size: 12.5px; }
+
+/* 常客名冊（D70） */
+.hud .regbtn { position: relative; overflow: visible; }
+.regbtn .badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; padding: 2px 5px; border-radius: 999px;
+  background: var(--coral); color: #fff; font-size: 11px; font-style: normal; font-weight: 700; line-height: 1.2; border: 2px solid #fff;
+}
+.regbtn .badge[hidden] { display: none; }
+.hud .regbtn .ic svg { width: 26px; height: 26px; }
+.regcard .card { box-sizing: border-box; width: 100%; max-width: 380px; max-height: 86vh; display: flex; flex-direction: column; }
+.regcard .lead { margin-bottom: 8px; }
+.regcard .rglist { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; min-height: 0; text-align: left; }
+.regcard .rglist[hidden] { display: none; }
+.regcard .reg { display: flex; gap: 8px; align-items: flex-start; background: #fff; border: 1.5px solid var(--paper-3); border-radius: 12px; padding: 6px 8px; }
+.regcard .reg .pic { width: 44px; height: 44px; flex: none; border-radius: 10px; background: #fdf1e2; image-rendering: pixelated; }
+.regcard .reg.locked .pic { filter: brightness(0) opacity(0.25); }
+.regcard .reg .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.regcard .reg .nm { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.regcard .reg small { font-size: 11px; color: var(--ink-soft); line-height: 1.4; }
+.regcard .reg small.next:empty { display: none; }
+.regcard .reg .ord { margin: 2px 0 0; font-size: 11px; color: #a5721c; line-height: 1.4; }
+.regcard .reg .sig { margin: 2px 0 0; font-size: 11px; color: #c0506c; font-weight: 700; }
+.regcard .chs { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+.hud .regcard .chs button { width: auto; min-height: 28px; padding: 0 9px; font-size: 11.5px; border-radius: 999px; }
+.hud .regcard .chs button.new { border-color: var(--coral); background: #fff1ec; }
+.hud .regcard .chs button.new::after { content: '新'; margin-left: 3px; font-size: 10px; color: var(--coral-dark); font-weight: 700; }
+.regcard .story { text-align: left; margin-bottom: 8px; overflow-y: auto; min-height: 0; }
+.regcard .story[hidden] { display: none; }
+.regcard .story h3 { margin: 0 0 6px; font-size: 15px; }
+.regcard .story .body { font-size: 13.5px; line-height: 1.7; color: var(--ink); }
+.hud .regcard button.ghost { background: none; box-shadow: none; border: none; color: var(--ink-soft); font-size: 12px; min-height: 30px; }
+
+/* 常客頭上的名字泡泡（D70）：HTML 疊層，不吃 draw call */
+.rtags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.hud[data-view="farm"] .rtags { display: none; }
+.rtag {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 3px; white-space: nowrap;
+  background: var(--paper); border: 1.5px solid var(--wood); border-radius: 999px; padding: 1px 7px 1px 4px;
+  font-size: 11px; box-shadow: 0 2px 0 var(--wood-light);
+}
+.rtag[hidden] { display: none; }
+.rtag .ic:empty { display: none; }
+.rtag .ic svg { width: 14px; height: 14px; display: block; }
+.rtag[data-mood="happy"] { border-color: #e98a96; }
+.rtag[data-mood="sad"] { border-color: #8fb0c8; }
+
+/* 常客的特別訂單（D67）：卡片上寫是誰訂的 */
+.order.special { border-color: #f0a3b3; background: #fff6f7; }
+.order .who { display: block; font-size: 11px; color: #c0506c; font-weight: 700; margin-bottom: 2px; }

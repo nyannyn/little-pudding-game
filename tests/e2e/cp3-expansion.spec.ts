@@ -76,9 +76,9 @@ test('抹茶澡盆：第二個盆出現在櫥窗裡，泡到突變成抹茶布�
   await page.screenshot({ path: 'tests/e2e/__screenshots__/cp3-matcha.png' });
 
   // ⑤ 抹茶布丁產的是抹茶原料（D19：原料由物種決定）
-  await page.waitForFunction(() => (window.__lpg.state as GameState).ingredients.matcha > 0, null, { timeout: 120_000 });
+  await page.waitForFunction(() => (window.__lpg.state as GameState).ingredients.matcha.reduce((a, b) => a + b, 0) > 0, null, { timeout: 120_000 });
   const s = await state(page);
-  expect(s.ingredients.matcha).toBeGreaterThan(0);
+  expect(s.ingredients.matcha.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
 });
 
 test('解鎖上層與二號櫥窗：鏡頭切過去，新住客自己開始生產', async ({ page }) => {

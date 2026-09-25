@@ -1,4 +1,5 @@
 import { BALANCE } from './balance';
+import { dayClock } from './clock';
 import type { EventSink } from './events';
 import { grantXp } from './level';
 import {
@@ -17,13 +18,34 @@ import {
   recipeBlockers,
   stationSeconds,
   takeRecipeMaterials,
+  DESSERT_IDS,
+  type DessertId,
   type StationId,
 } from './recipes';
 import { range, type Rng } from './rng';
 import { SPECIES, SPECIES_IDS, type SpeciesId } from './species';
+import { walkInMult } from './stars';
 import type { GameState } from './state';
+import {
+  STARS,
+  addStock,
+  clampStar,
+  lowestStar,
+  moveStock,
+  takeStock,
+  restoreTable,
+  starCounts,
+  stockAtLeast,
+  stockOf,
+  takeLowest,
+  totalStock,
+  zeroTable,
+  type Star,
+  type StarStock,
+} from './stock';
 
 export { STATIONS, STATION_IDS, type StationId } from './recipes';
+export { clockText, dayClock, type DayClock } from './clock';
 
 /**
  * 甜點工坊（D51／D52 → D56／D57，2026-09-24 改成食譜制全自動流水線）。
@@ -34,8 +56,11 @@ export { STATIONS, STATION_IDS, type StationId } from './recipes';
  */
 
 export interface Batch {
-  species: SpeciesId;
+  /** 做哪一道甜點（D68 起可以是招牌甜點；欄位名沿用 `species`，舊存檔不必轉換） */
+  species: DessertId;
   qty: number;
+  /** 這一盤用的原料星級＝做出來的甜點星級（D64） */
+  star: Star;
 }
 
 export interface Station {
@@ -65,8 +90,8 @@ export interface BakeryState {
    */
   epoch: number;
   stations: Record<StationId, Station>;
-  /** 展示架上的甜點（客人只從這裡買） */
-  shelf: Record<SpeciesId, number>;
+  /** 展示架上的甜點（客人只從這裡買），按星級分格（D64）。**讀寫一律經 `stock.ts`** */
+  shelf: Record<DessertId, StarStock>;
   /** 下一位客人上門的遊戲時間 */
   nextCustomerAt: number;
   /** 今天到目前為止 */
@@ -116,12 +141,6 @@ export function hasStaff(state: GameState): boolean {
 
 export type StationStatus = 'idle' | 'working' | 'ready';
 
-function zeroShelf(): Record<SpeciesId, number> {
-  const out = {} as Record<SpeciesId, number>;
-  for (const id of SPECIES_IDS) out[id] = 0;
-  return out;
-}
-
 function emptyStations(): Record<StationId, Station> {
   const out = {} as Record<StationId, Station>;
   for (const id of STATION_IDS) out[id] = { batch: null, startedAt: 0, doneAt: 0 };
@@ -138,7 +157,7 @@ export function createBakery(epoch: number): BakeryState {
   return {
     epoch,
     stations: emptyStations(),
-    shelf: zeroShelf(),
+    shelf: zeroTable(DESSERT_IDS),
     nextCustomerAt: epoch + BALANCE.bakery.customerIntervalMin,
     today: { day: 1, revenue: 0, served: 0, missed: 0 },
     lastDay: null,
@@ -198,7 +217,7 @@ export function refundLegacyBatches(raw: unknown, state: GameState): number {
     const qty = Math.max(0, Math.floor(num(b.qty, 0)));
     if (qty <= 0) continue;
     state.eggs += qty * LEGACY_EGGS_PER;
-    if (id !== 'crack') state.ingredients[b.species as SpeciesId] += qty * LEGACY_ING_PER;
+    if (id !== 'crack') addStock(state, 'ingredients', b.species as SpeciesId, 1, qty * LEGACY_ING_PER);
     n++;
   }
   return n;
@@ -218,11 +237,13 @@ export function restoreBakery(raw: unknown, now: number): BakeryState {
     for (const id of STATION_IDS) {
       const src = (r.stations as Record<string, Partial<Station> | undefined> | undefined)?.[id];
       const b = src?.batch;
-      if (b && SPECIES_IDS.includes(b.species as SpeciesId) && num(b.qty, 0) > 0) {
+      if (b && DESSERT_IDS.includes(b.species as DessertId) && num(b.qty, 0) > 0) {
         const doneAt = num(src?.doneAt, now);
         // v9 沒有 startedAt：那一盤是用 Lv1 的固定秒數排的（D57 的秒數不隨等級變）
         const startedAt = Math.min(doneAt, num(src?.startedAt, doneAt - STATIONS[id].sec));
-        out.stations[id] = { batch: { species: b.species as SpeciesId, qty: Math.floor(num(b.qty, 1)) }, startedAt, doneAt };
+        // D71：v10 以前的盤子沒有星級 → ★1（原料當初就是 ★1 那一格扣的）
+        const star = clampStar((b as Partial<Batch>).star);
+        out.stations[id] = { batch: { species: b.species as DessertId, qty: Math.floor(num(b.qty, 1)), star }, startedAt, doneAt };
       }
     }
     const m = r.machines as Record<string, unknown> | undefined;
@@ -232,39 +253,13 @@ export function restoreBakery(raw: unknown, now: number): BakeryState {
     }
     out.fame = Math.min(FAME.max, Math.max(1, Math.floor(num(r.fame, 1))));
   }
-  const shelf = r.shelf as Record<string, unknown> | undefined;
-  for (const id of SPECIES_IDS) out.shelf[id] = Math.max(0, Math.floor(num(shelf?.[id], 0)));
+  // D71：舊的數字全部放進 ★1
+  out.shelf = restoreTable(r.shelf, DESSERT_IDS);
   out.nextCustomerAt = num(r.nextCustomerAt, out.nextCustomerAt);
   out.today = tally(r.today, 1);
   out.lastDay = r.lastDay ? tally(r.lastDay, Math.max(1, out.today.day - 1)) : null;
   out.closedDay = Math.max(0, Math.floor(num(r.closedDay, 0)));
   return out;
-}
-
-// ── 時鐘 ─────────────────────────────────────────
-
-export interface DayClock {
-  /** 第幾天（1 起） */
-  day: number;
-  /** 0–24 的小時（含小數） */
-  hour: number;
-  open: boolean;
-}
-
-/** epoch 是第 1 天 07:00：時鐘往前平移營業開始的那幾個小時 */
-export function dayClock(state: GameState): DayClock {
-  const B = BALANCE.bakery;
-  const t = state.time - state.bakery.epoch + (B.openHour / 24) * B.dayLengthSec;
-  const day = Math.floor(t / B.dayLengthSec) + 1;
-  const hour = ((t % B.dayLengthSec + B.dayLengthSec) % B.dayLengthSec) / B.dayLengthSec * 24;
-  return { day, hour, open: hour >= B.openHour && hour < B.closeHour };
-}
-
-/** 「14:05」這種顯示字串 */
-export function clockText(hour: number): string {
-  const h = Math.floor(hour);
-  const m = Math.floor((hour - h) * 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 // ── 查詢 ─────────────────────────────────────────
@@ -285,13 +280,13 @@ export function stationProgress(state: GameState, id: StationId): number {
 }
 
 /** 這一盤在自己的路線上，下一站是哪裡（null＝這一站是最後一站） */
-export function nextStationFor(species: SpeciesId, from: StationId): StationId | null {
+export function nextStationFor(species: DessertId, from: StationId): StationId | null {
   const route = RECIPES[species].route;
   return route[route.indexOf(from) + 1] ?? null;
 }
 
 export function shelfCount(state: GameState): number {
-  return SPECIES_IDS.reduce((n, id) => n + state.bakery.shelf[id], 0);
+  return totalStock(state, 'shelf');
 }
 
 /** 線上正在做的盤數 */
@@ -304,6 +299,34 @@ export function reservedForOrders(state: GameState, species: SpeciesId): number 
   return state.orders
     .filter((o) => o.species === species && o.expiresAt > state.time)
     .reduce((n, o) => n + o.qty, 0);
+}
+
+/**
+ * 成品櫃裡某一種甜點、每一星扣掉預訂單保留量之後還能上架幾份（索引 0＝★1）。
+ * 保留量照「交單時會拿哪幾份」扣：常客的特別訂單從它要求的最低星級往上扣（先扣要求高的那張），
+ * 散客訂單從最低星扣——跟 `fulfillOrder` 拿貨的順序一致，才不會上架上掉交單要用的那一份。
+ */
+export function spareDesserts(state: GameState, id: DessertId): number[] {
+  const left = starCounts(state, 'desserts', id);
+  const live = state.orders
+    .filter((o) => o.species === id && o.expiresAt > state.time)
+    .sort((a, b) => (b.star ?? 1) - (a.star ?? 1));
+  for (const o of live) {
+    let need = o.qty;
+    for (let i = (o.star ?? 1) - 1; i < left.length && need > 0; i++) {
+      const t = Math.min(left[i]!, need);
+      left[i]! -= t;
+      need -= t;
+    }
+  }
+  return left;
+}
+
+/** 上架時要替誰保留一份（D70：今天有常客要來，店員先替他擺一份符合的） */
+export interface ShelfWant {
+  /** 常客吃得下的甜點（口味） */
+  accepts: DessertId[];
+  minStar: Star;
 }
 
 // ── 動作 ─────────────────────────────────────────
@@ -325,15 +348,16 @@ function enterStation(state: GameState, id: StationId, b: Batch): void {
  * **份數由玩家疊**（D60）：1 ≤ qty ≤ `maxBatch`（這條線最低那台的上限、材料夠做的份數取小）。
  * 超過就拒絕、不夾到上限——夾了等於 UI 算錯的時候靜默少做，玩家看到「按了 5 份、出爐 3 份」。
  */
-export function startBatch(state: GameState, species: SpeciesId, qty: number, emit: EventSink): BakeryResult {
-  const lines = blockerLines(recipeBlockers(state, species));
-  if (lines.length) return fail(lines.join('；'));
-  const max = maxBatch(state, species);
+export function startBatch(state: GameState, species: DessertId, qty: number, emit: EventSink, star: Star = 1): BakeryResult {
+  // D64：一盤只用一個星級的原料；那一星不夠就拒絕，不從別的星級湊（AC11-5）
+  const lines = blockerLines(recipeBlockers(state, species, star));
+  if (lines.length) return fail(`★${star} ${lines.join('；')}`);
+  const max = maxBatch(state, species, star);
   if (!Number.isInteger(qty) || qty < 1) return fail('至少要做 1 份');
   if (qty > max) return fail(`這一盤最多 ${max} 份`);
-  takeRecipeMaterials(state, species, qty);
+  takeRecipeMaterials(state, species, qty, star);
   const first = RECIPES[species].route[0]!;
-  enterStation(state, first, { species, qty });
+  enterStation(state, first, { species, qty, star });
   emit({ type: 'bakeStep', station: first, species, auto: false });
   return OK;
 }
@@ -374,28 +398,74 @@ export function buyFame(state: GameState, emit: EventSink): BakeryResult {
 /**
  * 把成品櫃的甜點擺上展示架，擺到架滿為止；**預訂單要的份數留在成品櫃**，
  * 擺上架就會被散客買走、訂單永遠交不出去。回傳擺了幾份。
+ *
+ * D70 的上架順序：① 今天要來的常客（`wants`）架上還沒有他吃得下的，先替他擺一份（符合條件裡最低星）；
+ * ② 其餘**先上低星**——散客最多付 ★2（D65），高星先上架只會被散客便宜買走。
  */
-export function stockShelf(state: GameState, emit: EventSink, auto = false): number {
+export function stockShelf(state: GameState, emit: EventSink, auto = false, wants: readonly ShelfWant[] = []): number {
   const cap = BALANCE.bakery.shelfCap;
   let room = cap - shelfCount(state);
   let moved = 0;
-  // 輪流擺：一種擺一份再換下一種，架上才會有好幾種口味（客人按份數加權挑）
+  const spare = new Map<DessertId, number[]>();
+  const spareOf = (id: DessertId): number[] => {
+    let s = spare.get(id);
+    if (!s) spare.set(id, (s = spareDesserts(state, id)));
+    return s;
+  };
+  const move = (id: DessertId, star: Star): void => {
+    moveStock(state, 'desserts', 'shelf', id, star, 1);
+    spareOf(id)[star - 1]!--;
+    room--;
+    moved++;
+  };
+
+  for (const w of wants) {
+    if (room <= 0) break;
+    if (w.accepts.some((id) => stockAtLeast(state, 'shelf', id, w.minStar) > 0)) continue;
+    let best: { id: DessertId; star: Star } | null = null;
+    for (const id of w.accepts) {
+      const s = spareOf(id);
+      for (const star of STARS) {
+        if (star < w.minStar || (s[star - 1] ?? 0) <= 0) continue;
+        if (!best || star < best.star) best = { id, star };
+        break;
+      }
+    }
+    if (best) move(best.id, best.star);
+  }
+
+  // 輪流擺：一種擺一份再換下一種，架上才會有好幾種口味（客人按份數加權挑）；每一種先擺最低星
   let progress = true;
   while (room > 0 && progress) {
     progress = false;
     for (const id of SPECIES_IDS) {
       if (room <= 0) break;
-      const spare = state.desserts[id] - reservedForOrders(state, id);
-      if (spare <= 0) continue;
-      state.desserts[id]--;
-      state.bakery.shelf[id]++;
-      room--;
-      moved++;
+      const s = spareOf(id);
+      const i = s.findIndex((n) => n > 0);
+      if (i < 0) continue;
+      move(id, (i + 1) as Star);
       progress = true;
     }
   }
   if (moved > 0) emit({ type: 'shelfStocked', qty: moved, auto });
   return moved;
+}
+
+/**
+ * 上架卡的「上架 1」（D70）：從成品櫃把某一星的一份擺上架。預訂單要留的那幾份不能動（同 `stockShelf`）。
+ */
+export function shelfOne(state: GameState, id: DessertId, star: Star, emit: EventSink): BakeryResult {
+  if (shelfCount(state) >= BALANCE.bakery.shelfCap) return fail(`展示架滿了（${BALANCE.bakery.shelfCap} 份）`);
+  if ((spareDesserts(state, id)[star - 1] ?? 0) <= 0) return fail('這一種都留給預訂單了');
+  moveStock(state, 'desserts', 'shelf', id, star, 1);
+  emit({ type: 'shelfStocked', qty: 1, auto: false });
+  return OK;
+}
+
+/** 這張訂單現在手上夠格的有幾份（成品櫃＋展示架，不低於訂單的最低星級） */
+export function orderHave(state: GameState, o: { species: DessertId; star?: Star }): number {
+  const min = o.star ?? 1;
+  return stockAtLeast(state, 'desserts', o.species, min) + stockAtLeast(state, 'shelf', o.species, min);
 }
 
 /** 交一張預訂單：成品櫃先扣、不夠再從展示架拿 */
@@ -404,17 +474,20 @@ export function fulfillOrder(state: GameState, orderId: string, emit: EventSink,
   const o = state.orders[i];
   if (!o) return fail('訂單已經不在了');
   if (o.expiresAt <= state.time) return fail('訂單已經過期');
-  const have = state.desserts[o.species] + state.bakery.shelf[o.species];
-  if (have < o.qty) return fail(`${SPECIES[o.species].dessert}還差 ${o.qty - have} 份`);
-  const fromBack = Math.min(o.qty, state.desserts[o.species]);
-  state.desserts[o.species] -= fromBack;
-  state.bakery.shelf[o.species] -= o.qty - fromBack;
+  // 常客的特別訂單有最低星級（D67）；散客訂單不挑。一律從最低星拿，高星留著
+  const min = o.star ?? 1;
+  const have = orderHave(state, o);
+  const label = o.star ? `★${o.star} 以上的` : '';
+  if (have < o.qty) return fail(`${label}${SPECIES[o.species].dessert}還差 ${o.qty - have} 份`);
+  const fromBack = Math.min(o.qty, stockAtLeast(state, 'desserts', o.species, min));
+  takeLowest(state, 'desserts', o.species, fromBack, min);
+  takeLowest(state, 'shelf', o.species, o.qty - fromBack, min);
   state.coins += o.price;
   state.stats.sold += o.qty;
   state.stats.ordersDone++;
   state.bakery.today.revenue += o.price;
   state.orders.splice(i, 1);
-  emit({ type: 'orderDone', orderId: o.id, species: o.species, coins: o.price, auto });
+  emit({ type: 'orderDone', orderId: o.id, species: o.species, coins: o.price, auto, regularId: o.regularId ?? null });
   grantXp(state, BALANCE.xp.order + BALANCE.xp.sellDessert * o.qty, emit);
   return OK;
 }
@@ -432,10 +505,56 @@ function settleDay(state: GameState, day: number, emit: EventSink): void {
   emit({ type: 'dayClosed', day, revenue: t.revenue, served: t.served, missed: t.missed });
 }
 
-/** 一位客人：按架上份數加權挑一種買 1 份（有時 2 份）；架空就記一次錯過 */
-function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
+/** 散客買一份 `star` 星的這道甜點付多少：最多只付到 ★2 的價（D65） */
+export function walkInPrice(id: DessertId, star: Star): number {
+  return Math.round(dessertPrice(id) * walkInMult(star));
+}
+
+/**
+ * 一位散客：按架上份數加權挑一種、**拿那一種最低星的那一份**（D65），買 1 份（有時更多）；
+ * 付的是 `walkInPrice`（最多 ★2 的價）。架空就記一次錯過。
+ */
+/**
+ * 架上替今天要來的常客「保留」的那幾份（D70）：每位常客、架上符合他條件裡最低星的那一份。
+ * 從 state 當場推導、不存檔。只擺上架而不保留的話，散客（需求遠大於產量）一擺出來就買走，
+ * 月玩家量表量到熊先生整個月 0 顆心（2026-09-25）。
+ */
+export function heldForRegulars(state: GameState, wants: readonly ShelfWant[]): Map<DessertId, number[]> {
+  const held = new Map<DessertId, number[]>();
+  for (const w of wants) {
+    let best: { id: DessertId; star: Star } | null = null;
+    for (const id of w.accepts) {
+      const have = starCounts(state, 'shelf', id);
+      const already = held.get(id) ?? [0, 0, 0, 0, 0];
+      for (let i = w.minStar - 1; i < 5; i++) {
+        if ((have[i] ?? 0) - (already[i] ?? 0) <= 0) continue;
+        if (!best || i + 1 < best.star) best = { id, star: (i + 1) as Star };
+        break;
+      }
+    }
+    if (!best) continue;
+    const row = held.get(best.id) ?? [0, 0, 0, 0, 0];
+    row[best.star - 1]!++;
+    held.set(best.id, row);
+  }
+  return held;
+}
+
+/**
+ * 一位散客：按架上份數加權挑一種、**拿那一種最低星的那一份**（D65），買 1 份（有時更多）；
+ * 付的是 `walkInPrice`（最多 ★2 的價）。替今天的常客保留的那幾份不拿（`heldForRegulars`）。架空就記一次錯過。
+ */
+function serveCustomer(state: GameState, rng: Rng, emit: EventSink, wants: readonly ShelfWant[] = []): void {
   const bk = state.bakery;
-  const total = shelfCount(state);
+  const held = heldForRegulars(state, wants);
+  // 散客能拿的：物種甜點（招牌甜點散客買不起，D68）扣掉保留的
+  const avail = (id: SpeciesId): number[] => {
+    const have = starCounts(state, 'shelf', id);
+    const h = held.get(id);
+    return have.map((n, i) => Math.max(0, n - (h?.[i] ?? 0)));
+  };
+  const sum = (a: number[]) => a.reduce((n, x) => n + x, 0);
+  const total = SPECIES_IDS.reduce((n, id) => n + sum(avail(id)), 0);
   if (total <= 0) {
     bk.today.missed++;
     state.stats.missed++;
@@ -445,19 +564,28 @@ function serveCustomer(state: GameState, rng: Rng, emit: EventSink): void {
   let r = rng.next() * total;
   let species: SpeciesId = SPECIES_IDS[0] as SpeciesId;
   for (const id of SPECIES_IDS) {
-    r -= bk.shelf[id];
+    r -= sum(avail(id));
     if (r < 0) { species = id; break; }
   }
-  if (bk.shelf[species] <= 0) species = SPECIES_IDS.find((id) => bk.shelf[id] > 0) as SpeciesId;
-  const qty = customerQty(state, bk.shelf[species], rng);
-  const coins = dessertPrice(species) * qty;
-  bk.shelf[species] -= qty;
+  if (sum(avail(species)) <= 0) species = SPECIES_IDS.find((id) => sum(avail(id)) > 0) as SpeciesId;
+  const can = avail(species);
+  const qty = customerQty(state, sum(can), rng);
+  const stars: Star[] = [];
+  for (let i = 0; i < 5 && stars.length < qty; i++) {
+    while (can[i]! > 0 && stars.length < qty) {
+      takeStock(state, 'shelf', species, (i + 1) as Star, 1);
+      can[i]!--;
+      stars.push((i + 1) as Star);
+    }
+  }
+  const coins = stars.reduce((n, s) => n + walkInPrice(species, s), 0);
+  const star = stars[0] ?? 1;
   state.coins += coins;
   state.stats.sold += qty;
   state.stats.served++;
   bk.today.revenue += coins;
   bk.today.served++;
-  emit({ type: 'customer', species, qty, coins });
+  emit({ type: 'customer', species, qty, coins, star });
   grantXp(state, BALANCE.xp.sellDessert * qty, emit);
 }
 
@@ -479,9 +607,9 @@ function finishBatch(state: GameState, b: Batch, rng: Rng, emit: EventSink): voi
   const failed = b.qty - ok;
   if (failed > 0) emit({ type: 'bakeFailed', species: b.species, qty: failed });
   if (ok === 0) return;
-  state.desserts[b.species] += ok;
+  addStock(state, 'desserts', b.species, b.star, ok);
   state.stats.baked += ok;
-  emit({ type: 'bakeDone', species: b.species, qty: ok, auto: true });
+  emit({ type: 'bakeDone', species: b.species, qty: ok, auto: true, star: b.star });
   grantXp(state, BALANCE.xp.craft * ok, emit);
 }
 
@@ -507,10 +635,11 @@ function runLine(state: GameState, rng: Rng, emit: EventSink): void {
   }
 }
 
-export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
+export function tickBakery(state: GameState, rng: Rng, emit: EventSink, wants: readonly ShelfWant[] = []): void {
   runLine(state, rng, emit);
-  // 店員（人氣 Lv6 起）：成品櫃有貨、架上有空就補——離線結算也照跑，所以離線那幾小時賣得到東西
-  if (hasStaff(state)) stockShelf(state, emit, true);
+  // 店員（人氣 Lv6 起）：成品櫃有貨、架上有空就補——離線結算也照跑，所以離線那幾小時賣得到東西。
+  // `wants`＝今天要來的常客（D70：先替他擺一份），由 sim 從名冊算好傳進來
+  if (hasStaff(state)) stockShelf(state, emit, true, wants);
 
   const B = BALANCE.bakery;
   const bk = state.bakery;
@@ -530,7 +659,7 @@ export function tickBakery(state: GameState, rng: Rng, emit: EventSink): void {
   }
   if (bk.today.day !== c.day) bk.today = { day: c.day, revenue: 0, served: 0, missed: 0 };
   if (state.time < bk.nextCustomerAt) return;
-  serveCustomer(state, rng, emit);
+  serveCustomer(state, rng, emit, wants);
   const k = fameIntervalMult(bk.fame);
   bk.nextCustomerAt = state.time + range(rng, B.customerIntervalMin * k, B.customerIntervalMax * k);
 }

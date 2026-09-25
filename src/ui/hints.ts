@@ -2,6 +2,7 @@ import { BALANCE, EQUIPMENT } from '../game/balance';
 import { puddingMood } from '../game/pudding';
 import { claimableCount } from '../game/achievements';
 import { batchesOnLine, dayClock } from '../game/bakery';
+import { totalStock } from '../game/stock';
 import { STATIONS, anyLineReady, canStartRecipe, lineCost, RECIPES } from '../game/recipes';
 import { LIQUIDS, SPECIES_IDS, type LiquidId } from '../game/species';
 import { STORAGE_ZONE, equipmentIn, hasAnyEquipment, hasEquipmentAnywhere, type GameState } from '../game/state';
@@ -176,7 +177,7 @@ export function nextHint(state: GameState): Hint | null {
     return { id: 'bakery', text: '做甜點的材料湊齊了。按「甜點店」→「菜單」挑一道放上流水線，賣得比原料貴。' };
   }
 
-  if (state.stats.served === 0 && SPECIES_IDS.some((id) => state.desserts[id] > 0)) {
+  if (state.stats.served === 0 && totalStock(state, 'desserts') > 0) {
     return { id: 'shelf', text: '甜點做好了。在甜點店按「上架」擺進展示櫃，營業時間客人會來買。' };
   }
 
@@ -213,7 +214,7 @@ export function bakeryHint(state: GameState): Hint | null {
       ? { id: 'bk-start', text: '按「菜單」挑一道甜點放上流水線，機器會自己一站一站做完。' }
       : { id: 'bk-need', text: '菜單裡每道甜點下面會寫還缺什麼。回農場撿蛋與原料、在商店補麵粉與牛乳。' };
   }
-  if (SPECIES_IDS.some((id) => state.desserts[id] > 0) && SPECIES_IDS.every((id) => state.bakery.shelf[id] === 0)) {
+  if (totalStock(state, 'desserts') > 0 && totalStock(state, 'shelf') === 0) {
     return { id: 'shelf', text: '甜點做好了。按「上架」擺進展示櫃，營業時間客人會來買。' };
   }
   if (!dayClock(state).open) {

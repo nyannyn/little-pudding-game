@@ -53,7 +53,7 @@ test('AC9-8／9-9／9-3：商店買機器 → 菜單開工 → 線上自己走�
     const s = window.__lpg.state as GameState;
     s.coins = 1000;
     s.stock.milk = 2;
-    s.ingredients.panna = 1;
+    s.ingredients.panna = [1, 0, 0, 0, 0];
   });
   await step(page, 0.3);
 
@@ -84,20 +84,22 @@ test('AC9-8／9-9／9-3：商店買機器 → 菜單開工 → 線上自己走�
   await expect(panna.locator('[data-a="startBatch"]')).toHaveText('開始製作 ×1');
   await panna.locator('[data-a="startBatch"]').click();
   s = await S(page);
-  expect(s.bakery.stations.stove.batch).toEqual({ species: 'panna', qty: 1 });
+  expect(s.bakery.stations.stove.batch).toEqual({ species: 'panna', qty: 1, star: 1 });
   expect(s.stock.milk).toBe(0);
-  expect(s.ingredients.panna).toBe(0);
+  expect(s.ingredients.panna.reduce((a, b) => a + b, 0)).toBe(0);
 
   // 不用再點任何東西：爐台 → 裝模 → 冷藏自己走完（10＋5＋40 秒）
   await step(page, 60);
   s = await S(page);
   for (const id of ['stove', 'mold', 'chill'] as const) expect(s.bakery.stations[id].batch).toBeNull();
-  expect(s.desserts.panna + s.bakery.shelf.panna).toBe(1);
+  expect(s.desserts.panna.reduce((a, b) => a + b, 0) + s.bakery.shelf.panna.reduce((a, b) => a + b, 0)).toBe(1);
 
-  // 上架 → 營業中客人買走
-  await page.getByRole('button', { name: /上架/ }).click();
+  // 上架 → 營業中客人買走（D70 起「上架」開上架卡，卡上「全部上架」照店員那套先上低星）
+  await page.getByRole('button', { name: /上架/ }).first().click();
+  await page.locator('[data-a="shelfAll"]').click();
+  await page.locator('[data-a="closeShelf"]').click();
   s = await S(page);
-  expect(s.bakery.shelf.panna).toBe(1);
+  expect(s.bakery.shelf.panna.reduce((a, b) => a + b, 0)).toBe(1);
   const coins = s.coins;
   await step(page, BALANCE.bakery.customerIntervalMax * 3);
   s = await S(page);
@@ -111,7 +113,7 @@ test('菜單開著、收集手一直在撿：可以按的「開始製作」不�
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
     Object.assign(s.bakery.machines, { stove: 1, crack: 1, mix: 1, mold: 1, bake: 1, decorate: 1 });
-    s.stock.milk = 3; s.pantry.flour = 3; s.ingredients.caramel = 3; s.eggs = 2;
+    s.stock.milk = 3; s.pantry.flour = 3; s.ingredients.caramel = [3, 0, 0, 0, 0]; s.eggs = 2;
   });
   await step(page, 0.3);
   await page.getByRole('button', { name: /菜單/ }).click();
@@ -195,7 +197,7 @@ test('點 3D 的機器：沒買開商店工坊頁、空著開菜單、有一盤�
 
   await page.evaluate(() => {
     const s = window.__lpg.state as GameState;
-    s.bakery.stations.bake = { batch: { species: 'hojicha', qty: 1 }, startedAt: s.time, doneAt: s.time + 30 };
+    s.bakery.stations.bake = { batch: { species: 'hojicha', qty: 1, star: 1 }, startedAt: s.time, doneAt: s.time + 30 };
   });
   await step(page, 0.3);
   await tapAt(...oven);
@@ -213,13 +215,13 @@ test('AC9-7：v8 存檔（五站線上有一盤）還原後機器全無、材料
     bk.auto = { crack: false, mix: false, mold: false, bake: false, decorate: false };
     bk.stations = {
       crack: { batch: null, doneAt: 0 },
-      mix: { batch: { species: 'caramel', qty: 2 }, doneAt: 1 },
+      mix: { batch: { species: 'caramel', qty: 2, star: 1 }, doneAt: 1 },
       mold: { batch: null, doneAt: 0 },
       bake: { batch: null, doneAt: 0 },
       decorate: { batch: null, doneAt: 0 },
     };
     s.eggs = 0;
-    s.ingredients.caramel = 0;
+    s.ingredients.caramel = [0, 0, 0, 0, 0];
     return s;
   });
   const code = exportCode(raw as GameState);
@@ -232,7 +234,7 @@ test('AC9-7：v8 存檔（五站線上有一盤）還原後機器全無、材料
   expect(s.schemaVersion).toBeGreaterThanOrEqual(9);
   for (const v of Object.values(s.bakery.machines)) expect(v).toBe(0);
   expect(s.eggs).toBe(4);
-  expect(s.ingredients.caramel).toBe(2);
+  expect(s.ingredients.caramel.reduce((a, b) => a + b, 0)).toBe(2);
   expect(s.pantry.flour).toBe(BALANCE.startPantry.flour);
 });
 
@@ -242,8 +244,8 @@ test('預訂單在工坊交：成品櫃不夠時從展示架補，交貨鈕按�
     const s = window.__lpg.state as GameState;
     // 先把時間撥到打烊後（22:00），客人才不會先把架上那份買走；訂單要在撥完之後才開，不然一撥就過期
     s.time = s.bakery.epoch + (15 / 24) * 1200;
-    s.desserts.caramel = 1;
-    s.bakery.shelf.caramel = 1;
+    s.desserts.caramel = [1, 0, 0, 0, 0];
+    s.bakery.shelf.caramel = [1, 0, 0, 0, 0];
     s.orders = [{ id: 'o-e2e', species: 'caramel', qty: 2, price: 150, createdAt: s.time, expiresAt: s.time + 600 }];
   });
   await step(page, 0.3);
@@ -256,7 +258,7 @@ test('預訂單在工坊交：成品櫃不夠時從展示架補，交貨鈕按�
   const s = await S(page);
   expect(s.orders.find((o) => o.id === 'o-e2e')).toBeUndefined();
   expect(s.coins).toBe(coins + 150);
-  expect(s.desserts.caramel + s.bakery.shelf.caramel).toBe(0);
+  expect(s.desserts.caramel.reduce((a, b) => a + b, 0) + s.bakery.shelf.caramel.reduce((a, b) => a + b, 0)).toBe(0);
 });
 
 test('AC8-6：商店賣一隻布丁，畫面上真的少一隻（不是只有 state 少）', async ({ page }) => {
@@ -351,10 +353,10 @@ test('AC9-10：七台全買、每一站都有一盤、客人在店裡，draw cal
     const s = window.__lpg.state as GameState;
     for (const [i, id] of ['stove', 'crack', 'mix', 'mold', 'bake', 'chill', 'decorate'].entries()) {
       s.bakery.machines[id as 'stove'] = 3;
-      s.bakery.stations[id as 'stove'] = { batch: { species: 'brulee', qty: 4 }, startedAt: s.time, doneAt: s.time + 5 + i };
+      s.bakery.stations[id as 'stove'] = { batch: { species: 'brulee', qty: 4, star: 1 }, startedAt: s.time, doneAt: s.time + 5 + i };
     }
-    s.bakery.shelf.caramel = 12;
-    s.desserts.matcha = 9;
+    s.bakery.shelf.caramel = [12, 0, 0, 0, 0];
+    s.desserts.matcha = [9, 0, 0, 0, 0];
     for (let i = 0; i < 5; i++) (window.__lpg.bakery as unknown as { customerCame(x: string | null): void }).customerCame('caramel');
   });
   await step(page, 1.5);

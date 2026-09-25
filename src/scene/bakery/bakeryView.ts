@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { batchesOnLine, dayClock, stationProgress, stationStatus, type Batch } from '../../game/bakery';
-import { MAX_MACHINE_LEVEL, RECIPES, STATIONS, STATION_IDS, type StationId } from '../../game/recipes';
+import { stockOf, totalStock } from '../../game/stock';
+import { DESSERT_IDS, MAX_MACHINE_LEVEL, RECIPES, STATIONS, STATION_IDS, dessertLook, type StationId } from '../../game/recipes';
 import { SPECIES, SPECIES_IDS, type SpeciesId } from '../../game/species';
+import type { RegularId } from '../../game/regulars';
 import type { GameState } from '../../game/state';
 import { toonGradient } from '../toon';
+import { regularGeometry } from '../voxelAnimal';
 import { Parts } from './build';
 import {
   BELT,
@@ -40,6 +43,21 @@ const CUP_H = 0.055;
  */
 const MAX_ITEMS = 256;
 const MAX_CUSTOMERS = 5;
+/**
+ * 同時在店裡的常客最多 2 位（D69），多的在門外排隊（不畫）。一位常客＝一顆併好的方塊 mesh＝1 個 draw call，
+ * 所以常客最多 +2 draw calls（AC11-11）。
+ */
+const MAX_REGULARS_IN = 2;
+/**
+ * 方塊動物身高約 2.2（`regularLooks.ts` 的座標）→ 約 0.57，比散客（約 0.43）高一截：一眼分得出是常客。
+ * 0.2（跟散客一樣高）的截圖（2026-09-25）裡常客縮在咖啡座後面只剩一根棍子。
+ */
+const REGULAR_SCALE = 0.26;
+/**
+ * 常客站哪幾格展示櫃（`SHELF_SLOTS` 的索引）：只用右邊三格——左邊三格正前方是咖啡座（`CAFE`），
+ * 從鏡頭看會被桌子整個擋住（2026-09-25 截圖）。兩位同時在店裡就各站一格。
+ */
+const REGULAR_SLOTS = [4, 5, 3];
 /** 帶子的速度（世界單位／秒）：盤子從一站滑到下一站 */
 const BELT_SPEED = 1.5;
 /** 帶面條紋間距 */
@@ -97,6 +115,26 @@ interface Customer {
   hop: number;
 }
 
+/** 走進店裡的常客（D69／D70）：跟散客同一條路線，買到頭上冒愛心、沒買到冒失望（HTML 疊層畫） */
+interface RegularVisitor {
+  id: RegularId;
+  bought: boolean;
+  dessert: SpeciesId | null;
+  x: number;
+  z: number;
+  tx: number;
+  phase: 'queue' | 'in' | 'pick' | 'out';
+  t: number;
+  hop: number;
+}
+
+/** 名字泡泡要的東西（畫面座標由 UI 投影；mood：走進來＝walk、買到＝happy、沒買到＝sad） */
+export interface RegularAnchor {
+  id: RegularId;
+  ndc: { x: number; y: number };
+  mood: 'walk' | 'happy' | 'sad';
+}
+
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
@@ -147,6 +185,9 @@ export class BakeryView {
   private readonly potLid: THREE.Mesh;
   private readonly custBody: THREE.InstancedMesh;
   private readonly custEyes: THREE.InstancedMesh;
+  /** 常客（D69）：兩顆 mesh 輪流換 geometry（每位的 geometry 建一次就快取） */
+  private readonly regularMeshes: THREE.Mesh[] = [];
+  private regulars: RegularVisitor[] = [];
 
   /** 射線用的隱形點擊盒：各站＋展示櫃＋成品櫃 */
   readonly hitBoxes: THREE.Mesh[] = [];
@@ -320,6 +361,16 @@ export class BakeryView {
     this.custEyes.frustumCulled = false;
     this.scene.add(this.custBody, this.custEyes);
 
+    const regMat = toon({ vertexColors: true });
+    for (let i = 0; i < MAX_REGULARS_IN; i++) {
+      const m = new THREE.Mesh(new THREE.BufferGeometry(), regMat);
+      m.name = `BakeryRegular${i}`;
+      m.visible = false;
+      m.scale.setScalar(REGULAR_SCALE);
+      this.regularMeshes.push(m);
+      this.scene.add(m);
+    }
+
     this.buildHitBoxes();
   }
 
@@ -447,6 +498,29 @@ export class BakeryView {
     return this.customers.length;
   }
 
+  /** 常客來店（`regularVisit` 事件；main.ts 只在玩家正在看工坊時轉進來，離線的不演） */
+  regularCame(id: RegularId, bought: boolean, dessert: SpeciesId | null) {
+    if (this.regulars.some((r) => r.id === id)) return;
+    this.regulars.push({ id, bought, dessert, x: DOOR.x, z: DOOR.z, tx: 0, phase: 'queue', t: 0, hop: Math.random() * 6 });
+  }
+
+  /** 店裡（不含門外排隊）有幾位常客（測試用） */
+  get regularCount(): number {
+    return this.regulars.filter((r) => r.phase !== 'queue').length;
+  }
+
+  /** 店裡常客的頭頂在畫面上的位置（名字泡泡用；會走動所以每幀投影） */
+  regularAnchors(): RegularAnchor[] {
+    const v = new THREE.Vector3();
+    const out: RegularAnchor[] = [];
+    for (const r of this.regulars) {
+      if (r.phase === 'queue') continue;
+      v.set(r.x, 2.35 * REGULAR_SCALE, r.z).project(this.camera);
+      out.push({ id: r.id, ndc: { x: v.x, y: v.y }, mood: r.phase === 'in' ? 'walk' : r.bought ? 'happy' : 'sad' });
+    }
+    return out;
+  }
+
   sync(state: GameState, dt: number) {
     this.time += dt;
     const t = this.time;
@@ -522,14 +596,14 @@ export class BakeryView {
       this.putBatch(p.x, p.z, p.dir, r.batch, r.after, 1);
       if (r.t >= 1 && r.to === null) {
         // D60：一整盤一杯接一杯跳進成品櫃（每杯落到自己的格子，最後一杯落在最新的那格）
-        const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+        const total = totalStock(state, 'desserts');
         const n = Math.min(MAX_HOPS, r.batch.qty);
         for (let i = 0; i < n; i++) {
           const slot = RACK_SLOTS[Math.max(0, Math.min(total - n + i, RACK_SLOTS.length - 1))]!;
           const [along, across] = cupPos(i, n);
           const cx = Math.cos(p.dir) * along - Math.sin(p.dir) * across;
           const cz = Math.sin(p.dir) * along + Math.cos(p.dir) * across;
-          this.hops.push({ from: { x: p.x + cx, y: BELT.y, z: p.z + cz }, dest: slot, t: -i * HOP_GAP / 0.5, species: r.batch.species });
+          this.hops.push({ from: { x: p.x + cx, y: BELT.y, z: p.z + cz }, dest: slot, t: -i * HOP_GAP / 0.5, species: dessertLook(r.batch.species) });
         }
       }
     }
@@ -543,21 +617,23 @@ export class BakeryView {
 
     // ── 成品櫃與展示架 ──
     let k = 0;
-    for (const id of SPECIES_IDS) {
-      for (let i = 0; i < state.desserts[id] && k < RACK_SLOTS.length; i++, k++) {
+    // 招牌甜點（D68）也要畫出來：長相借它主料的物種
+    for (const id of DESSERT_IDS) {
+      for (let i = 0, n = stockOf(state, 'desserts', id); i < n && k < RACK_SLOTS.length; i++, k++) {
         const s = RACK_SLOTS[k]!;
-        this.putItem(s.x, s.y, s.z, id, k, 1, 1.35, 1, 0);
+        this.putItem(s.x, s.y, s.z, dessertLook(id), k, 1, 1.35, 1, 0);
       }
     }
     k = 0;
-    for (const id of SPECIES_IDS) {
-      for (let i = 0; i < state.bakery.shelf[id] && k < SHELF_SLOTS.length; i++, k++) {
+    for (const id of DESSERT_IDS) {
+      for (let i = 0, n = stockOf(state, 'shelf', id); i < n && k < SHELF_SLOTS.length; i++, k++) {
         const s = SHELF_SLOTS[k]!;
-        this.putItem(s.x, s.y, s.z, id, k, 1, 1.35, 1, Math.sin(t * 1.3 + k) * 0.15);
+        this.putItem(s.x, s.y, s.z, dessertLook(id), k, 1, 1.35, 1, Math.sin(t * 1.3 + k) * 0.15);
       }
     }
 
     this.syncCustomers(dt);
+    this.syncRegulars(dt);
 
     for (const m of [this.cups, this.fills, this.tops]) {
       m.count = m === this.tops ? this.nTops : this.nItems;
@@ -618,7 +694,7 @@ export class BakeryView {
       }
       this.prev[id] = key;
     }
-    const total = SPECIES_IDS.reduce((n, id) => n + state.desserts[id], 0);
+    const total = totalStock(state, 'desserts');
     if (!first && total > this.prevDesserts) {
       // 哪一站剛做完最後一步：上一幀有盤、這一幀空了、而且那是它路線的最後一站
       const done = STATION_IDS.find((id) => {
@@ -643,12 +719,13 @@ export class BakeryView {
    */
   private putBatch(x: number, z: number, dir: number, b: Batch, at: StationId, k: number) {
     const idx = STATION_IDS.indexOf(at);
-    const info = SPECIES[b.species];
+    const look = dessertLook(b.species);
+    const info = SPECIES[look];
     if (idx < MOLD_IDX) {
       // 攪拌碗隨份數變大（D60：一次做一批要看得出來）；上限 ×1.4，再大就壓到帶子外面了
       const mixK = at === 'mix' ? k : idx > STATION_IDS.indexOf('mix') ? 1 : 0;
       const bowl = 2.3 * Math.min(1.4, 0.85 + 0.15 * Math.sqrt(b.qty));
-      this.putItem(x, BELT.y, z, b.species, 3, 0.7, 1, 0, 0, bowl, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
+      this.putItem(x, BELT.y, z, look, 3, 0.7, 1, 0, 0, bowl, this.color.set(0xffe6a0).lerp(new THREE.Color(info.bodyColor), mixK).getHex());
       return;
     }
     const route = RECIPES[b.species].route;
@@ -662,7 +739,7 @@ export class BakeryView {
     const sc = cupScale(n);
     for (let i = 0; i < n; i++) {
       const [along, across] = cupPos(i, n);
-      this.putItem(x + cx * along - cz * across, BELT.y, z + cz * along + cx * across, b.species, i, fill, rise, top, 0, sc);
+      this.putItem(x + cx * along - cz * across, BELT.y, z + cz * along + cx * across, look, i, fill, rise, top, 0, sc);
     }
   }
 
@@ -720,6 +797,62 @@ export class BakeryView {
     d.rotation.set(Math.PI, 0, -tilt);
     d.updateMatrix();
     this.eggs.setMatrixAt(this.eggs.count++, d.matrix);
+  }
+
+  private syncRegulars(dt: number) {
+    const speed = 0.8;
+    // 門外排隊的：店裡少於 2 位、而且前一位已經走進來一段（同時進門會整個疊在一起）才放進來；
+    // 放進來的時候才決定站哪一格（避開另一位已經佔的那格）
+    for (const r of this.regulars) {
+      if (r.phase !== 'queue' || this.regularCount >= MAX_REGULARS_IN) continue;
+      const inside = this.regulars.filter((q) => q.phase !== 'queue');
+      if (inside.some((q) => q.phase === 'in' && q.t < 1.1)) break;
+      const taken = new Set(inside.map((q) => q.tx));
+      const slot = REGULAR_SLOTS.map((i) => SHELF_SLOTS[i]!.x).find((x) => !taken.has(x)) ?? SHELF_SLOTS[REGULAR_SLOTS[0]!]!.x;
+      r.tx = slot;
+      r.phase = 'in';
+      r.t = 0;
+    }
+    let n = 0;
+    for (const r of this.regulars) {
+      if (r.phase === 'queue') continue;
+      r.t += dt;
+      r.hop += dt * 8;
+      let face = 0;
+      if (r.phase === 'in') {
+        const tz = QUEUE_Z;
+        if (Math.abs(r.z - tz) > 0.01) r.z += Math.sign(tz - r.z) * Math.min(Math.abs(tz - r.z), speed * dt);
+        else r.x += Math.sign(r.tx - r.x) * Math.min(Math.abs(r.tx - r.x), speed * dt);
+        face = Math.atan2(r.tx - r.x, tz - r.z);
+        if (Math.abs(r.x - r.tx) < 0.01 && Math.abs(r.z - tz) < 0.01) {
+          r.phase = 'pick';
+          r.t = 0;
+        }
+      } else if (r.phase === 'pick') {
+        // 常客會多待一下、而且轉過來面向玩家（散客面向展示櫃，玩家只看得到背影）：買到的開心跳、沒買到的搖頭
+        face = 0;
+        if (r.t > 1.8) {
+          r.phase = 'out';
+          r.t = 0;
+        }
+      } else {
+        r.x += Math.sign(DOOR.x + 0.4 - r.x) * Math.min(Math.abs(DOOR.x + 0.4 - r.x), speed * dt);
+        r.z += Math.sign(DOOR.z - r.z) * Math.min(Math.abs(DOOR.z - r.z), speed * dt);
+        face = Math.PI / 2;
+      }
+      const m = this.regularMeshes[n++]!;
+      const geo = regularGeometry(r.id);
+      if (m.geometry !== geo) m.geometry = geo;
+      const moving = r.phase !== 'pick';
+      const y = moving ? Math.abs(Math.sin(r.hop)) * 0.04 : r.bought ? Math.abs(Math.sin(r.t * 9)) * 0.07 : 0;
+      const sad = !r.bought && r.phase === 'pick';
+      m.position.set(r.x, y, r.z);
+      m.rotation.set(sad ? 0.18 : 0, face + (sad ? Math.sin(r.t * 14) * 0.3 : 0), 0);
+      m.visible = true;
+      if (r.bought && r.dessert && r.phase !== 'in') this.putItem(r.x, y + 0.5, r.z, r.dessert, 200 + n, 1, 1.35, 1, 0);
+    }
+    for (let i = n; i < this.regularMeshes.length; i++) this.regularMeshes[i]!.visible = false;
+    this.regulars = this.regulars.filter((r) => !(r.phase === 'out' && Math.abs(r.x - (DOOR.x + 0.4)) < 0.02 && Math.abs(r.z - DOOR.z) < 0.02));
   }
 
   private syncCustomers(dt: number) {

@@ -69,7 +69,7 @@ describe('新手引導完全從 state 推導', () => {
     expect(nextHint(s)?.id).toBe('bathing');
 
     s.puddings[0]!.mode = 'resting';
-    s.drops.push({ id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0 });
+    s.drops.push({ id: 'd1', zone: START_ZONE, kind: 'ingredient' as const, species: 'caramel', pos: { x: 0, z: 0 }, bornAt: 0, star: 1 as const });
     expect(nextHint(s)?.id).toBe('pick');
   });
 
@@ -79,7 +79,7 @@ describe('新手引導完全從 state 推導', () => {
     s.basins[0]!.units = 1;
     for (const id of RECIPES.caramel.route) s.bakery.machines[id] = 1;
     s.eggs = 2;
-    s.ingredients.caramel = 1;
+    s.ingredients.caramel = [1, 0, 0, 0, 0];
     s.stock.milk = 1;
     s.pantry.flour = 1;
     expect(nextHint(s)?.id).toBe('bakery');
@@ -93,7 +93,7 @@ describe('新手引導完全從 state 推導', () => {
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
     s.eggs = 2;
-    s.ingredients.caramel = 1;
+    s.ingredients.caramel = [1, 0, 0, 0, 0];
     s.stock.milk = 1;
     s.coins = 0;
     expect(nextHint(s)?.id).not.toBe('bakery');
@@ -111,7 +111,7 @@ describe('新手引導完全從 state 推導', () => {
     const s = fresh();
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
-    s.ingredients.caramel = 99;
+    s.ingredients.caramel = [99, 0, 0, 0, 0];
     expect(nextHint(s)?.id).not.toBe('bakery');
   });
 
@@ -119,7 +119,7 @@ describe('新手引導完全從 state 推導', () => {
     const s = fresh();
     s.basins[0]!.liquid = 'caramel';
     s.basins[0]!.units = 1;
-    s.desserts.caramel = 1;
+    s.desserts.caramel = [1, 0, 0, 0, 0];
     expect(nextHint(s)?.id).toBe('shelf');
   });
 

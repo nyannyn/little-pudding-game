@@ -164,7 +164,7 @@ test('最壞情況（全設備＋掉落物＋三隻）倒液體的那幾幀 draw
       zone: s.activeZone, kind: 'ingredient' as const,
       species: (['caramel', 'panna', 'matcha', 'strawberry'] as const)[i % 4]!,
       pos: { x: -0.3 + i * 0.15, z: 0.2 },
-      bornAt: s.time,
+      bornAt: s.time, star: 1 as const,
     }));
   });
   await step(page, 0.5);
@@ -242,7 +242,7 @@ test('三個盆同時要倒（手動＋兩個注液閥）：同時只畫一組�
       zone: s.activeZone, kind: 'ingredient' as const,
       species: (['caramel', 'panna', 'matcha', 'strawberry'] as const)[i % 4]!,
       pos: { x: -0.3 + i * 0.15, z: 0.2 },
-      bornAt: s.time,
+      bornAt: s.time, star: 1 as const,
     }));
   });
   await step(page, 0.5);
