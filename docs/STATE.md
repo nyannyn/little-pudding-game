@@ -34,7 +34,7 @@
 ## CP11 星級布丁與常客（2026-09-25，使用者「計劃開工 請一次完成一整個計劃」，分支 `feat/regulars`，worktree `../lpg-wt-regulars`，基底 `origin/docs/regulars-plan` 3b6555d＝PR #34 未 merge）
 
 - **狀態：已上線（2026-09-25）**。使用者回「好 更新計劃 merge」＝接受 PR 列的偏離、校準數字與 AC11-12 剩兩條貼邊界；PR #35 squash merge，master＝`cbb4026`（`ls-remote` 相符），#34 已關（內容併在 #35）。Pages workflow 綠；線上 bundle `index-BNcLMQ3r.js` 含「熊先生／精養／蜂蜜焦糖千層」；`npm run smoke:live` 對線上全過。8 小時離線結算桌機約 +10%。**待使用者**：手機存檔碼（AC11-10）、故事改稿、手機看畫面（AC11-16）。
-- **待使用者**：①手機 v10 存檔碼（AC11-10 目前用 v10 程式自己玩出來的暫代夾具 `tests/fixtures/v10-save.*`）；②故事改稿（`docs/plans/regulars-stories.md` → `src/game/regularStories.ts`）；③AC11-16 手機簽核（只能在 merge 上線後看）；④AC11-12 剩兩條貼邊界沒過（seed 7 ★3 第 3 天、seed 99 企鵝郵差沒解鎖），要不要再調由使用者決定。
+- **待使用者**：①~~手機 v10 存檔碼~~（2026-09-30 使用者貼來的是 **v5**〔2026-09-22 玩的〕；真 v10 已拿不到——手機一開線上版就自動升 v11。改用這份真實 v5 補驗：`tests/fixtures/v5-phone-save.code.txt`＋`tests/unit/phoneSaveV5.test.ts`＋`cp11-migrate.spec.ts` 第二條走真的還原流程，全綠；負向對照〔退款退兩台／設備送給未解鎖區／舊庫存放 ★5〕三條都紅過。金幣 67→367 是 D50 退役機器退款 120＋180，不是 bug）；②故事改稿（`docs/plans/regulars-stories.md` → `src/game/regularStories.ts`）；③AC11-16 手機簽核（只能在 merge 上線後看）；④AC11-12 剩兩條貼邊界沒過（seed 7 ★3 第 3 天、seed 99 企鵝郵差沒解鎖），要不要再調由使用者決定。
 - **校準後的數字（計畫原值不適用的原因：計畫估月玩家一天 8.75 遊戲小時，實測約 21）**：`starCare` [200, 480, 2880, 16000]、常客每 13 個營業日來一次（±2）、升星藥佔禮物 1/3、特別訂單 8 個營業日。
 - **新規則（量表逼出來的）**：今天要來的常客，架上符合他條件的那一份散客不拿（`heldForRegulars`）；生不出寶寶的提示講「到商店賣掉幾隻空出位子」。
 - **踩到的**：①`tools/check-negative-controls.mjs` 被 `import()` 就會真的跑，探結構別 import；②它的 AC2-9 早就空轉（`-t` 篩到 0 條＝exit 0 被當綠），已讓工具把「篩不到」當錯；③機械轉換測試時把 `star` 塞進了**舊格式存檔** literal，測舊檔的 literal 要保持舊形狀；④InstancedMesh 的 raycast 用第一次算的包圍球，點會動的東西前要 `computeBoundingSphere()`；⑤月玩家 bot 的策略會直接決定量到的節奏（精養區倒錯液體、住滿不賣、只做最貴的甜點都讓常客整個月沒進展）——量表不過先查 bot 再動數字。
