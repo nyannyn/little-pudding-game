@@ -38,7 +38,7 @@
 - **校準後的數字（計畫原值不適用的原因：計畫估月玩家一天 8.75 遊戲小時，實測約 21）**：`starCare` [200, 480, 2880, 16000]、常客每 13 個營業日來一次（±2）、升星藥佔禮物 1/3、特別訂單 8 個營業日。
 - **新規則（量表逼出來的）**：今天要來的常客，架上符合他條件的那一份散客不拿（`heldForRegulars`）；生不出寶寶的提示講「到商店賣掉幾隻空出位子」。
 - **踩到的**：①`tools/check-negative-controls.mjs` 被 `import()` 就會真的跑，探結構別 import；②它的 AC2-9 早就空轉（`-t` 篩到 0 條＝exit 0 被當綠），已讓工具把「篩不到」當錯；③機械轉換測試時把 `star` 塞進了**舊格式存檔** literal，測舊檔的 literal 要保持舊形狀；④InstancedMesh 的 raycast 用第一次算的包圍球，點會動的東西前要 `computeBoundingSphere()`；⑤月玩家 bot 的策略會直接決定量到的節奏（精養區倒錯液體、住滿不賣、只做最貴的甜點都讓常客整個月沒進展）——量表不過先查 bot 再動數字。
-- **拋棄式 worktree**（收尾可刪）：`../lpg-wt-regulars-base`（基準樹，含未提交的量測腳本）、`../lpg-wt-cp11-nc`、`../lpg-wt-cp11-e2e`、`../lpg-wt-cp11-rules`（工人分支 `feat/regulars-rules`，已 merge 進 `feat/regulars`）。
+- **拋棄式 worktree 已全部刪除（2026-09-30）**：`../lpg-wt-*` 八棵與 `.claude/worktrees/zone-cap` 都清掉了（`lpg-wt-regulars-base` 裡未提交的量測腳本 `zz-measure`／`zz-make-v10` 一起丟掉，使用者同意）。
 
 ## 破圖修正＋大改版需求（2026-09-25，分支 `fix/bakery-broken-art`，worktree `../lpg-wt-bakery-fix`，PR #32 已上線）
 
@@ -369,7 +369,7 @@
 - **rebase 到 `89a632f`（origin 的每區設備 D45＋販賣機 D46）**：只有兩個 docs 檔衝突（merge-tree 先驗過），碼全自動合。**rebase 後重量 pacing**——每區重買設備會動到經濟，價格得重驗：11.1／21.7／35.9 分（rebase 前 11.1／21.1／35.1），價格不必重選。rebase 後單元 181 綠、e2e 53/53 綠、`npm run build` 綠。
 - **決策編號第二次撞號**：本地寫 D46／D47 時 origin 已有 D44（WebGL context lost）／D45（每區設備）／D46（販賣機），rebase 時改成 **D47 物種外觀／D48 狀態卡**。**並行 session 多的時候，決策編號等 rebase 完再定**。
 - **已 merge 上線（2026-09-23）**：PR #12 squash 成 `b888473`（WP7-1 InstancedMesh 與 WP7-2a 一起進 master），Pages run 35766353350 綠、`headSha` 相符；線上 bundle `assets/index-BDjV_iN0.js` grep 到 `zoneCapacity:15`、`price:500,level:4`／`price:2e3,level:6`／`price:5e3,level:7`。merge 前在「PR＋`origin/master`」的合併樹上驗：build 綠、單元 181 綠、e2e 第一輪 50/53（`cp3-game-loop:30` 紅、同檔 2 條沒跑到）、第二輪 **53/53**；`:30` 單跑 6/6 綠、`origin/master` 上同檔 3 輪 9/9 綠。`:30` 紅過兩個位置：`:80`（迴圈拿舊快照判斷「拿到焦糖」就跳出，跳出前 200ms 可能又掉一顆，**測試自己的競態，該修測試**）與 `:38`（按倒焦糖後立刻讀到 0 格，trace 沒留，**未查明**）。
-- **收尾後本地 `master` 仍停在舊的 3 個 WP7-1 commit（`aa32de3`，checkout 在 `../lpg-wt-zone-equipment`）**，內容已由 `b888473` 帶上 origin，但 sha 不同＝跟 `origin/master` 分岔。要用前先確認那個 worktree 沒人在用，再 `git reset --hard origin/master`（使用者決定）。
+- **本地 `master` 分岔已解（2026-09-30）**：那 3 個 WP7-1 commit 已比對過跟 `b888473` 同內容，本地 `master` 已 `reset --hard origin/master`。
 
 ## WP7-2b 狀態卡 → 頭頂小圖示＋垂眼（2026-09-23，分支 `feat/pudding-mood`，worktree `../lpg-wt-mood`，D48）
 
@@ -455,7 +455,7 @@
 - **「Pages 綠」曾經 ≠「你做的東西在線上」（2026-09-21 第四場實際發生）**：使用者回報「遊戲已上線」，但當時 remote 停在 `715ddaa`＝做遊戲之前的 hello scene，五個 commit 都還在本機。**宣告上線前一律 `git ls-remote --heads origin` 比對 sha，再抓線上 index.html 找一段只有新版才有的字串**（那次用 `#debug` 的定位方式，新版是 bottom、舊版是 top）。
 - **CP0 負向對照以代用證據結案**：計畫寫的是「Blender 端按 Stop 再呼叫一次必須失敗」，實際沒按 Stop 跑；代用的是上一場 addon 未啟動時 MCP 呼叫回 `CONNECTION_CLOSED`（同一條失敗路徑）。要嚴格補跑就請使用者按一次斷線再呼叫。
 - **AC1-1 已轉綠**：CP3 起住客變兩隻、`castShadow` 只留 `Pudding_Body`，門檻改成 **2000–5000**（每隻 1228＋468＝1696，兩隻約 3392），線上實測 tris 7886。負向對照的紅在 WP2 之前就實際發生過（GLB 不存在時差值＝0），不是推論。
-- 桌面上殘留空目錄 `little_pudding_game` 待使用者刪（session 結束後才刪得掉）。
+- **分支大掃除（2026-09-30）**：本地只剩 `master`；21 條已 squash merge 的本地分支刪掉（遠端分支沒動）。續跑檔 PR #36、#13 已 merge，#33 內容早已在 master、直接關掉。
 
 ## Lessons learned
 - **要「連成一整排」，每一個高度的寬度都要對齊，不是只讓最寬的那圈相接**：裝飾線腳若在寬度方向外擴，就只有線腳碰得到、層板以上全是縫。線腳只往深度凸即可保留裝飾又不破壞連續。立柱要貼齊最外緣，相鄰兩根才會碰成一根共用柱。
