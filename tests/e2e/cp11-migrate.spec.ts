@@ -69,3 +69,35 @@ test('AC11-10：v10 存檔碼還原 → v11：數值不變、舊庫存全在 ★
   await expect(page.locator('.regcard .reg[data-id="bear"]')).toContainText('熊先生');
   await page.locator('[data-a="closeRegulars"]').click();
 });
+
+/** 使用者手機的真實存檔碼（v5，2026-09-22）；真 v10 手機存檔已拿不到，這份是最舊的真實存檔。 */
+const phoneCode = readFileSync(join(DIR, 'v5-phone-save.code.txt'), 'utf8').trim();
+const phoneRaw = JSON.parse(Buffer.from(phoneCode.split('.')[1]!, 'base64url').toString('utf8'));
+
+test('手機真實 v5 存檔碼還原 → 現行版本：布丁、等級、統計都在，退役機器退款，舊原料在 ★1', async ({ page }) => {
+  await page.clock.setFixedTime(phoneRaw.lastSeenAt + 2000);
+  await page.addInitScript(() => {
+    localStorage.setItem('lpg.hints.off', '1');
+    localStorage.setItem('lpg.a2hs.off', '1');
+  });
+  await page.goto('/?pause=1');
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+  await page.getByRole('button', { name: '設定' }).click();
+  await page.fill('.savecard .code', phoneCode);
+  await Promise.all([page.waitForEvent('load'), page.click('[data-a="restoreSave"]')]);
+  await page.waitForFunction(() => window.__lpg?.stats?.ready === true, null, { timeout: 30_000 });
+
+  const s = await S(page);
+  expect(phoneRaw.schemaVersion).toBe(5);
+  expect(s.schemaVersion).toBe(SCHEMA_VERSION);
+  expect(s.puddings.map((p) => p.id).sort()).toEqual(['p1', 'p2', 'p7']);
+  expect(s.xp).toBeGreaterThanOrEqual(phoneRaw.xp);
+  expect(s.stats.baths).toBeGreaterThanOrEqual(phoneRaw.stats.baths);
+  // 67 ＋ 退役甜點加工機 120 ＋ 自動販售口 180；離線只補 2 秒，不會差到一百
+  expect(Math.abs(s.coins - (phoneRaw.coins + 300))).toBeLessThan(100);
+  expect(s.ingredients.caramel.slice(1)).toEqual([0, 0, 0, 0]);
+  expect(s.ingredients.caramel[0]).toBeGreaterThanOrEqual(7);
+  for (const p of s.puddings) expect([p.star, p.potential]).toEqual([1, 2]);
+  expect(s.equipment.c0t1).toEqual({ autoFill: true, collector: true, restock: false });
+  expect(Object.values(s.regulars).some((r) => r.unlocked)).toBe(false);
+});
